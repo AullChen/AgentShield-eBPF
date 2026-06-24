@@ -2,7 +2,7 @@
 
 AgentShield-eBPF is a Linux eBPF based runtime security and audit system for AI Agent sandboxes.
 
-The project is currently in Day 1 initialization. The repository contains the public project scaffold only. Local planning documents and proposal drafts are kept outside Git under `.local-docs/`.
+The project is currently in early initialization. The repository contains the public project scaffold and the first Go control-plane command skeleton. Local planning documents and proposal drafts are kept outside Git under `.local-docs/`.
 
 ## Current Scope
 
@@ -31,16 +31,32 @@ scripts/             Developer and demo helper scripts
 tests/               Integration, security, and performance tests
 ```
 
+## Development
+
+Run the current control-plane skeleton:
+
+```sh
+go run ./cmd/agentshield version
+go run ./cmd/agentshield health
+```
+
+Run the current Go checks:
+
+```sh
+go test ./...
+go build -o ./bin/agentshield ./cmd/agentshield
+```
+
 ## Development Plan
 
-Day 1 initializes the project framework and repository hygiene:
+Day 1 initialized the project framework and repository hygiene:
 
 - Create the module directory layout.
 - Keep local planning documents out of Git.
 - Add a root README and directory placeholders.
 - Initialize Git and create the first project commit.
 
-Day 2 will initialize the Go module and the first `cmd/agentshield` executable skeleton.
+Day 2 initializes the Go module and the first `cmd/agentshield` executable skeleton.
 
 ## Environment Target
 
@@ -52,4 +68,3 @@ The intended runtime target is Linux with:
 - Permission to load eBPF programs.
 
 Windows/macOS can be used for editing, but kernel feature development must run on a compatible Linux environment.
-

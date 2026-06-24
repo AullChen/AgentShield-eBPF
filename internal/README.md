@@ -6,11 +6,13 @@ Package responsibilities are split by runtime concern:
 
 - `api`
 - `bpfmgr`
+- `config`
 - `correlator`
 - `envcheck`
 - `events`
 - `killer`
+- `logging`
 - `policy`
 - `scope`
 - `store`
-
+- `version`

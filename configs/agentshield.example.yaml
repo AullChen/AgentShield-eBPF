@@ -1,0 +1,9 @@
+# AgentShield-eBPF example configuration.
+# The Day 2 CLI only reads environment variables and command-line flags.
+# YAML parsing will be added when the control-plane API is introduced.
+
+server:
+  listen: "127.0.0.1:8080"
+
+logging:
+  level: "info"
