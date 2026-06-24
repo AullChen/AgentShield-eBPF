@@ -1,0 +1,46 @@
+# Local planning and private source documents
+.local-docs/
+.agents/
+.codex/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and local runtime data
+*.log
+logs/
+tmp/
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Go build outputs
+bin/
+coverage.out
+*.test
+
+# eBPF build outputs
+*.o
+*.bpf.o
+*.elf
+
+# Node / Next.js outputs
+node_modules/
+.next/
+out/
+dist/
+coverage/
+
+# Python outputs
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
