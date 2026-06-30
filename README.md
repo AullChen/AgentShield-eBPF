@@ -47,6 +47,13 @@ go test ./...
 go build -o ./bin/agentshield ./cmd/agentshield
 ```
 
+Generate the current BPF source binding and run the local BPF syntax check:
+
+```sh
+make generate
+make check-bpf-syntax
+```
+
 ## Development Plan
 
 Day 1 initialized the project framework and repository hygiene:
