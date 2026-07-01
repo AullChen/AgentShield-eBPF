@@ -1,0 +1,286 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --shell: #151817;
+  --paper: #f4f7f2;
+  --panel: #ffffff;
+  --line: #d9dfd7;
+  --copper: #b55d3b;
+  --signal: #c73232;
+  --circuit: #1f7a68;
+  --graphite: #313735;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--shell);
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--shell);
+  color: #eef3eb;
+  padding: 24px 18px;
+}
+
+.brand {
+  border-bottom: 1px solid rgba(238, 243, 235, 0.18);
+  padding-bottom: 22px;
+}
+
+.brand-mark {
+  align-items: center;
+  border: 1px solid rgba(238, 243, 235, 0.18);
+  display: inline-flex;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.brand h1 {
+  font-size: 18px;
+  font-weight: 680;
+  letter-spacing: 0;
+  margin: 14px 0 4px;
+}
+
+.brand p {
+  color: rgba(238, 243, 235, 0.68);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.nav {
+  display: grid;
+  gap: 6px;
+  margin-top: 24px;
+}
+
+.nav-link {
+  border: 1px solid transparent;
+  color: rgba(238, 243, 235, 0.72);
+  display: flex;
+  font-size: 14px;
+  justify-content: space-between;
+  padding: 10px 11px;
+}
+
+.nav-link:hover,
+.nav-link:focus-visible {
+  border-color: rgba(238, 243, 235, 0.24);
+  color: #ffffff;
+  outline: none;
+}
+
+.nav-link.active {
+  background: #eef3eb;
+  color: var(--shell);
+}
+
+.main {
+  min-width: 0;
+  padding: 28px;
+}
+
+.page-header {
+  align-items: end;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+}
+
+.page-header h2 {
+  font-size: clamp(28px, 4vw, 48px);
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1;
+  margin: 0;
+}
+
+.page-header p {
+  color: #59615e;
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 10px 0 0;
+  max-width: 680px;
+}
+
+.status-strip {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 22px;
+}
+
+.metric {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 16px;
+}
+
+.metric span {
+  color: #66706c;
+  display: block;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.metric strong {
+  display: block;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.grid-two {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.panel-header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.panel-header h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.panel-body {
+  padding: 16px;
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  padding: 11px 8px;
+  text-align: left;
+}
+
+.table th {
+  color: #65706c;
+  font-weight: 600;
+}
+
+.pill {
+  border: 1px solid var(--line);
+  display: inline-flex;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  padding: 4px 7px;
+}
+
+.pill.danger {
+  border-color: rgba(199, 50, 50, 0.34);
+  color: var(--signal);
+}
+
+.pill.ok {
+  border-color: rgba(31, 122, 104, 0.34);
+  color: var(--circuit);
+}
+
+.trace-list {
+  display: grid;
+  gap: 12px;
+}
+
+.trace-row {
+  border-left: 3px solid var(--line);
+  display: grid;
+  gap: 5px;
+  padding-left: 12px;
+}
+
+.trace-row.high {
+  border-left-color: var(--signal);
+}
+
+.trace-row.medium {
+  border-left-color: var(--copper);
+}
+
+.trace-row code {
+  color: #2c3431;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    padding: 18px;
+  }
+
+  .nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .main {
+    padding: 20px;
+  }
+
+  .page-header {
+    align-items: start;
+    display: grid;
+  }
+
+  .status-strip,
+  .grid-two {
+    grid-template-columns: 1fr;
+  }
+}

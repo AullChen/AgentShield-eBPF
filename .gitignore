@@ -36,6 +36,7 @@ node_modules/
 out/
 dist/
 coverage/
+*.tsbuildinfo
 
 # Python outputs
 __pycache__/
@@ -43,4 +44,3 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
-
