@@ -38,6 +38,7 @@ Run the current control-plane skeleton:
 ```sh
 go run ./cmd/agentshield version
 go run ./cmd/agentshield health
+go run ./cmd/agentshield diagnose
 ```
 
 Run the current Go checks:

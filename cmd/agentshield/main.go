@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/agentshield/agentshield-ebpf/internal/config"
+	"github.com/agentshield/agentshield-ebpf/internal/envcheck"
 	"github.com/agentshield/agentshield-ebpf/internal/logging"
 	"github.com/agentshield/agentshield-ebpf/internal/version"
 )
@@ -32,6 +33,11 @@ func run(args []string) int {
 
 	command := args[0]
 	switch command {
+	case "diagnose":
+		if err := common.Parse(args[1:]); err != nil {
+			return 2
+		}
+		return runDiagnose(context.Background(), cfg)
 	case "version":
 		if err := common.Parse(args[1:]); err != nil {
 			return 2
@@ -81,8 +87,33 @@ func runHealth(ctx context.Context, cfg config.Config) int {
 	return 0
 }
 
+func runDiagnose(ctx context.Context, cfg config.Config) int {
+	logger, err := logging.New(cfg.LogLevel)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid logger configuration: %v\n", err)
+		return 2
+	}
+
+	report := envcheck.Run(ctx)
+	payload, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		logger.ErrorContext(ctx, "failed to encode diagnostics report", slog.Any("error", err))
+		return 1
+	}
+
+	fmt.Println(string(payload))
+	if report.HasFailures() {
+		logger.WarnContext(ctx, "diagnostics completed with failures")
+		return 1
+	}
+
+	logger.InfoContext(ctx, "diagnostics completed")
+	return 0
+}
+
 func printUsage(out *os.File) {
 	commands := []string{
+		"diagnose run local environment diagnostics",
 		"health   run a local control-plane health check",
 		"version  print build version information",
 	}
