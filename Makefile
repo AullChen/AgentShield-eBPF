@@ -4,7 +4,7 @@ ifeq ($(OS),Windows_NT)
 BINARY := bin/agentshield.exe
 endif
 
-.PHONY: generate check-bpf-syntax test build clean
+.PHONY: generate check-bpf-syntax test build check clean
 
 generate:
 	go generate ./internal/bpfmgr
@@ -17,6 +17,8 @@ test:
 
 build: bin
 	go build -o $(BINARY) ./cmd/agentshield
+
+check: generate check-bpf-syntax test build
 
 bin:
 ifeq ($(OS),Windows_NT)

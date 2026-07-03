@@ -33,6 +33,14 @@ tests/               Integration, security, and performance tests
 
 ## Development
 
+Install the dashboard dependencies once:
+
+```sh
+cd dashboard
+npm install
+cd ..
+```
+
 Run the current control-plane skeleton:
 
 ```sh
@@ -44,16 +52,21 @@ go run ./cmd/agentshield diagnose
 Run the current Go checks:
 
 ```sh
-go test ./...
-go build -o ./bin/agentshield ./cmd/agentshield
-```
-
-Generate the current BPF source binding and run the local BPF syntax check:
-
-```sh
 make generate
 make check-bpf-syntax
+make test
+make build
 ```
+
+Run the dashboard checks:
+
+```sh
+cd dashboard
+npm run typecheck
+npm run build
+```
+
+The current P0 integration status is documented in [docs/p0-integration-check.md](docs/p0-integration-check.md).
 
 ## Development Plan
 
