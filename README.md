@@ -2,11 +2,26 @@
 
 AgentShield-eBPF is a Linux eBPF based runtime security and audit system for AI Agent sandboxes.
 
-The project is currently in early initialization. The repository contains the public project scaffold and the first Go control-plane command skeleton. Local planning documents and proposal drafts are kept outside Git under `.local-docs/`.
+The project is currently in early MVP development. The repository already contains the Go control-plane skeleton, a bootstrap eBPF source layout, an `openat` file-access audit tracepoint, local diagnostics, and a Next.js dashboard scaffold. Runtime eBPF loading, cgroup scoping, policy enforcement, event correlation, and live dashboard streaming are still under development.
 
-## Current Scope
+## Current Status
 
-MVP development will focus on this path:
+| Area | Status | Notes |
+| --- | --- | --- |
+| Go control plane | Started | `agentshield version`, `health`, and `diagnose` commands are available. |
+| Environment diagnostics | Started | Detects host OS and reports Linux-only kernel capability checks. |
+| eBPF source layout | Started | `bpf/agentshield.bpf.c`, `events.h`, and `maps.h` exist. |
+| File audit probe | Started | `tracepoint/syscalls/sys_enter_openat` emits a file-open event shape. |
+| BPF build flow | Bootstrap | `make generate` embeds BPF source text for Go-side development; real object compilation is scheduled later. |
+| Dashboard | Scaffolded | Next.js App Router pages exist with mock data. |
+| Runtime BPF loading | Not implemented | Planned for the next stage. |
+| Ring buffer consumption | Not implemented | Planned after real BPF object loading. |
+| cgroup scoping | Not implemented | Planned after the first audit loop. |
+| Policy engine | Not implemented | Planned after cgroup-scoped event capture. |
+
+## MVP Direction
+
+The MVP is scoped around this path:
 
 1. Register a controlled AI Agent sandbox by cgroup v2.
 2. Capture file, process, and network events with eBPF.
@@ -15,25 +30,49 @@ MVP development will focus on this path:
 5. Correlate Agent checkpoints with kernel events.
 6. Display live evidence chains in a web dashboard.
 
+The current codebase has only the first pieces of that path. It is not yet a usable sandbox or enforcement tool.
+
 ## Repository Layout
 
 ```text
-bpf/                 eBPF programs and shared kernel/user event definitions
-cmd/agentshield/     Go control-plane entrypoint
+bpf/                 eBPF programs, maps, and shared event definitions
+cmd/agentshield/     Go control-plane CLI entrypoint
+cmd/bpfgen/          Local BPF source binding generator
 internal/            Go internal packages
-dashboard/           Next.js dashboard
-sdk/python/          Python Agent adapter SDK
-sandbox/             Demo Agent sandbox and attack scenarios
-deploy/              Local deployment files
-configs/             Default runtime and policy configs
+dashboard/           Next.js dashboard scaffold
+sdk/python/          Future Python Agent adapter SDK
+sandbox/             Future demo Agent sandbox and attack scenarios
+deploy/              Future local deployment files
+configs/             Runtime and policy configuration examples
 docs/                Public project documentation
-scripts/             Developer and demo helper scripts
-tests/               Integration, security, and performance tests
+scripts/             Future developer and demo helper scripts
+tests/               Future integration, security, and performance tests
 ```
 
-## Development
+Local planning documents and proposal drafts are intentionally kept outside Git under `.local-docs/`.
 
-Install the dashboard dependencies once:
+## Requirements
+
+For current development:
+
+- Go 1.22 or newer
+- Node.js 20 or newer
+- npm 10 or newer
+- GNU Make
+- clang, for the local BPF syntax check
+
+For real kernel feature work:
+
+- Linux kernel 5.15 or newer
+- cgroup v2 enabled
+- BTF available at `/sys/kernel/btf/vmlinux`
+- Permission to load eBPF programs
+
+Windows and macOS are fine for editing, Go unit tests, dashboard work, and the bootstrap syntax check. Real eBPF loading and runtime validation must happen on Linux.
+
+## Quick Start
+
+Install dashboard dependencies once:
 
 ```sh
 cd dashboard
@@ -41,7 +80,7 @@ npm install
 cd ..
 ```
 
-Run the current control-plane skeleton:
+Run the current control-plane CLI:
 
 ```sh
 go run ./cmd/agentshield version
@@ -49,13 +88,23 @@ go run ./cmd/agentshield health
 go run ./cmd/agentshield diagnose
 ```
 
-Run the current Go checks:
+On non-Linux hosts, `diagnose` prints a capability report and exits with status `1` because AgentShield kernel features require Linux.
+
+## Checks
+
+Run the Go and BPF bootstrap checks:
 
 ```sh
 make generate
 make check-bpf-syntax
 make test
 make build
+```
+
+Or run the aggregate Go/BPF check:
+
+```sh
+make check
 ```
 
 Run the dashboard checks:
@@ -66,26 +115,74 @@ npm run typecheck
 npm run build
 ```
 
-The current P0 integration status is documented in [docs/p0-integration-check.md](docs/p0-integration-check.md).
+The current P0 integration status is recorded in [docs/p0-integration-check.md](docs/p0-integration-check.md).
 
-## Development Plan
+## Current eBPF Probe
 
-Day 1 initialized the project framework and repository hygiene:
+The current BPF program includes:
 
-- Create the module directory layout.
-- Keep local planning documents out of Git.
-- Add a root README and directory placeholders.
-- Initialize Git and create the first project commit.
+- `tracepoint/syscalls/sys_enter_openat`
+- Event type: `AGENTSHIELD_EVENT_FILE_OPEN`
+- Captured fields: pid, tgid, uid, comm, filename, open flags, timestamp, cgroup id placeholder
 
-Day 2 initializes the Go module and the first `cmd/agentshield` executable skeleton.
+Day 8 intentionally does not filter by cgroup or PID yet. Scope filtering is scheduled for a later milestone.
 
-## Environment Target
+The local syntax check uses a bootstrap stub:
 
-The intended runtime target is Linux with:
+```sh
+clang -DAGENTSHIELD_BPF_SYNTAX_CHECK -fsyntax-only bpf/agentshield.bpf.c
+```
 
-- Kernel 5.15 or newer.
-- cgroup v2 enabled.
-- BTF available.
-- Permission to load eBPF programs.
+This is not a replacement for compiling and loading a real CO-RE BPF object on Linux.
 
-Windows/macOS can be used for editing, but kernel feature development must run on a compatible Linux environment.
+## Dashboard
+
+The dashboard currently exposes static App Router pages with mock data:
+
+- Overview
+- Live Trace
+- Policies
+- History
+- Diagnostics
+
+Start it locally with:
+
+```sh
+cd dashboard
+npm run dev
+```
+
+The dashboard does not yet connect to the Go control plane.
+
+## Development Timeline
+
+Completed:
+
+- Day 1: repository scaffold and Git hygiene
+- Day 2: Go control-plane CLI skeleton
+- Day 3: initial eBPF source and map skeleton
+- Day 4: BPF source binding generation flow
+- Day 5: environment diagnostics
+- Day 6: Next.js dashboard scaffold
+- Day 7: P0 integration check documentation
+- Day 8: `openat` audit tracepoint skeleton
+
+Next planned work:
+
+- Load a real BPF object from the Go control plane
+- Attach the `openat` tracepoint on Linux
+- Read kernel events from the ring buffer
+- Print structured file-open audit events from Go
+
+## Limitations
+
+- The project does not yet load eBPF programs.
+- The project does not yet consume ring buffer events.
+- The project does not yet enforce policies or block behavior.
+- The project does not yet isolate Agent runs by cgroup.
+- The dashboard currently uses mock data.
+- The generated BPF source binding embeds source text only; it is not a compiled BPF object.
+
+## License
+
+License information will be added before the first public release.
