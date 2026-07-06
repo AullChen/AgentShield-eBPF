@@ -56,6 +56,8 @@ struct agentshield_event {
 	__u32 policy_id;
 	__u32 rule_id;
 	__u32 flags;
+	__u32 syscall_flags;
+	__u32 reserved;
 
 	char comm[AGENTSHIELD_COMM_LEN];
 	char data[AGENTSHIELD_DATA_LEN];
