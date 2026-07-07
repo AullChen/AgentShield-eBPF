@@ -14,8 +14,8 @@ The project is currently in early MVP development. The repository already contai
 | File audit probe | Started | `tracepoint/syscalls/sys_enter_openat` emits a file-open event shape. |
 | BPF build flow | Bootstrap | `make generate` embeds BPF source text for Go-side development; real object compilation is scheduled later. |
 | Dashboard | Scaffolded | Next.js App Router pages exist with mock data. |
-| Runtime BPF loading | Not implemented | Planned for the next stage. |
-| Ring buffer consumption | Not implemented | Planned after real BPF object loading. |
+| Runtime BPF loading | Started | `agentshield audit-openat` can load a compiled BPF object on Linux. |
+| Ring buffer consumption | Started | `audit-openat` decodes file-open ring buffer events as JSON Lines. |
 | cgroup scoping | Not implemented | Planned after the first audit loop. |
 | Policy engine | Not implemented | Planned after cgroup-scoped event capture. |
 
@@ -90,6 +90,14 @@ go run ./cmd/agentshield diagnose
 
 On non-Linux hosts, `diagnose` prints a capability report and exits with status `1` because AgentShield kernel features require Linux.
 
+On Linux, after compiling a real BPF object, start the current `openat` audit loop with:
+
+```sh
+go run ./cmd/agentshield audit-openat --bpf-object ./bpf/agentshield.bpf.o
+```
+
+This command attaches `syscalls/sys_enter_openat`, reads `agentshield_events`, and prints one JSON object per file-open event. On non-Linux hosts it exits with an unsupported-platform error.
+
 ## Checks
 
 Run the Go and BPF bootstrap checks:
@@ -97,6 +105,7 @@ Run the Go and BPF bootstrap checks:
 ```sh
 make generate
 make check-bpf-syntax
+make check-linux-bpfmgr
 make test
 make build
 ```
@@ -124,6 +133,7 @@ The current BPF program includes:
 - `tracepoint/syscalls/sys_enter_openat`
 - Event type: `AGENTSHIELD_EVENT_FILE_OPEN`
 - Captured fields: pid, tgid, uid, comm, filename, open flags, timestamp, cgroup id placeholder
+- Go consumer: `agentshield audit-openat --bpf-object ./bpf/agentshield.bpf.o`
 
 Day 8 intentionally does not filter by cgroup or PID yet. Scope filtering is scheduled for a later milestone.
 
@@ -166,18 +176,19 @@ Completed:
 - Day 6: Next.js dashboard scaffold
 - Day 7: P0 integration check documentation
 - Day 8: `openat` audit tracepoint skeleton
+- Day 9: Go-side `openat` audit command and ring buffer event decoder
 
 Next planned work:
 
-- Load a real BPF object from the Go control plane
-- Attach the `openat` tracepoint on Linux
-- Read kernel events from the ring buffer
-- Print structured file-open audit events from Go
+- Add a real Linux CO-RE object compilation path
+- Validate `audit-openat` end-to-end on a Linux host
+- Harden event schema and string decoding behavior
+- Add cgroup/PID filtering after the first audit loop is stable
 
 ## Limitations
 
-- The project does not yet load eBPF programs.
-- The project does not yet consume ring buffer events.
+- The repository does not yet compile `bpf/agentshield.bpf.c` into a real `.bpf.o` object.
+- The Linux `audit-openat` runtime path is implemented but not end-to-end validated in this Windows workspace.
 - The project does not yet enforce policies or block behavior.
 - The project does not yet isolate Agent runs by cgroup.
 - The dashboard currently uses mock data.
