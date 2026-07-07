@@ -4,20 +4,43 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
+
+	"github.com/agentshield/agentshield-ebpf/internal/events"
 )
 
 func TestDecodeAuditEvent(t *testing.T) {
-	raw := rawAuditEvent{
-		SchemaVersion: 1,
-		EventType:     EventTypeFileOpen,
-		Action:        0,
-		ActionResult:  1,
+	type rawAuditEventV1 struct {
+		SchemaVersion uint16
+		EventType     uint16
+		Action        uint16
+		ActionResult  uint16
+		TimestampNS   uint64
+		CgroupID      uint64
+		PID           uint32
+		TGID          uint32
+		PPID          uint32
+		UID           uint32
+		ProfileID     uint32
+		PolicyID      uint32
+		RuleID        uint32
+		Flags         uint32
+		SyscallFlags  uint32
+		Reserved      uint32
+		Comm          [16]byte
+		Data          [256]byte
+	}
+
+	raw := rawAuditEventV1{
+		SchemaVersion: events.SchemaVersion,
+		EventType:     events.EventTypeFileOpen,
+		Action:        events.ActionAudit,
+		ActionResult:  events.ActionResultAllowed,
 		TimestampNS:   42,
 		CgroupID:      77,
 		PID:           1001,
 		TGID:          1001,
 		UID:           501,
-		Flags:         FlagTruncated,
+		Flags:         events.FlagTruncated,
 		SyscallFlags:  123,
 	}
 	copy(raw.Comm[:], "python")
@@ -32,8 +55,8 @@ func TestDecodeAuditEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeAuditEvent returned error: %v", err)
 	}
-	if event.EventType != EventTypeFileOpen {
-		t.Fatalf("EventType = %d, want %d", event.EventType, EventTypeFileOpen)
+	if event.EventType != events.EventTypeFileOpen {
+		t.Fatalf("EventType = %d, want %d", event.EventType, events.EventTypeFileOpen)
 	}
 	if event.PID != 1001 {
 		t.Fatalf("PID = %d, want 1001", event.PID)

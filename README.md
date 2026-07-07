@@ -16,6 +16,7 @@ The project is currently in early MVP development. The repository already contai
 | Dashboard | Scaffolded | Next.js App Router pages exist with mock data. |
 | Runtime BPF loading | Started | `agentshield audit-openat` can load a compiled BPF object on Linux. |
 | Ring buffer consumption | Started | `audit-openat` decodes file-open ring buffer events as JSON Lines. |
+| Kernel Event v1 | Started | Go-side decoding now validates schema version, action fields, timestamps, strings, and truncation flags. |
 | cgroup scoping | Not implemented | Planned after the first audit loop. |
 | Policy engine | Not implemented | Planned after cgroup-scoped event capture. |
 
@@ -134,6 +135,7 @@ The current BPF program includes:
 - Event type: `AGENTSHIELD_EVENT_FILE_OPEN`
 - Captured fields: pid, tgid, uid, comm, filename, open flags, timestamp, cgroup id placeholder
 - Go consumer: `agentshield audit-openat --bpf-object ./bpf/agentshield.bpf.o`
+- Go event model: `internal/events.KernelEvent` with schema version `1`
 
 Day 8 intentionally does not filter by cgroup or PID yet. Scope filtering is scheduled for a later milestone.
 
@@ -177,12 +179,13 @@ Completed:
 - Day 7: P0 integration check documentation
 - Day 8: `openat` audit tracepoint skeleton
 - Day 9: Go-side `openat` audit command and ring buffer event decoder
+- Day 10: `KernelEvent v1` schema validation and string/truncation decoding
 
 Next planned work:
 
 - Add a real Linux CO-RE object compilation path
 - Validate `audit-openat` end-to-end on a Linux host
-- Harden event schema and string decoding behavior
+- Add `execve` audit coverage for process execution events
 - Add cgroup/PID filtering after the first audit loop is stable
 
 ## Limitations
