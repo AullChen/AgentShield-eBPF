@@ -18,6 +18,7 @@ static __u64 bpf_ktime_get_ns(void) { return 0; }
 static __u64 bpf_get_current_pid_tgid(void) { return 0; }
 static __u64 bpf_get_current_uid_gid(void) { return 0; }
 static __u64 bpf_get_current_cgroup_id(void) { return 0; }
+static void *bpf_get_current_task_btf(void) { return 0; }
 static int bpf_get_current_comm(void *buf, __u32 size) { return 0; }
 static void *bpf_map_lookup_elem(void *map, const void *key) { return 0; }
 static void *bpf_ringbuf_reserve(void *ringbuf, __u64 size, __u64 flags)
@@ -29,6 +30,17 @@ static long bpf_probe_read_user_str(void *dst, __u32 size, const void *unsafe_pt
 {
 	return 0;
 }
+static long bpf_probe_read_user(void *dst, __u32 size, const void *unsafe_ptr)
+{
+	return 0;
+}
+
+struct task_struct {
+	struct task_struct *real_parent;
+	__u32 tgid;
+};
+
+#define BPF_CORE_READ(source, field1, field2) ((source)->field1->field2)
 
 struct trace_event_raw_sys_enter {
 	long id;
@@ -69,6 +81,7 @@ agentshield_fill_common(struct agentshield_event *event, __u16 event_type,
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u64 uid_gid = bpf_get_current_uid_gid();
+	struct task_struct *task = bpf_get_current_task_btf();
 
 	event->schema_version = AGENTSHIELD_EVENT_SCHEMA_VERSION;
 	event->event_type = event_type;
@@ -78,7 +91,7 @@ agentshield_fill_common(struct agentshield_event *event, __u16 event_type,
 	event->cgroup_id = cgroup_id;
 	event->pid = pid_tgid >> 32;
 	event->tgid = (__u32)pid_tgid;
-	event->ppid = 0;
+	event->ppid = BPF_CORE_READ(task, real_parent, tgid);
 	event->uid = (__u32)uid_gid;
 	event->profile_id = profile_id;
 	event->policy_id = 0;
@@ -87,6 +100,52 @@ agentshield_fill_common(struct agentshield_event *event, __u16 event_type,
 	event->syscall_flags = 0;
 	event->reserved = 0;
 	bpf_get_current_comm(&event->comm, sizeof(event->comm));
+}
+
+SEC("tracepoint/syscalls/sys_enter_execve")
+int agentshield_trace_execve(struct trace_event_raw_sys_enter *ctx)
+{
+	struct agentshield_event *event;
+	const char *filename = (const char *)ctx->args[0];
+	const char *const *argv = (const char *const *)ctx->args[1];
+	const char *arg = 0;
+	__u64 cgroup_id = 0;
+	__u32 profile_id = 0;
+	long read_len;
+	int i;
+
+	event = bpf_ringbuf_reserve(&agentshield_events, sizeof(*event), 0);
+	if (!event)
+		return 0;
+
+	__builtin_memset(event, 0, sizeof(*event));
+	agentshield_fill_common(event, AGENTSHIELD_EVENT_EXEC_ATTEMPT,
+				cgroup_id, profile_id);
+
+	read_len = bpf_probe_read_user_str(event->data,
+					   AGENTSHIELD_EXEC_EXE_LEN, filename);
+	if (read_len < 0 || read_len == AGENTSHIELD_EXEC_EXE_LEN)
+		event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+
+#pragma unroll
+	for (i = 0; i < AGENTSHIELD_EXEC_ARG_COUNT; i++) {
+		if (bpf_probe_read_user(&arg, sizeof(arg), &argv[i]) < 0 || !arg)
+			break;
+
+		read_len = bpf_probe_read_user_str(
+			&event->data[AGENTSHIELD_EXEC_EXE_LEN +
+				     i * AGENTSHIELD_EXEC_ARG_LEN],
+			AGENTSHIELD_EXEC_ARG_LEN, arg);
+		if (read_len < 0 || read_len == AGENTSHIELD_EXEC_ARG_LEN)
+			event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+	}
+
+	if (bpf_probe_read_user(&arg, sizeof(arg),
+				&argv[AGENTSHIELD_EXEC_ARG_COUNT]) == 0 && arg)
+		event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+
+	bpf_ringbuf_submit(event, 0);
+	return 0;
 }
 
 SEC("tracepoint/syscalls/sys_enter_openat")

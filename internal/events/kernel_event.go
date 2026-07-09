@@ -32,30 +32,35 @@ const (
 
 	FlagTruncated uint32 = 1 << 0
 	FlagFallback  uint32 = 1 << 1
+
+	execExecutableLength = 128
+	execArgumentCount    = 4
+	execArgumentLength   = 32
 )
 
 type KernelEvent struct {
-	SchemaVersion    uint16 `json:"schema_version"`
-	EventType        uint16 `json:"event_type"`
-	EventTypeName    string `json:"event_type_name"`
-	Action           uint16 `json:"action"`
-	ActionName       string `json:"action_name"`
-	ActionResult     uint16 `json:"action_result"`
-	ActionResultName string `json:"action_result_name"`
-	TimestampNS      uint64 `json:"timestamp_ns"`
-	CgroupID         uint64 `json:"cgroup_id"`
-	PID              uint32 `json:"pid"`
-	TGID             uint32 `json:"tgid"`
-	PPID             uint32 `json:"ppid"`
-	UID              uint32 `json:"uid"`
-	ProfileID        uint32 `json:"profile_id"`
-	PolicyID         uint32 `json:"policy_id"`
-	RuleID           uint32 `json:"rule_id"`
-	Flags            uint32 `json:"flags"`
-	SyscallFlags     uint32 `json:"syscall_flags"`
-	Comm             string `json:"comm"`
-	Data             string `json:"data"`
-	Truncated        bool   `json:"truncated"`
+	SchemaVersion    uint16   `json:"schema_version"`
+	EventType        uint16   `json:"event_type"`
+	EventTypeName    string   `json:"event_type_name"`
+	Action           uint16   `json:"action"`
+	ActionName       string   `json:"action_name"`
+	ActionResult     uint16   `json:"action_result"`
+	ActionResultName string   `json:"action_result_name"`
+	TimestampNS      uint64   `json:"timestamp_ns"`
+	CgroupID         uint64   `json:"cgroup_id"`
+	PID              uint32   `json:"pid"`
+	TGID             uint32   `json:"tgid"`
+	PPID             uint32   `json:"ppid"`
+	UID              uint32   `json:"uid"`
+	ProfileID        uint32   `json:"profile_id"`
+	PolicyID         uint32   `json:"policy_id"`
+	RuleID           uint32   `json:"rule_id"`
+	Flags            uint32   `json:"flags"`
+	SyscallFlags     uint32   `json:"syscall_flags"`
+	Comm             string   `json:"comm"`
+	Data             string   `json:"data"`
+	Argv             []string `json:"argv,omitempty"`
+	Truncated        bool     `json:"truncated"`
 }
 
 type rawKernelEventV1 struct {
@@ -95,7 +100,7 @@ func DecodeKernelEvent(sample []byte) (KernelEvent, error) {
 		return KernelEvent{}, fmt.Errorf("unsupported kernel event schema version: got %d want %d", raw.SchemaVersion, SchemaVersion)
 	}
 
-	return KernelEvent{
+	event := KernelEvent{
 		SchemaVersion:    raw.SchemaVersion,
 		EventType:        raw.EventType,
 		EventTypeName:    EventTypeName(raw.EventType),
@@ -115,9 +120,23 @@ func DecodeKernelEvent(sample []byte) (KernelEvent, error) {
 		Flags:            raw.Flags,
 		SyscallFlags:     raw.SyscallFlags,
 		Comm:             CleanCString(raw.Comm[:]),
-		Data:             CleanCString(raw.Data[:]),
 		Truncated:        raw.Flags&FlagTruncated != 0,
-	}, nil
+	}
+	if raw.EventType == EventTypeExecAttempt {
+		event.Data = CleanCString(raw.Data[:execExecutableLength])
+		for i := 0; i < execArgumentCount; i++ {
+			start := execExecutableLength + i*execArgumentLength
+			arg := CleanCString(raw.Data[start : start+execArgumentLength])
+			if arg == "" {
+				break
+			}
+			event.Argv = append(event.Argv, arg)
+		}
+	} else {
+		event.Data = CleanCString(raw.Data[:])
+	}
+
+	return event, nil
 }
 
 func CleanCString(value []byte) string {

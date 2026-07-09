@@ -21,3 +21,6 @@ Current probe coverage:
 - `tracepoint/syscalls/sys_enter_openat` emits `AGENTSHIELD_EVENT_FILE_OPEN`
   events with pid, uid, comm, filename, and open flags. Day 8 intentionally
   does not filter by cgroup or PID; scope filtering is scheduled later.
+- `tracepoint/syscalls/sys_enter_execve` emits `AGENTSHIELD_EVENT_EXEC_ATTEMPT`
+  events with pid, ppid, uid, comm, executable, and up to four arguments.
+  Executable and argument truncation is reported through the event flags.

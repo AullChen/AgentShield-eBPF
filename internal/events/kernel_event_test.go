@@ -56,6 +56,42 @@ func TestDecodeKernelEventV1(t *testing.T) {
 	}
 }
 
+func TestDecodeKernelExecEventV1(t *testing.T) {
+	raw := rawKernelEventV1{
+		SchemaVersion: SchemaVersion,
+		EventType:     EventTypeExecAttempt,
+		Action:        ActionAudit,
+		ActionResult:  ActionResultAllowed,
+		PID:           1001,
+		PPID:          999,
+	}
+	copy(raw.Comm[:], "bash")
+	copy(raw.Data[:execExecutableLength], "/usr/bin/bash")
+	copy(raw.Data[execExecutableLength:], "bash")
+	copy(raw.Data[execExecutableLength+execArgumentLength:], "-c")
+	copy(raw.Data[execExecutableLength+2*execArgumentLength:], "echo ok")
+
+	event := decodeRawForTest(t, raw)
+	if event.EventTypeName != "exec_attempt" {
+		t.Fatalf("EventTypeName = %q, want exec_attempt", event.EventTypeName)
+	}
+	if event.Data != "/usr/bin/bash" {
+		t.Fatalf("Data = %q, want /usr/bin/bash", event.Data)
+	}
+	if event.PPID != 999 {
+		t.Fatalf("PPID = %d, want 999", event.PPID)
+	}
+	wantArgv := []string{"bash", "-c", "echo ok"}
+	if len(event.Argv) != len(wantArgv) {
+		t.Fatalf("Argv = %v, want %v", event.Argv, wantArgv)
+	}
+	for i := range wantArgv {
+		if event.Argv[i] != wantArgv[i] {
+			t.Fatalf("Argv[%d] = %q, want %q", i, event.Argv[i], wantArgv[i])
+		}
+	}
+}
+
 func TestDecodeKernelEventRejectsWrongSize(t *testing.T) {
 	if _, err := DecodeKernelEvent([]byte{1, 2, 3}); err == nil {
 		t.Fatal("DecodeKernelEvent returned nil error for malformed sample")
