@@ -1,0 +1,44 @@
+# File and Exec Audit Notes
+
+The unified Linux audit loop attaches both syscall-entry tracepoints and emits
+their events through the same ring buffer as Kernel Event v1 JSON Lines.
+
+## Trigger Check
+
+Start the audit loop with a compiled CO-RE object:
+
+```sh
+sudo ./bin/agentshield audit --bpf-object ./bpf/agentshield.bpf.o
+```
+
+In another terminal, run:
+
+```sh
+./scripts/test-audit.sh
+```
+
+The output should contain at least one `file_open` event and one `exec_attempt`
+event. The script only triggers the events; it does not build or load eBPF.
+
+## Tracepoint Field Differences
+
+| Field | `sys_enter_openat` | `sys_enter_execve` |
+| --- | --- | --- |
+| Primary data | `args[1]` filename | `args[0]` executable filename |
+| Extra data | `args[2]` open flags | `args[1]` argv pointer array |
+| `data` JSON field | Up to 255 bytes of filename | Up to 127 bytes of executable filename |
+| `argv` JSON field | Omitted | Up to four arguments, 31 bytes each |
+
+Important semantics:
+
+- An `openat` filename may be relative to its directory file descriptor. The
+  current event does not resolve it to an absolute path.
+- The `execve` filename is the user-supplied syscall value. It may also be
+  relative and is not guaranteed to be the final resolved executable path.
+- `comm` is captured at syscall entry, before a successful exec changes the
+  task name.
+- `ppid` is read from the current task through CO-RE, because it is not a
+  syscall tracepoint argument.
+- Long executable names, arguments, or argument lists set `truncated=true`.
+- These are attempt events. A syscall-entry tracepoint does not prove that the
+  file open or process execution succeeded.

@@ -1,9 +1,8 @@
 # scripts
 
-Developer, environment-check, and demo helper scripts will live here.
+Developer, environment-check, and demo helper scripts live here.
 
-Planned files:
+Current files:
 
-- `check-env.sh`
-- `demo.sh`
-
+- `test-audit.sh`: triggers one file-open action and one process execution for
+  the Linux audit loop.

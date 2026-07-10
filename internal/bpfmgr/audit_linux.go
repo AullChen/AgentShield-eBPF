@@ -17,10 +17,11 @@ import (
 
 const (
 	openATProgramName = "agentshield_trace_openat"
+	execVEProgramName = "agentshield_trace_execve"
 	eventsMapName     = "agentshield_events"
 )
 
-func RunOpenATAudit(ctx context.Context, opts OpenATAuditOptions, out io.Writer) error {
+func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 	if opts.ObjectPath == "" {
 		return fmt.Errorf("bpf object path is required")
 	}
@@ -39,20 +40,30 @@ func RunOpenATAudit(ctx context.Context, opts OpenATAuditOptions, out io.Writer)
 	}
 	defer collection.Close()
 
-	program := collection.Programs[openATProgramName]
-	if program == nil {
+	openATProgram := collection.Programs[openATProgramName]
+	if openATProgram == nil {
 		return fmt.Errorf("bpf program %q not found", openATProgramName)
+	}
+	execVEProgram := collection.Programs[execVEProgramName]
+	if execVEProgram == nil {
+		return fmt.Errorf("bpf program %q not found", execVEProgramName)
 	}
 	events := collection.Maps[eventsMapName]
 	if events == nil {
 		return fmt.Errorf("bpf map %q not found", eventsMapName)
 	}
 
-	tracepoint, err := link.Tracepoint("syscalls", "sys_enter_openat", program, nil)
+	openATTracepoint, err := link.Tracepoint("syscalls", "sys_enter_openat", openATProgram, nil)
 	if err != nil {
 		return fmt.Errorf("attach openat tracepoint: %w", err)
 	}
-	defer tracepoint.Close()
+	defer openATTracepoint.Close()
+
+	execVETracepoint, err := link.Tracepoint("syscalls", "sys_enter_execve", execVEProgram, nil)
+	if err != nil {
+		return fmt.Errorf("attach execve tracepoint: %w", err)
+	}
+	defer execVETracepoint.Close()
 
 	reader, err := ringbuf.NewReader(events)
 	if err != nil {

@@ -2,7 +2,7 @@
 
 AgentShield-eBPF is a Linux eBPF based runtime security and audit system for AI Agent sandboxes.
 
-The project is currently in early MVP development. The repository already contains the Go control-plane skeleton, a bootstrap eBPF source layout, an `openat` file-access audit tracepoint, local diagnostics, and a Next.js dashboard scaffold. Runtime eBPF loading, cgroup scoping, policy enforcement, event correlation, and live dashboard streaming are still under development.
+The project is currently in early MVP development. The repository already contains the Go control-plane skeleton, bootstrap file and process audit tracepoints, a unified ring-buffer consumer, local diagnostics, and a Next.js dashboard scaffold. CO-RE object compilation, cgroup scoping, policy enforcement, event correlation, and live dashboard streaming are still under development.
 
 ## Current Status
 
@@ -12,10 +12,11 @@ The project is currently in early MVP development. The repository already contai
 | Environment diagnostics | Started | Detects host OS and reports Linux-only kernel capability checks. |
 | eBPF source layout | Started | `bpf/agentshield.bpf.c`, `events.h`, and `maps.h` exist. |
 | File audit probe | Started | `tracepoint/syscalls/sys_enter_openat` emits a file-open event shape. |
+| Process audit probe | Started | `tracepoint/syscalls/sys_enter_execve` captures executable and bounded argv summaries. |
 | BPF build flow | Bootstrap | `make generate` embeds BPF source text for Go-side development; real object compilation is scheduled later. |
 | Dashboard | Scaffolded | Next.js App Router pages exist with mock data. |
-| Runtime BPF loading | Started | `agentshield audit-openat` can load a compiled BPF object on Linux. |
-| Ring buffer consumption | Started | `audit-openat` decodes file-open ring buffer events as JSON Lines. |
+| Runtime BPF loading | Started | `agentshield audit` loads a compiled BPF object and attaches file/exec probes on Linux. |
+| Ring buffer consumption | Started | `audit` decodes file and process ring buffer events as Kernel Event v1 JSON Lines. |
 | Kernel Event v1 | Started | Go-side decoding now validates schema version, action fields, timestamps, strings, and truncation flags. |
 | cgroup scoping | Not implemented | Planned after the first audit loop. |
 | Policy engine | Not implemented | Planned after cgroup-scoped event capture. |
@@ -91,13 +92,13 @@ go run ./cmd/agentshield diagnose
 
 On non-Linux hosts, `diagnose` prints a capability report and exits with status `1` because AgentShield kernel features require Linux.
 
-On Linux, after compiling a real BPF object, start the current `openat` audit loop with:
+On Linux, after compiling a real BPF object, start the unified audit loop with:
 
 ```sh
-go run ./cmd/agentshield audit-openat --bpf-object ./bpf/agentshield.bpf.o
+go run ./cmd/agentshield audit --bpf-object ./bpf/agentshield.bpf.o
 ```
 
-This command attaches `syscalls/sys_enter_openat`, reads `agentshield_events`, and prints one JSON object per file-open event. On non-Linux hosts it exits with an unsupported-platform error.
+This command attaches `syscalls/sys_enter_openat` and `syscalls/sys_enter_execve`, reads `agentshield_events`, and prints one JSON object per event. Run `./scripts/test-audit.sh` in another terminal to trigger both event types. See [docs/file-exec-audit.md](docs/file-exec-audit.md) for field semantics and current limitations. On non-Linux hosts the audit command exits with an unsupported-platform error.
 
 ## Checks
 
@@ -132,9 +133,10 @@ The current P0 integration status is recorded in [docs/p0-integration-check.md](
 The current BPF program includes:
 
 - `tracepoint/syscalls/sys_enter_openat`
-- Event type: `AGENTSHIELD_EVENT_FILE_OPEN`
-- Captured fields: pid, tgid, uid, comm, filename, open flags, timestamp, cgroup id placeholder
-- Go consumer: `agentshield audit-openat --bpf-object ./bpf/agentshield.bpf.o`
+- `tracepoint/syscalls/sys_enter_execve`
+- Event types: `AGENTSHIELD_EVENT_FILE_OPEN` and `AGENTSHIELD_EVENT_EXEC_ATTEMPT`
+- Captured fields: pid, tgid, ppid, uid, comm, filename or executable, bounded argv, flags, timestamp, cgroup id placeholder
+- Go consumer: `agentshield audit --bpf-object ./bpf/agentshield.bpf.o`
 - Go event model: `internal/events.KernelEvent` with schema version `1`
 
 Day 8 intentionally does not filter by cgroup or PID yet. Scope filtering is scheduled for a later milestone.
@@ -180,12 +182,14 @@ Completed:
 - Day 8: `openat` audit tracepoint skeleton
 - Day 9: Go-side `openat` audit command and ring buffer event decoder
 - Day 10: `KernelEvent v1` schema validation and string/truncation decoding
+- Day 11: `execve` audit probe with executable, bounded argv, and parent pid capture
+- Day 12: unified file/exec audit loop, trigger script, and tracepoint field notes
 
 Next planned work:
 
 - Add a real Linux CO-RE object compilation path
-- Validate `audit-openat` end-to-end on a Linux host
-- Add `execve` audit coverage for process execution events
+- Validate `audit` end-to-end on a Linux host
+- Add network connection audit coverage
 - Add cgroup/PID filtering after the first audit loop is stable
 
 ## Limitations

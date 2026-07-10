@@ -9,7 +9,7 @@ import (
 
 var ErrUnsupported = errors.New("bpf audit is not supported on this platform")
 
-type OpenATAuditOptions struct {
+type AuditOptions struct {
 	ObjectPath string
 }
 

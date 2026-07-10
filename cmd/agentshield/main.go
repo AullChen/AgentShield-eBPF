@@ -31,13 +31,13 @@ func run(args []string) int {
 	command := args[0]
 	cfg := config.Default()
 	switch command {
-	case "audit-openat":
+	case "audit", "audit-openat":
 		flags := newFlagSet(command, &cfg)
 		bpfObject := flags.String("bpf-object", "bpf/agentshield.bpf.o", "path to the compiled AgentShield BPF object")
 		if err := flags.Parse(args[1:]); err != nil {
 			return 2
 		}
-		return runAuditOpenAT(cfg, *bpfObject)
+		return runAudit(cfg, *bpfObject)
 	case "diagnose":
 		flags := newFlagSet(command, &cfg)
 		if err := flags.Parse(args[1:]); err != nil {
@@ -103,7 +103,7 @@ func runHealth(ctx context.Context, cfg config.Config) int {
 	return 0
 }
 
-func runAuditOpenAT(cfg config.Config, objectPath string) int {
+func runAudit(cfg config.Config, objectPath string) int {
 	logger, err := logging.New(cfg.LogLevel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "invalid logger configuration: %v\n", err)
@@ -113,8 +113,8 @@ func runAuditOpenAT(cfg config.Config, objectPath string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	logger.InfoContext(ctx, "starting openat audit", slog.String("bpf_object", objectPath))
-	err = bpfmgr.RunOpenATAudit(ctx, bpfmgr.OpenATAuditOptions{ObjectPath: objectPath}, os.Stdout)
+	logger.InfoContext(ctx, "starting kernel audit", slog.String("bpf_object", objectPath))
+	err = bpfmgr.RunAudit(ctx, bpfmgr.AuditOptions{ObjectPath: objectPath}, os.Stdout)
 	if err == nil {
 		return 0
 	}
@@ -123,7 +123,7 @@ func runAuditOpenAT(cfg config.Config, objectPath string) int {
 		return 1
 	}
 
-	logger.ErrorContext(ctx, "openat audit failed", slog.Any("error", err))
+	logger.ErrorContext(ctx, "kernel audit failed", slog.Any("error", err))
 	return 1
 }
 
@@ -153,7 +153,7 @@ func runDiagnose(ctx context.Context, cfg config.Config) int {
 
 func printUsage(out *os.File) {
 	commands := []string{
-		"audit-openat stream openat file-access events as JSON Lines",
+		"audit        stream file and process events as JSON Lines",
 		"diagnose     run local environment diagnostics",
 		"health       run a local control-plane health check",
 		"version      print build version information",
@@ -171,5 +171,5 @@ func printUsage(out *os.File) {
 	fmt.Fprintln(out, "  --config string      path to the AgentShield config file")
 	fmt.Fprintln(out, "  --log-level string   log level: debug, info, warn, or error")
 	fmt.Fprintln(out, "\nCommand flags:")
-	fmt.Fprintln(out, "  audit-openat --bpf-object string   path to compiled AgentShield BPF object")
+	fmt.Fprintln(out, "  audit --bpf-object string   path to compiled AgentShield BPF object")
 }

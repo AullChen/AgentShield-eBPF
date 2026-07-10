@@ -89,8 +89,8 @@ agentshield_fill_common(struct agentshield_event *event, __u16 event_type,
 	event->action_result = AGENTSHIELD_RESULT_ALLOWED;
 	event->timestamp_ns = bpf_ktime_get_ns();
 	event->cgroup_id = cgroup_id;
-	event->pid = pid_tgid >> 32;
-	event->tgid = (__u32)pid_tgid;
+	event->pid = (__u32)pid_tgid;
+	event->tgid = pid_tgid >> 32;
 	event->ppid = BPF_CORE_READ(task, real_parent, tgid);
 	event->uid = (__u32)uid_gid;
 	event->profile_id = profile_id;
