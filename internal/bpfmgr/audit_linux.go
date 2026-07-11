@@ -4,7 +4,6 @@ package bpfmgr
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -71,27 +70,19 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 	}
 	defer reader.Close()
 
-	go func() {
-		<-ctx.Done()
+	stopInterrupt := interruptOnContextDone(ctx, func() {
 		_ = reader.Close()
-	}()
+	})
+	defer stopInterrupt()
 
-	encoder := json.NewEncoder(outputWriter(out))
-	for {
+	return streamAuditEvents(auditSampleReaderFunc(func() ([]byte, error) {
 		record, err := reader.Read()
 		if err != nil {
 			if errors.Is(err, ringbuf.ErrClosed) {
-				return nil
+				return nil, io.EOF
 			}
-			return fmt.Errorf("read ring buffer: %w", err)
+			return nil, err
 		}
-
-		event, err := DecodeAuditEvent(record.RawSample)
-		if err != nil {
-			return err
-		}
-		if err := encoder.Encode(event); err != nil {
-			return fmt.Errorf("write audit event: %w", err)
-		}
-	}
+		return record.RawSample, nil
+	}), opts, out)
 }

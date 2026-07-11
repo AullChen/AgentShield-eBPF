@@ -2,39 +2,43 @@ package bpfmgr
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"io"
 	"testing"
 
 	"github.com/agentshield/agentshield-ebpf/internal/events"
 )
 
-func TestDecodeAuditEvent(t *testing.T) {
-	type rawAuditEventV1 struct {
-		SchemaVersion uint16
-		EventType     uint16
-		Action        uint16
-		ActionResult  uint16
-		TimestampNS   uint64
-		CgroupID      uint64
-		PID           uint32
-		TGID          uint32
-		PPID          uint32
-		UID           uint32
-		ProfileID     uint32
-		PolicyID      uint32
-		RuleID        uint32
-		Flags         uint32
-		SyscallFlags  uint32
-		Reserved      uint32
-		Comm          [16]byte
-		Data          [256]byte
-	}
+type rawAuditEventV2 struct {
+	SchemaVersion       uint16
+	EventType           uint16
+	Action              uint16
+	ActionResult        uint16
+	TimestampNS         uint64
+	CgroupID            uint64
+	PID                 uint32
+	TGID                uint32
+	PPID                uint32
+	UID                 uint32
+	ProfileID           uint32
+	PolicyID            uint32
+	RuleID              uint32
+	Flags               uint32
+	SyscallFlags        uint32
+	CapturedArgcPlusOne uint32
+	Comm                [16]byte
+	Data                [256]byte
+}
 
-	raw := rawAuditEventV1{
+func TestDecodeAuditEvent(t *testing.T) {
+	raw := rawAuditEventV2{
 		SchemaVersion: events.SchemaVersion,
 		EventType:     events.EventTypeFileOpen,
 		Action:        events.ActionAudit,
-		ActionResult:  events.ActionResultAllowed,
+		ActionResult:  events.ActionResultNone,
 		TimestampNS:   42,
 		CgroupID:      77,
 		PID:           1001,
@@ -58,6 +62,9 @@ func TestDecodeAuditEvent(t *testing.T) {
 	if event.EventType != events.EventTypeFileOpen {
 		t.Fatalf("EventType = %d, want %d", event.EventType, events.EventTypeFileOpen)
 	}
+	if event.ActionResultName != "none" {
+		t.Fatalf("ActionResultName = %q, want none", event.ActionResultName)
+	}
 	if event.PID != 1001 {
 		t.Fatalf("PID = %d, want 1001", event.PID)
 	}
@@ -76,7 +83,207 @@ func TestDecodeAuditEvent(t *testing.T) {
 }
 
 func TestDecodeAuditEventRejectsWrongSize(t *testing.T) {
-	if _, err := DecodeAuditEvent([]byte{1, 2, 3}); err == nil {
-		t.Fatal("DecodeAuditEvent returned nil error for malformed sample")
+	sample := make([]byte, 3)
+	binary.LittleEndian.PutUint16(sample, events.SchemaVersion)
+	if _, err := DecodeAuditEvent(sample); !errors.Is(err, events.ErrMalformedKernelEvent) {
+		t.Fatalf("DecodeAuditEvent error = %v, want ErrMalformedKernelEvent", err)
 	}
+}
+
+func TestStreamAuditEventsSkipsMalformedSample(t *testing.T) {
+	valid := encodeAuditSample(t, rawAuditEventV2{
+		SchemaVersion: events.SchemaVersion,
+		EventType:     events.EventTypeFileOpen,
+		Action:        events.ActionAudit,
+		ActionResult:  events.ActionResultNone,
+		PID:           42,
+	})
+	samples := [][]byte{{1}, valid}
+	next := 0
+	var malformed []error
+	var out bytes.Buffer
+
+	err := streamAuditEvents(auditSampleReaderFunc(func() ([]byte, error) {
+		if next == len(samples) {
+			return nil, io.EOF
+		}
+		sample := samples[next]
+		next++
+		return sample, nil
+	}), AuditOptions{OnMalformedEvent: func(err error) {
+		malformed = append(malformed, err)
+	}}, &out)
+	if err != nil {
+		t.Fatalf("streamAuditEvents returned error: %v", err)
+	}
+	if len(malformed) != 1 || !errors.Is(malformed[0], events.ErrMalformedKernelEvent) {
+		t.Fatalf("malformed callbacks = %v, want one ErrMalformedKernelEvent", malformed)
+	}
+
+	var event AuditEvent
+	if err := json.Unmarshal(out.Bytes(), &event); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if event.PID != 42 {
+		t.Fatalf("output PID = %d, want 42", event.PID)
+	}
+}
+
+func TestStreamAuditEventsStopsAfterConsecutiveMalformedSamples(t *testing.T) {
+	reads := 0
+	callbacks := 0
+	reader := auditSampleReaderFunc(func() ([]byte, error) {
+		reads++
+		return []byte{1}, nil
+	})
+
+	err := streamAuditEvents(reader, AuditOptions{OnMalformedEvent: func(error) {
+		callbacks++
+	}}, io.Discard)
+	if !errors.Is(err, events.ErrMalformedKernelEvent) {
+		t.Fatalf("streamAuditEvents error = %v, want ErrMalformedKernelEvent", err)
+	}
+	if reads != maxConsecutiveMalformedEvents {
+		t.Fatalf("reads = %d, want %d", reads, maxConsecutiveMalformedEvents)
+	}
+	if callbacks != maxConsecutiveMalformedEvents {
+		t.Fatalf("callbacks = %d, want %d", callbacks, maxConsecutiveMalformedEvents)
+	}
+}
+
+func TestStreamAuditEventsValidSampleResetsMalformedThreshold(t *testing.T) {
+	valid := encodeAuditSample(t, rawAuditEventV2{
+		SchemaVersion: events.SchemaVersion,
+		EventType:     events.EventTypeFileOpen,
+	})
+	samples := [][]byte{{1}, {1}, valid, {1}, {1}, valid}
+	next := 0
+
+	err := streamAuditEvents(auditSampleReaderFunc(func() ([]byte, error) {
+		if next == len(samples) {
+			return nil, io.EOF
+		}
+		sample := samples[next]
+		next++
+		return sample, nil
+	}), AuditOptions{}, io.Discard)
+	if err != nil {
+		t.Fatalf("streamAuditEvents returned error: %v", err)
+	}
+}
+
+func TestStreamAuditEventsCapsMalformedNotifications(t *testing.T) {
+	valid := encodeAuditSample(t, rawAuditEventV2{
+		SchemaVersion: events.SchemaVersion,
+		EventType:     events.EventTypeFileOpen,
+	})
+	samples := make([][]byte, 0, 2*(maxMalformedEventNotifications+2))
+	for range maxMalformedEventNotifications + 2 {
+		samples = append(samples, []byte{1}, valid)
+	}
+	next := 0
+	notifications := 0
+
+	err := streamAuditEvents(auditSampleReaderFunc(func() ([]byte, error) {
+		if next == len(samples) {
+			return nil, io.EOF
+		}
+		sample := samples[next]
+		next++
+		return sample, nil
+	}), AuditOptions{OnMalformedEvent: func(error) {
+		notifications++
+	}}, io.Discard)
+	if err != nil {
+		t.Fatalf("streamAuditEvents returned error: %v", err)
+	}
+	if notifications != maxMalformedEventNotifications {
+		t.Fatalf("malformed notifications = %d, want %d", notifications, maxMalformedEventNotifications)
+	}
+}
+
+func TestStreamAuditEventsRejectsFutureSchema(t *testing.T) {
+	future := encodeAuditSample(t, rawAuditEventV2{SchemaVersion: events.SchemaVersion + 1})
+	reader := auditSampleReaderFunc(func() ([]byte, error) {
+		return future, nil
+	})
+
+	err := streamAuditEvents(reader, AuditOptions{}, io.Discard)
+	if !errors.Is(err, events.ErrUnsupportedSchema) {
+		t.Fatalf("streamAuditEvents error = %v, want ErrUnsupportedSchema", err)
+	}
+}
+
+func TestStreamAuditEventsReturnsReadError(t *testing.T) {
+	wantErr := errors.New("read failed")
+	reader := auditSampleReaderFunc(func() ([]byte, error) {
+		return nil, wantErr
+	})
+
+	err := streamAuditEvents(reader, AuditOptions{}, io.Discard)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("streamAuditEvents error = %v, want wrapped read error", err)
+	}
+}
+
+func TestStreamAuditEventsReturnsWriteError(t *testing.T) {
+	wantErr := errors.New("write failed")
+	valid := encodeAuditSample(t, rawAuditEventV2{
+		SchemaVersion: events.SchemaVersion,
+		EventType:     events.EventTypeFileOpen,
+	})
+	reader := auditSampleReaderFunc(func() ([]byte, error) {
+		return valid, nil
+	})
+
+	err := streamAuditEvents(reader, AuditOptions{}, errorWriter{err: wantErr})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("streamAuditEvents error = %v, want wrapped write error", err)
+	}
+}
+
+func TestInterruptOnContextDoneStopsWithoutInterrupting(t *testing.T) {
+	interrupted := false
+	stop := interruptOnContextDone(context.Background(), func() {
+		interrupted = true
+	})
+
+	stop()
+	if interrupted {
+		t.Fatal("interrupt called before context cancellation")
+	}
+}
+
+func TestInterruptOnContextDoneInterruptsAfterCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	interrupted := make(chan struct{})
+	stop := interruptOnContextDone(ctx, func() {
+		close(interrupted)
+	})
+
+	cancel()
+	stop()
+	select {
+	case <-interrupted:
+	default:
+		t.Fatal("interrupt was not called after context cancellation")
+	}
+}
+
+type errorWriter struct {
+	err error
+}
+
+func (w errorWriter) Write([]byte) (int, error) {
+	return 0, w.err
+}
+
+func encodeAuditSample(t *testing.T, raw rawAuditEventV2) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	if err := binary.Write(&buf, binary.LittleEndian, raw); err != nil {
+		t.Fatalf("binary.Write: %v", err)
+	}
+	return buf.Bytes()
 }

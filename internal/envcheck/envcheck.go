@@ -2,9 +2,16 @@ package envcheck
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
+)
+
+const (
+	minimumKernelMajor = 5
+	minimumKernelMinor = 15
 )
 
 type Status string
@@ -45,6 +52,7 @@ func Run(ctx context.Context) Report {
 					"current_os": runtime.GOOS,
 				},
 			},
+			architectureCheck(runtime.GOOS, runtime.GOARCH),
 			Check{
 				Name:    "btf",
 				Status:  StatusUnknown,
@@ -82,12 +90,46 @@ func Run(ctx context.Context) Report {
 
 	report.Checks = append(report.Checks,
 		linuxKernelCheck(),
+		architectureCheck(runtime.GOOS, runtime.GOARCH),
 		fileExistsCheck("btf", "/sys/kernel/btf/vmlinux", "BTF vmlinux is available"),
 		cgroupV2Check(),
 		bpfPermissionCheck(),
 		containerCheck(),
 	)
 	return report
+}
+
+func architectureCheck(goos string, goarch string) Check {
+	details := map[string]string{
+		"os":                     goos,
+		"arch":                   goarch,
+		"supported_linux_arches": "amd64,arm64",
+	}
+	if goos != "linux" {
+		return Check{
+			Name:    "architecture",
+			Status:  StatusUnknown,
+			Message: "architecture support is only evaluated on Linux",
+			Details: details,
+		}
+	}
+
+	switch goarch {
+	case "amd64", "arm64":
+		return Check{
+			Name:    "architecture",
+			Status:  StatusPass,
+			Message: "architecture is supported",
+			Details: details,
+		}
+	default:
+		return Check{
+			Name:    "architecture",
+			Status:  StatusFail,
+			Message: "architecture is not supported by the current kernel event decoder",
+			Details: details,
+		}
+	}
 }
 
 func (r Report) HasFailures() bool {
@@ -97,6 +139,21 @@ func (r Report) HasFailures() bool {
 		}
 	}
 	return false
+}
+
+// IsReady reports whether every required capability was conclusively checked.
+// Warnings are informational, while unknown and failed checks both prevent a
+// successful readiness result.
+func (r Report) IsReady() bool {
+	if len(r.Checks) == 0 {
+		return false
+	}
+	for _, check := range r.Checks {
+		if check.Status == StatusFail || check.Status == StatusUnknown {
+			return false
+		}
+	}
+	return true
 }
 
 func linuxKernelCheck() Check {
@@ -111,15 +168,58 @@ func linuxKernelCheck() Check {
 			},
 		}
 	}
+	return kernelReleaseCheck(string(release))
+}
+
+func kernelReleaseCheck(release string) Check {
+	release = strings.TrimSpace(release)
+	details := map[string]string{
+		"release": release,
+		"minimum": fmt.Sprintf("%d.%d", minimumKernelMajor, minimumKernelMinor),
+	}
+
+	major, minor, err := parseKernelVersion(release)
+	if err != nil {
+		details["error"] = err.Error()
+		return Check{
+			Name:    "kernel",
+			Status:  StatusUnknown,
+			Message: "unable to determine whether the Linux kernel version is supported",
+			Details: details,
+		}
+	}
+	if major < minimumKernelMajor || major == minimumKernelMajor && minor < minimumKernelMinor {
+		return Check{
+			Name:    "kernel",
+			Status:  StatusFail,
+			Message: "Linux kernel is older than the minimum supported version",
+			Details: details,
+		}
+	}
 
 	return Check{
 		Name:    "kernel",
 		Status:  StatusPass,
-		Message: "Linux kernel release detected",
-		Details: map[string]string{
-			"release": strings.TrimSpace(string(release)),
-		},
+		Message: "Linux kernel version is supported",
+		Details: details,
 	}
+}
+
+func parseKernelVersion(release string) (int, int, error) {
+	parts := strings.Split(strings.TrimSpace(release), ".")
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return 0, 0, fmt.Errorf("invalid kernel release %q", release)
+	}
+
+	major, err := strconv.Atoi(parts[0])
+	if err != nil || major < 0 {
+		return 0, 0, fmt.Errorf("invalid kernel major version in %q", release)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil || minor < 0 {
+		return 0, 0, fmt.Errorf("invalid kernel minor version in %q", release)
+	}
+	return major, minor, nil
 }
 
 func fileExistsCheck(name string, path string, message string) Check {
@@ -171,25 +271,39 @@ func cgroupV2Check() Check {
 }
 
 func bpfPermissionCheck() Check {
-	details := map[string]string{}
+	unprivilegedBPFDisabled := ""
 	if value, err := os.ReadFile("/proc/sys/kernel/unprivileged_bpf_disabled"); err == nil {
-		details["unprivileged_bpf_disabled"] = strings.TrimSpace(string(value))
+		unprivilegedBPFDisabled = strings.TrimSpace(string(value))
 	}
 
-	if _, err := os.Stat("/sys/fs/bpf"); err != nil {
-		details["bpffs_error"] = err.Error()
+	_, bpffsErr := os.Stat("/sys/fs/bpf")
+	return bpfPermissionResult(unprivilegedBPFDisabled, bpffsErr)
+}
+
+func bpfPermissionResult(unprivilegedBPFDisabled string, bpffsErr error) Check {
+	details := map[string]string{
+		"permission_probe": "not_performed",
+	}
+	if unprivilegedBPFDisabled != "" {
+		details["unprivileged_bpf_disabled"] = unprivilegedBPFDisabled
+	}
+
+	if bpffsErr != nil {
+		details["bpffs"] = "not_visible"
+		details["bpffs_error"] = bpffsErr.Error()
 		return Check{
 			Name:    "bpf_permissions",
-			Status:  StatusWarn,
-			Message: "bpffs is not visible; BPF loading may still work with sufficient privileges",
+			Status:  StatusUnknown,
+			Message: "bpffs is not visible and BPF loading permission was not probed",
 			Details: details,
 		}
 	}
 
+	details["bpffs"] = "visible"
 	return Check{
 		Name:    "bpf_permissions",
-		Status:  StatusPass,
-		Message: "bpffs is visible; BPF loading still requires runtime privileges",
+		Status:  StatusUnknown,
+		Message: "bpffs is visible, but BPF loading permission was not probed",
 		Details: details,
 	}
 }

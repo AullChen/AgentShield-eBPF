@@ -2,7 +2,7 @@
 #ifndef AGENTSHIELD_EVENTS_H
 #define AGENTSHIELD_EVENTS_H
 
-#define AGENTSHIELD_EVENT_SCHEMA_VERSION 1
+#define AGENTSHIELD_EVENT_SCHEMA_VERSION 2
 #define AGENTSHIELD_COMM_LEN 16
 #define AGENTSHIELD_DATA_LEN 256
 #define AGENTSHIELD_EXEC_EXE_LEN 128
@@ -24,7 +24,7 @@ enum agentshield_action {
 	AGENTSHIELD_ACTION_AUDIT = 0,
 	AGENTSHIELD_ACTION_ALERT = 1,
 	AGENTSHIELD_ACTION_BLOCK = 2,
-	AGENTSHIELD_ACTION_KILL = 3,
+	AGENTSHIELD_ACTION_CONTAIN = 3,
 };
 
 enum agentshield_action_result {
@@ -33,6 +33,7 @@ enum agentshield_action_result {
 	AGENTSHIELD_RESULT_BLOCKED = 2,
 	AGENTSHIELD_RESULT_KILLED = 3,
 	AGENTSHIELD_RESULT_FAILED = 4,
+	/* Deprecated: use FALLBACK flag plus KILLED/FAILED result. */
 	AGENTSHIELD_RESULT_FALLBACK = 5,
 };
 
@@ -60,10 +61,19 @@ struct agentshield_event {
 	__u32 rule_id;
 	__u32 flags;
 	__u32 syscall_flags;
-	__u32 reserved;
+	/* Exec events store captured argc + 1; non-exec events store 0. */
+	__u32 captured_argc_plus_one;
 
 	char comm[AGENTSHIELD_COMM_LEN];
 	char data[AGENTSHIELD_DATA_LEN];
 };
+
+_Static_assert(sizeof(struct agentshield_event) == 336,
+	       "agentshield_event ABI size changed");
+_Static_assert(__builtin_offsetof(struct agentshield_event,
+				 captured_argc_plus_one) == 60,
+	       "agentshield_event argc offset changed");
+_Static_assert(__builtin_offsetof(struct agentshield_event, data) == 80,
+	       "agentshield_event data offset changed");
 
 #endif // AGENTSHIELD_EVENTS_H

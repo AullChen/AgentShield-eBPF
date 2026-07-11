@@ -86,7 +86,7 @@ agentshield_fill_common(struct agentshield_event *event, __u16 event_type,
 	event->schema_version = AGENTSHIELD_EVENT_SCHEMA_VERSION;
 	event->event_type = event_type;
 	event->action = AGENTSHIELD_ACTION_AUDIT;
-	event->action_result = AGENTSHIELD_RESULT_ALLOWED;
+	event->action_result = AGENTSHIELD_RESULT_NONE;
 	event->timestamp_ns = bpf_ktime_get_ns();
 	event->cgroup_id = cgroup_id;
 	event->pid = (__u32)pid_tgid;
@@ -98,7 +98,7 @@ agentshield_fill_common(struct agentshield_event *event, __u16 event_type,
 	event->rule_id = 0;
 	event->flags = 0;
 	event->syscall_flags = 0;
-	event->reserved = 0;
+	event->captured_argc_plus_one = 0;
 	bpf_get_current_comm(&event->comm, sizeof(event->comm));
 }
 
@@ -109,9 +109,10 @@ int agentshield_trace_execve(struct trace_event_raw_sys_enter *ctx)
 	const char *filename = (const char *)ctx->args[0];
 	const char *const *argv = (const char *const *)ctx->args[1];
 	const char *arg = 0;
-	__u64 cgroup_id = 0;
+	__u64 cgroup_id = bpf_get_current_cgroup_id();
 	__u32 profile_id = 0;
 	long read_len;
+	__u32 captured_argc = 0;
 	int i;
 
 	event = bpf_ringbuf_reserve(&agentshield_events, sizeof(*event), 0);
@@ -129,20 +130,34 @@ int agentshield_trace_execve(struct trace_event_raw_sys_enter *ctx)
 
 #pragma unroll
 	for (i = 0; i < AGENTSHIELD_EXEC_ARG_COUNT; i++) {
-		if (bpf_probe_read_user(&arg, sizeof(arg), &argv[i]) < 0 || !arg)
+		arg = 0;
+		if (bpf_probe_read_user(&arg, sizeof(arg), &argv[i]) < 0) {
+			event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+			break;
+		}
+		if (!arg)
 			break;
 
 		read_len = bpf_probe_read_user_str(
 			&event->data[AGENTSHIELD_EXEC_EXE_LEN +
 				     i * AGENTSHIELD_EXEC_ARG_LEN],
 			AGENTSHIELD_EXEC_ARG_LEN, arg);
-		if (read_len < 0 || read_len == AGENTSHIELD_EXEC_ARG_LEN)
+		if (read_len < 0) {
+			event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+			break;
+		}
+		captured_argc++;
+		if (read_len == AGENTSHIELD_EXEC_ARG_LEN)
 			event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
 	}
+	event->captured_argc_plus_one = captured_argc + 1;
 
-	if (bpf_probe_read_user(&arg, sizeof(arg),
-				&argv[AGENTSHIELD_EXEC_ARG_COUNT]) == 0 && arg)
-		event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+	if (captured_argc == AGENTSHIELD_EXEC_ARG_COUNT) {
+		arg = 0;
+		if (bpf_probe_read_user(&arg, sizeof(arg),
+					&argv[AGENTSHIELD_EXEC_ARG_COUNT]) < 0 || arg)
+			event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+	}
 
 	bpf_ringbuf_submit(event, 0);
 	return 0;
@@ -153,7 +168,7 @@ int agentshield_trace_openat(struct trace_event_raw_sys_enter *ctx)
 {
 	struct agentshield_event *event;
 	const char *filename;
-	__u64 cgroup_id = 0;
+	__u64 cgroup_id = bpf_get_current_cgroup_id();
 	__u32 profile_id = 0;
 	long read_len;
 

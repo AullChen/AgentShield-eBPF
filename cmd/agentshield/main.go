@@ -34,26 +34,26 @@ func run(args []string) int {
 	case "audit", "audit-openat":
 		flags := newFlagSet(command, &cfg)
 		bpfObject := flags.String("bpf-object", "bpf/agentshield.bpf.o", "path to the compiled AgentShield BPF object")
-		if err := flags.Parse(args[1:]); err != nil {
-			return 2
+		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
+			return exitCode
 		}
 		return runAudit(cfg, *bpfObject)
 	case "diagnose":
 		flags := newFlagSet(command, &cfg)
-		if err := flags.Parse(args[1:]); err != nil {
-			return 2
+		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
+			return exitCode
 		}
 		return runDiagnose(context.Background(), cfg)
 	case "version":
 		flags := newFlagSet(command, &cfg)
-		if err := flags.Parse(args[1:]); err != nil {
-			return 2
+		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
+			return exitCode
 		}
 		return runVersion(os.Stdout)
 	case "health":
 		flags := newFlagSet(command, &cfg)
-		if err := flags.Parse(args[1:]); err != nil {
-			return 2
+		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
+			return exitCode
 		}
 		return runHealth(context.Background(), cfg)
 	case "-h", "--help", "help":
@@ -69,9 +69,27 @@ func run(args []string) int {
 func newFlagSet(name string, cfg *config.Config) *flag.FlagSet {
 	flags := flag.NewFlagSet(name, flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
-	flags.StringVar(&cfg.ConfigPath, "config", cfg.ConfigPath, "path to the AgentShield config file")
+	flags.StringVar(&cfg.ConfigPath, "config", cfg.ConfigPath, "reserved; configuration files are not supported yet")
 	flags.StringVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "log level: debug, info, warn, or error")
 	return flags
+}
+
+func parseCommandFlags(flags *flag.FlagSet, args []string, cfg *config.Config) (int, bool) {
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0, true
+		}
+		return 2, true
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintf(os.Stderr, "unexpected arguments for %s: %q\n", flags.Name(), flags.Args())
+		return 2, true
+	}
+	if cfg.ConfigPath != "" {
+		fmt.Fprintf(os.Stderr, "configuration files are not supported yet: %q\n", cfg.ConfigPath)
+		return 2, true
+	}
+	return 0, false
 }
 
 func runVersion(out *os.File) int {
@@ -114,7 +132,12 @@ func runAudit(cfg config.Config, objectPath string) int {
 	defer stop()
 
 	logger.InfoContext(ctx, "starting kernel audit", slog.String("bpf_object", objectPath))
-	err = bpfmgr.RunAudit(ctx, bpfmgr.AuditOptions{ObjectPath: objectPath}, os.Stdout)
+	err = bpfmgr.RunAudit(ctx, bpfmgr.AuditOptions{
+		ObjectPath: objectPath,
+		OnMalformedEvent: func(err error) {
+			logger.WarnContext(ctx, "discarding malformed kernel event", slog.Any("error", err))
+		},
+	}, os.Stdout)
 	if err == nil {
 		return 0
 	}
@@ -142,8 +165,8 @@ func runDiagnose(ctx context.Context, cfg config.Config) int {
 	}
 
 	fmt.Println(string(payload))
-	if report.HasFailures() {
-		logger.WarnContext(ctx, "diagnostics completed with failures")
+	if !report.IsReady() {
+		logger.WarnContext(ctx, "diagnostics did not establish readiness", slog.Bool("has_failures", report.HasFailures()))
 		return 1
 	}
 
@@ -168,7 +191,7 @@ func printUsage(out *os.File) {
 		fmt.Fprintf(out, "  %-8s %s\n", parts[0], strings.TrimSpace(parts[1]))
 	}
 	fmt.Fprintln(out, "\nCommon flags:")
-	fmt.Fprintln(out, "  --config string      path to the AgentShield config file")
+	fmt.Fprintln(out, "  --config string      reserved; configuration files are not supported yet")
 	fmt.Fprintln(out, "  --log-level string   log level: debug, info, warn, or error")
 	fmt.Fprintln(out, "\nCommand flags:")
 	fmt.Fprintln(out, "  audit --bpf-object string   path to compiled AgentShield BPF object")
