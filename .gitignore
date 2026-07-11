@@ -33,6 +33,7 @@ coverage.out
 # Node / Next.js outputs
 node_modules/
 .next/
+dashboard/next-env.d.ts
 out/
 dist/
 coverage/
