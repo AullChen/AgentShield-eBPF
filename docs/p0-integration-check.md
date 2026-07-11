@@ -3,6 +3,11 @@
 Date: 2026-07-03  
 Scope: Day 1 through Day 6 project initialization.
 
+> This is a historical P0 snapshot, not the current capability report. Later
+> commits added a Linux audit loader and file/exec probes; the root README and
+> development plan describe the current Day 12 source baseline and remaining
+> real CO-RE/Linux acceptance gate.
+
 ## Purpose
 
 This note records the first weekly integration pass. The goal is to make the repository easy to verify before P1 eBPF audit work begins.

@@ -1,7 +1,13 @@
 # File and Exec Audit Notes
 
 The unified Linux audit loop attaches both syscall-entry tracepoints and emits
-their events through the same ring buffer as Kernel Event v1 JSON Lines.
+their events through the same ring buffer as JSON schema v2 Lines carrying
+Kernel Event wire schema v2 records.
+
+> **Safety warning:** scope filtering is not implemented yet. The probes observe
+> matching syscalls from the entire host, and the JSON output contains raw bounded
+> path/argv fragments that may include credentials. Use this command only in an
+> isolated VM or dedicated test host.
 
 ## Trigger Check
 
@@ -19,6 +25,16 @@ In another terminal, run:
 
 The output should contain at least one `file_open` event and one `exec_attempt`
 event. The script only triggers the events; it does not build or load eBPF.
+
+Both are attempt events. Their `action_result` is `none`; a syscall-entry
+tracepoint cannot establish that the operation was allowed, succeeded, or read
+any data. `timestamp_ns` is a monotonic kernel timestamp rather than Unix epoch
+time. JSON schema v2 encodes `timestamp_ns` and `cgroup_id` as decimal strings
+to preserve all 64-bit values in JavaScript clients. The separate
+`wire_schema_version` field identifies the BPF record ABI (currently v2).
+Invalid UTF-8 in `comm`, `data`, or an argv slot is Base64-encoded, with that
+field listed as `base64` in the `raw_encoding` object; it is never silently
+replaced with the Unicode replacement character.
 
 ## Tracepoint Field Differences
 
@@ -42,3 +58,10 @@ Important semantics:
 - Long executable names, arguments, or argument lists set `truncated=true`.
 - These are attempt events. A syscall-entry tracepoint does not prove that the
   file open or process execution succeeded.
+- Up to four arguments are captured. The wire record carries the captured slot
+  count so a legal empty-string argument does not hide later arguments.
+- An isolated malformed v2 ring-buffer record is skipped; at most the first
+  three malformed records are logged. Three consecutive malformed records stop
+  the audit loop to expose a likely object/decoder mismatch. Any legacy or
+  future wire schema stops immediately rather than being silently
+  misinterpreted.

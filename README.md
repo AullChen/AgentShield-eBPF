@@ -9,15 +9,15 @@ The project is currently in early MVP development. The repository already contai
 | Area | Status | Notes |
 | --- | --- | --- |
 | Go control plane | Started | `agentshield version`, `health`, and `diagnose` commands are available. |
-| Environment diagnostics | Started | Detects host OS and reports Linux-only kernel capability checks. |
+| Environment diagnostics | Started | Validates the minimum kernel and supported little-endian architectures; reports BPF load permission as unknown until a real syscall probe exists. |
 | eBPF source layout | Started | `bpf/agentshield.bpf.c`, `events.h`, and `maps.h` exist. |
 | File audit probe | Started | `tracepoint/syscalls/sys_enter_openat` emits a file-open event shape. |
 | Process audit probe | Started | `tracepoint/syscalls/sys_enter_execve` captures executable and bounded argv summaries. |
 | BPF build flow | Bootstrap | `make generate` embeds BPF source text for Go-side development; real object compilation is scheduled later. |
 | Dashboard | Scaffolded | Next.js App Router pages exist with mock data. |
 | Runtime BPF loading | Started | `agentshield audit` loads a compiled BPF object and attaches file/exec probes on Linux. |
-| Ring buffer consumption | Started | `audit` decodes file and process ring buffer events as Kernel Event v1 JSON Lines. |
-| Kernel Event v1 | Started | Go-side decoding now validates schema version, action fields, timestamps, strings, and truncation flags. |
+| Ring buffer consumption | Started | `audit` decodes file and process ring buffer events as JSON schema v2 Lines carrying wire schema v2 records. |
+| Kernel Event v2 | Started | Go-side decoding validates schema/size, preserves JavaScript-unsafe `uint64` values as JSON strings, bounds consecutive malformed records, and rejects legacy/incompatible wire schemas. |
 | cgroup scoping | Not implemented | Planned after the first audit loop. |
 | Policy engine | Not implemented | Planned after cgroup-scoped event capture. |
 
@@ -47,7 +47,7 @@ sandbox/             Future demo Agent sandbox and attack scenarios
 deploy/              Future local deployment files
 configs/             Runtime and policy configuration examples
 docs/                Public project documentation
-scripts/             Future developer and demo helper scripts
+scripts/             Developer helpers; currently includes the audit trigger
 tests/               Future integration, security, and performance tests
 ```
 
@@ -57,8 +57,8 @@ Local planning documents and proposal drafts are intentionally kept outside Git 
 
 For current development:
 
-- Go 1.22 or newer
-- Node.js 20 or newer
+- Go 1.25 or newer (use a currently supported Go 1.25/1.26 toolchain)
+- Node.js 24 LTS recommended; Node.js 22 LTS is also supported
 - npm 10 or newer
 - GNU Make
 - clang, for the local BPF syntax check
@@ -78,7 +78,7 @@ Install dashboard dependencies once:
 
 ```sh
 cd dashboard
-npm install
+npm ci
 cd ..
 ```
 
@@ -90,9 +90,14 @@ go run ./cmd/agentshield health
 go run ./cmd/agentshield diagnose
 ```
 
-On non-Linux hosts, `diagnose` prints a capability report and exits with status `1` because AgentShield kernel features require Linux.
+`diagnose` exits with status `1` whenever a required capability is failed **or still unknown**; warnings alone do not fail readiness. Until the planned active BPF load/attach probe exists, `bpf_permissions` remains `unknown`, so the current command also exits `1` on otherwise suitable Linux hosts. The JSON report distinguishes `unknown` from `fail`; this prevents automation from treating an incomplete probe as proof of readiness.
 
 On Linux, after compiling a real BPF object, start the unified audit loop with:
+
+> **Safety warning:** the current probes are not cgroup-filtered. They observe matching
+> syscalls from the whole host and print raw path/argv fragments that may contain
+> secrets. Run this prototype only in an isolated VM or dedicated test host, never on
+> a shared or production machine.
 
 ```sh
 go run ./cmd/agentshield audit --bpf-object ./bpf/agentshield.bpf.o
@@ -100,15 +105,20 @@ go run ./cmd/agentshield audit --bpf-object ./bpf/agentshield.bpf.o
 
 This command attaches `syscalls/sys_enter_openat` and `syscalls/sys_enter_execve`, reads `agentshield_events`, and prints one JSON object per event. Run `./scripts/test-audit.sh` in another terminal to trigger both event types. See [docs/file-exec-audit.md](docs/file-exec-audit.md) for field semantics and current limitations. On non-Linux hosts the audit command exits with an unsupported-platform error.
 
+Both probes run at syscall entry. Their events mean “attempt observed”; `action_result`
+is `none`, not `allowed`, because the current program does not observe the syscall result.
+
 ## Checks
 
 Run the Go and BPF bootstrap checks:
 
 ```sh
 make generate
+make verify-generated
 make check-bpf-syntax
 make check-linux-bpfmgr
 make test
+go vet ./...
 make build
 ```
 
@@ -118,12 +128,17 @@ Or run the aggregate Go/BPF check:
 make check
 ```
 
+`make check` is non-mutating: it verifies that the checked-in generated binding
+already matches the BPF source contents and SHA-256 values. Run `make generate`
+explicitly after an intentional BPF source change.
+
 Run the dashboard checks:
 
 ```sh
 cd dashboard
 npm run typecheck
 npm run build
+npm audit --audit-level=moderate --registry=https://registry.npmjs.org
 ```
 
 The current P0 integration status is recorded in [docs/p0-integration-check.md](docs/p0-integration-check.md).
@@ -137,9 +152,9 @@ The current BPF program includes:
 - Event types: `AGENTSHIELD_EVENT_FILE_OPEN` and `AGENTSHIELD_EVENT_EXEC_ATTEMPT`
 - Captured fields: pid, tgid, ppid, uid, comm, filename or executable, bounded argv, flags, timestamp, cgroup id placeholder
 - Go consumer: `agentshield audit --bpf-object ./bpf/agentshield.bpf.o`
-- Go event model: `internal/events.KernelEvent` with schema version `1`
+- Go event model: `internal/events.KernelEvent` with wire schema v2 and JSON schema v2
 
-Day 8 intentionally does not filter by cgroup or PID yet. Scope filtering is scheduled for a later milestone.
+Day 8 intentionally does not filter by cgroup or PID yet; events record the observed cgroup ID, but it is not a security boundary until the later scope-filtering milestone. The timestamp is a kernel monotonic timestamp, not Unix epoch time. JSON schema v2 encodes `timestamp_ns` and `cgroup_id` as decimal strings so a future JavaScript client does not lose 64-bit precision; `wire_schema_version` independently identifies the BPF ABI (currently v2). Legacy v1 objects are rejected because the corrected attempt-result and argv-count semantics are not compatible.
 
 The local syntax check uses a bootstrap stub:
 
@@ -170,7 +185,7 @@ The dashboard does not yet connect to the Go control plane.
 
 ## Development Timeline
 
-Completed:
+Source milestones completed:
 
 - Day 1: repository scaffold and Git hygiene
 - Day 2: Go control-plane CLI skeleton
@@ -185,17 +200,27 @@ Completed:
 - Day 11: `execve` audit probe with executable, bounded argv, and parent pid capture
 - Day 12: unified file/exec audit loop, trigger script, and tracepoint field notes
 
-Next planned work:
+Days 8-12 have source and unit-test artifacts, but their Linux runtime acceptance is
+still pending because the repository cannot yet build a real CO-RE object. They must
+not be described as end-to-end verified.
 
-- Add a real Linux CO-RE object compilation path
-- Validate `audit` end-to-end on a Linux host
+Next planned gate:
+
+- Add a reproducible real Linux CO-RE object compilation path and record its toolchain/object hash
+- Validate file/exec end-to-end on a supported isolated Linux host before starting network work
+- Publish a syscall/hook coverage matrix and sanitized runtime evidence
+
+Subsequent work:
+
 - Add network connection audit coverage
-- Add cgroup/PID filtering after the first audit loop is stable
+- Add cgroup filtering after the first audit loop is stable; PID-only scope remains a diagnostic Roadmap item
 
 ## Limitations
 
 - The repository does not yet compile `bpf/agentshield.bpf.c` into a real `.bpf.o` object.
-- The Linux `audit-openat` runtime path is implemented but not end-to-end validated in this Windows workspace.
+- The Linux unified `audit` runtime path is implemented but not end-to-end validated in this Windows workspace.
+- Current file/exec records are syscall-entry attempts; they do not prove success or file contents read.
+- Current audit output is host-wide and may contain sensitive path/argv fragments.
 - The project does not yet enforce policies or block behavior.
 - The project does not yet isolate Agent runs by cgroup.
 - The dashboard currently uses mock data.
