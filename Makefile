@@ -4,10 +4,13 @@ ifeq ($(OS),Windows_NT)
 BINARY := bin/agentshield.exe
 endif
 
-.PHONY: generate check-bpf-syntax check-linux-bpfmgr test build check clean
+.PHONY: generate verify-generated check-bpf-syntax check-linux-bpfmgr test build check clean
 
 generate:
 	go generate ./internal/bpfmgr
+
+verify-generated:
+	go test ./internal/bpfmgr -run TestEmbeddedSourcesMatchWorkingTree -count=1
 
 check-bpf-syntax:
 	clang -DAGENTSHIELD_BPF_SYNTAX_CHECK -fsyntax-only bpf/agentshield.bpf.c
@@ -25,7 +28,7 @@ test:
 build: bin
 	go build -o $(BINARY) ./cmd/agentshield
 
-check: generate check-bpf-syntax check-linux-bpfmgr test build
+check: verify-generated check-bpf-syntax check-linux-bpfmgr test build
 
 bin:
 ifeq ($(OS),Windows_NT)
