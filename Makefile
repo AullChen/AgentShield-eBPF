@@ -1,16 +1,24 @@
 BINARY := bin/agentshield
+BPF_OBJECT := bpf/agentshield.bpf.o
+BPF_MANIFEST := bpf/agentshield.bpf.manifest.json
 
 ifeq ($(OS),Windows_NT)
 BINARY := bin/agentshield.exe
 endif
 
-.PHONY: generate verify-generated check-bpf-syntax check-linux-bpfmgr test build check clean
+.PHONY: generate verify-generated bpf-object verify-bpf-object check-bpf-syntax check-linux-bpfmgr test build check clean
 
 generate:
 	go generate ./internal/bpfmgr
 
 verify-generated:
 	go test ./internal/bpfmgr -run TestEmbeddedSourcesMatchWorkingTree -count=1
+
+bpf-object:
+	./scripts/build-bpf.sh $(BPF_OBJECT) $(BPF_MANIFEST)
+
+verify-bpf-object:
+	go run ./cmd/bpfcheck --object $(BPF_OBJECT)
 
 check-bpf-syntax:
 	clang -DAGENTSHIELD_BPF_SYNTAX_CHECK -fsyntax-only bpf/agentshield.bpf.c

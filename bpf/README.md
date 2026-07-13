@@ -33,3 +33,8 @@ Current probe coverage:
 
 Both probes run at syscall entry, so `action_result` is `NONE`. They do not
 prove that the file open or process execution succeeded.
+
+Run `make bpf-object` on a supported Ubuntu host to generate the ignored
+`agentshield.bpf.o` and its JSON build manifest. See `docs/bpf-build.md` for
+toolchain/BTF provenance and the boundary between ELF parsing and kernel
+load/attach acceptance.

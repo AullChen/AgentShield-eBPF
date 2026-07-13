@@ -2,7 +2,7 @@
 
 AgentShield-eBPF is a Linux eBPF based runtime security and audit system for AI Agent sandboxes.
 
-The project is currently in early MVP development. The repository already contains the Go control-plane skeleton, bootstrap file and process audit tracepoints, a unified ring-buffer consumer, local diagnostics, and a Next.js dashboard scaffold. CO-RE object compilation, cgroup scoping, policy enforcement, event correlation, and live dashboard streaming are still under development.
+The project is currently in early MVP development. The repository already contains the Go control-plane skeleton, file and process audit tracepoints, a unified ring-buffer consumer, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard scaffold. Kernel load/attach acceptance, cgroup scoping, policy enforcement, event correlation, and live dashboard streaming are still under development.
 
 ## Current Status
 
@@ -13,7 +13,7 @@ The project is currently in early MVP development. The repository already contai
 | eBPF source layout | Started | `bpf/agentshield.bpf.c`, `events.h`, and `maps.h` exist. |
 | File audit probe | Started | `tracepoint/syscalls/sys_enter_openat` emits a file-open event shape. |
 | Process audit probe | Started | `tracepoint/syscalls/sys_enter_execve` captures executable and bounded argv summaries. |
-| BPF build flow | Bootstrap | `make generate` embeds BPF source text for Go-side development; real object compilation is scheduled later. |
+| BPF build flow | Implemented, Linux evidence pending | `make bpf-object` compiles a CO-RE ELF and records object/BTF hashes, exact tool versions, and parsed program/map specs. |
 | Dashboard | Scaffolded | Next.js App Router pages exist with mock data. |
 | Runtime BPF loading | Started | `agentshield audit` loads a compiled BPF object and attaches file/exec probes on Linux. |
 | Ring buffer consumption | Started | `audit` decodes file and process ring buffer events as JSON schema v2 Lines carrying wire schema v2 records. |
@@ -70,6 +70,9 @@ For real kernel feature work:
 - BTF available at `/sys/kernel/btf/vmlinux`
 - Permission to load eBPF programs
 
+The reproducible object build additionally fixes clang/llvm 18.x as its
+supported compiler baseline. See [docs/bpf-build.md](docs/bpf-build.md).
+
 Windows and macOS are fine for editing, Go unit tests, dashboard work, and the bootstrap syntax check. Real eBPF loading and runtime validation must happen on Linux.
 
 ## Quick Start
@@ -92,7 +95,14 @@ go run ./cmd/agentshield diagnose
 
 `diagnose` exits with status `1` whenever a required capability is failed **or still unknown**; warnings alone do not fail readiness. Until the planned active BPF load/attach probe exists, `bpf_permissions` remains `unknown`, so the current command also exits `1` on otherwise suitable Linux hosts. The JSON report distinguishes `unknown` from `fail`; this prevents automation from treating an incomplete probe as proof of readiness.
 
-On Linux, after compiling a real BPF object, start the unified audit loop with:
+On a supported Linux build host, compile and inspect the real BPF object with:
+
+```sh
+make bpf-object
+```
+
+This produces ignored object and manifest artifacts; it does not load the
+object into the kernel. Then start the unified audit loop with:
 
 > **Safety warning:** the current probes are not cgroup-filtered. They observe matching
 > syscalls from the whole host and print raw path/argv fragments that may contain
@@ -204,9 +214,8 @@ Days 8-12 have source and unit-test artifacts, but their Linux runtime acceptanc
 still pending because the repository cannot yet build a real CO-RE object. They must
 not be described as end-to-end verified.
 
-Next planned gate:
+Current gate:
 
-- Add a reproducible real Linux CO-RE object compilation path and record its toolchain/object hash
 - Validate file/exec end-to-end on a supported isolated Linux host before starting network work
 - Publish a syscall/hook coverage matrix and sanitized runtime evidence
 
@@ -217,14 +226,14 @@ Subsequent work:
 
 ## Limitations
 
-- The repository does not yet compile `bpf/agentshield.bpf.c` into a real `.bpf.o` object.
+- The CO-RE build path must still be run on a supported Linux host; this Windows workspace cannot produce or load the object.
 - The Linux unified `audit` runtime path is implemented but not end-to-end validated in this Windows workspace.
 - Current file/exec records are syscall-entry attempts; they do not prove success or file contents read.
 - Current audit output is host-wide and may contain sensitive path/argv fragments.
 - The project does not yet enforce policies or block behavior.
 - The project does not yet isolate Agent runs by cgroup.
 - The dashboard currently uses mock data.
-- The generated BPF source binding embeds source text only; it is not a compiled BPF object.
+- The generated Go source binding embeds source text only; `make bpf-object` is the separate real ELF build.
 
 ## License
 
