@@ -6,6 +6,8 @@ Current notes:
 
 - `bpf-build.md`: supported CO-RE toolchain, BTF provenance, object manifest,
   and ELF/spec versus kernel-load acceptance boundary.
+- `file-exec-acceptance.md`: reproducible Day 14 Linux kernel load/attach and
+  file/exec semantic acceptance gate.
 - `file-exec-audit.md`: current Day 12 file/exec attempt-event semantics and safety limits.
 - `p0-integration-check.md`: historical Day 1-6 integration snapshot.
 

@@ -134,6 +134,9 @@ func runAudit(cfg config.Config, objectPath string) int {
 	logger.InfoContext(ctx, "starting kernel audit", slog.String("bpf_object", objectPath))
 	err = bpfmgr.RunAudit(ctx, bpfmgr.AuditOptions{
 		ObjectPath: objectPath,
+		OnReady: func() {
+			logger.InfoContext(ctx, "kernel audit hooks attached")
+		},
 		OnMalformedEvent: func(err error) {
 			logger.WarnContext(ctx, "discarding malformed kernel event", slog.Any("error", err))
 		},

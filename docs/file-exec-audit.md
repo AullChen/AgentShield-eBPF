@@ -26,6 +26,10 @@ In another terminal, run:
 The output should contain at least one `file_open` event and one `exec_attempt`
 event. The script only triggers the events; it does not build or load eBPF.
 
+For the actual Day 14 verifier/load/attach and edge-case gate, use
+`scripts/accept-file-exec.sh` as documented in
+`docs/file-exec-acceptance.md`; visually observing two lines is not sufficient.
+
 Both are attempt events. Their `action_result` is `none`; a syscall-entry
 tracepoint cannot establish that the operation was allowed, succeeded, or read
 any data. `timestamp_ns` is a monotonic kernel timestamp rather than Unix epoch

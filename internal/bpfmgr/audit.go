@@ -18,6 +18,7 @@ const maxMalformedEventNotifications = 3
 type AuditOptions struct {
 	ObjectPath       string
 	OnMalformedEvent func(error)
+	OnReady          func()
 }
 
 type AuditEvent = events.KernelEvent

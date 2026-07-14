@@ -74,6 +74,9 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 		_ = reader.Close()
 	})
 	defer stopInterrupt()
+	if opts.OnReady != nil {
+		opts.OnReady()
+	}
 
 	return streamAuditEvents(auditSampleReaderFunc(func() ([]byte, error) {
 		record, err := reader.Read()

@@ -115,6 +115,11 @@ go run ./cmd/agentshield audit --bpf-object ./bpf/agentshield.bpf.o
 
 This command attaches `syscalls/sys_enter_openat` and `syscalls/sys_enter_execve`, reads `agentshield_events`, and prints one JSON object per event. Run `./scripts/test-audit.sh` in another terminal to trigger both event types. See [docs/file-exec-audit.md](docs/file-exec-audit.md) for field semantics and current limitations. On non-Linux hosts the audit command exits with an unsupported-platform error.
 
+The strict Day 14 verifier/load/attach and edge-case gate is
+`sudo ./scripts/accept-file-exec.sh`; see
+[docs/file-exec-acceptance.md](docs/file-exec-acceptance.md). Its status remains
+pending until a supported isolated Linux host produces a passing evidence set.
+
 Both probes run at syscall entry. Their events mean “attempt observed”; `action_result`
 is `none`, not `allowed`, because the current program does not observe the syscall result.
 
