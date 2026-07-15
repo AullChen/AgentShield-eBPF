@@ -34,6 +34,7 @@ static long bpf_probe_read_user(void *dst, __u32 size, const void *unsafe_ptr)
 {
 	return 0;
 }
+static __u16 bpf_ntohs(__u16 value) { return __builtin_bswap16(value); }
 
 struct task_struct {
 	struct task_struct *real_parent;
@@ -46,8 +47,17 @@ struct trace_event_raw_sys_enter {
 	long id;
 	unsigned long long args[6];
 };
+
+struct bpf_sock_addr {
+	__u32 user_family;
+	__u32 user_ip4;
+	__u32 user_ip6[4];
+	__u32 user_port;
+	__u32 protocol;
+};
 #else
 #include "vmlinux.h"
+#include <bpf/bpf_endian.h>
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
@@ -77,11 +87,10 @@ static __always_inline int agentshield_current_scope(__u64 *cgroup_id,
 
 static __always_inline void
 agentshield_fill_common(struct agentshield_event *event, __u16 event_type,
-			__u64 cgroup_id, __u32 profile_id)
+			__u64 cgroup_id, __u32 profile_id, __u32 ppid)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u64 uid_gid = bpf_get_current_uid_gid();
-	struct task_struct *task = bpf_get_current_task_btf();
 
 	event->schema_version = AGENTSHIELD_EVENT_SCHEMA_VERSION;
 	event->event_type = event_type;
@@ -91,7 +100,7 @@ agentshield_fill_common(struct agentshield_event *event, __u16 event_type,
 	event->cgroup_id = cgroup_id;
 	event->pid = (__u32)pid_tgid;
 	event->tgid = pid_tgid >> 32;
-	event->ppid = BPF_CORE_READ(task, real_parent, tgid);
+	event->ppid = ppid;
 	event->uid = (__u32)uid_gid;
 	event->profile_id = profile_id;
 	event->policy_id = 0;
@@ -100,6 +109,13 @@ agentshield_fill_common(struct agentshield_event *event, __u16 event_type,
 	event->syscall_flags = 0;
 	event->captured_argc_plus_one = 0;
 	bpf_get_current_comm(&event->comm, sizeof(event->comm));
+}
+
+static __always_inline __u32 agentshield_current_ppid(void)
+{
+	struct task_struct *task = bpf_get_current_task_btf();
+
+	return BPF_CORE_READ(task, real_parent, tgid);
 }
 
 SEC("tracepoint/syscalls/sys_enter_execve")
@@ -121,7 +137,7 @@ int agentshield_trace_execve(struct trace_event_raw_sys_enter *ctx)
 
 	__builtin_memset(event, 0, sizeof(*event));
 	agentshield_fill_common(event, AGENTSHIELD_EVENT_EXEC_ATTEMPT,
-				cgroup_id, profile_id);
+				cgroup_id, profile_id, agentshield_current_ppid());
 
 	read_len = bpf_probe_read_user_str(event->data,
 					   AGENTSHIELD_EXEC_EXE_LEN, filename);
@@ -178,7 +194,7 @@ int agentshield_trace_openat(struct trace_event_raw_sys_enter *ctx)
 
 	__builtin_memset(event, 0, sizeof(*event));
 	agentshield_fill_common(event, AGENTSHIELD_EVENT_FILE_OPEN, cgroup_id,
-				profile_id);
+				profile_id, agentshield_current_ppid());
 
 	filename = (const char *)ctx->args[1];
 	event->syscall_flags = (__u32)ctx->args[2];
@@ -189,4 +205,50 @@ int agentshield_trace_openat(struct trace_event_raw_sys_enter *ctx)
 
 	bpf_ringbuf_submit(event, 0);
 	return 0;
+}
+
+static __always_inline int
+agentshield_audit_connect(struct bpf_sock_addr *ctx, __u16 address_family)
+{
+	struct agentshield_network_payload *payload;
+	struct agentshield_event *event;
+	__u64 cgroup_id = bpf_get_current_cgroup_id();
+	__u32 profile_id = 0;
+	if (ctx->protocol != AGENTSHIELD_IPPROTO_TCP)
+		return 1;
+
+	event = bpf_ringbuf_reserve(&agentshield_events, sizeof(*event), 0);
+	if (!event)
+		return 1;
+
+	__builtin_memset(event, 0, sizeof(*event));
+	agentshield_fill_common(event, AGENTSHIELD_EVENT_NET_CONNECT, cgroup_id,
+				profile_id, 0);
+	event->flags |= AGENTSHIELD_FLAG_FIELD_UNAVAILABLE;
+
+	payload = (struct agentshield_network_payload *)event->data;
+	payload->destination_port = bpf_ntohs((__u16)ctx->user_port);
+	payload->address_family = address_family;
+	payload->protocol = AGENTSHIELD_IPPROTO_TCP;
+	if (address_family == AGENTSHIELD_AF_INET)
+		__builtin_memcpy(payload->destination_address, &ctx->user_ip4,
+				 sizeof(ctx->user_ip4));
+	else
+		__builtin_memcpy(payload->destination_address, &ctx->user_ip6,
+				 sizeof(ctx->user_ip6));
+
+	bpf_ringbuf_submit(event, 0);
+	return 1;
+}
+
+SEC("cgroup/connect4")
+int agentshield_connect4(struct bpf_sock_addr *ctx)
+{
+	return agentshield_audit_connect(ctx, AGENTSHIELD_AF_INET);
+}
+
+SEC("cgroup/connect6")
+int agentshield_connect6(struct bpf_sock_addr *ctx)
+{
+	return agentshield_audit_connect(ctx, AGENTSHIELD_AF_INET6);
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net/netip"
 	"unicode/utf8"
 )
 
@@ -44,8 +45,13 @@ const (
 	// ActionResultFallback is deprecated. Use FlagFallback with killed/failed.
 	ActionResultFallback uint16 = 5
 
-	FlagTruncated uint32 = 1 << 0
-	FlagFallback  uint32 = 1 << 1
+	FlagTruncated        uint32 = 1 << 0
+	FlagFallback         uint32 = 1 << 1
+	FlagFieldUnavailable uint32 = 1 << 2
+
+	AddressFamilyIPv4 uint16 = 2
+	AddressFamilyIPv6 uint16 = 10
+	ProtocolTCP       uint8  = 6
 
 	execExecutableLength = 128
 	execArgumentCount    = 4
@@ -76,7 +82,14 @@ type KernelEvent struct {
 	Data              string            `json:"data"`
 	Argv              []string          `json:"argv,omitempty"`
 	CapturedArgc      uint32            `json:"captured_argc,omitempty"`
+	DestinationIP     string            `json:"dst_ip,omitempty"`
+	DestinationPort   uint16            `json:"dst_port,omitempty"`
+	AddressFamily     uint16            `json:"family,omitempty"`
+	AddressFamilyName string            `json:"family_name,omitempty"`
+	Protocol          uint8             `json:"protocol,omitempty"`
+	ProtocolName      string            `json:"protocol_name,omitempty"`
 	Truncated         bool              `json:"truncated"`
+	FieldsUnavailable bool              `json:"fields_unavailable"`
 	RawEncoding       map[string]string `json:"raw_encoding,omitempty"`
 }
 
@@ -99,6 +112,14 @@ type rawKernelEventV2 struct {
 	CapturedArgcPlusOne uint32
 	Comm                [16]byte
 	Data                [256]byte
+}
+
+type rawNetworkPayloadV2 struct {
+	DestinationAddress [16]byte
+	DestinationPort    uint16
+	AddressFamily      uint16
+	Protocol           uint8
+	Reserved           [3]byte
 }
 
 func KernelEventV2Size() int {
@@ -144,9 +165,11 @@ func DecodeKernelEvent(sample []byte) (KernelEvent, error) {
 		Flags:             raw.Flags,
 		SyscallFlags:      raw.SyscallFlags,
 		Truncated:         raw.Flags&FlagTruncated != 0,
+		FieldsUnavailable: raw.Flags&FlagFieldUnavailable != 0,
 	}
 	event.Comm = decodeEventCString(&event, "comm", raw.Comm[:])
-	if raw.EventType == EventTypeExecAttempt {
+	switch raw.EventType {
+	case EventTypeExecAttempt:
 		event.Data = decodeEventCString(&event, "data", raw.Data[:execExecutableLength])
 		if raw.CapturedArgcPlusOne == 0 {
 			return KernelEvent{}, fmt.Errorf("%w: exec event is missing captured argc", ErrMalformedKernelEvent)
@@ -164,11 +187,47 @@ func DecodeKernelEvent(sample []byte) (KernelEvent, error) {
 			event.Argv = append(event.Argv, arg)
 		}
 		event.CapturedArgc = uint32(len(event.Argv))
-	} else {
+	case EventTypeNetConnect:
+		if err := decodeNetworkPayload(&event, raw.Data[:]); err != nil {
+			return KernelEvent{}, err
+		}
+	default:
 		event.Data = decodeEventCString(&event, "data", raw.Data[:])
 	}
 
 	return event, nil
+}
+
+func decodeNetworkPayload(event *KernelEvent, data []byte) error {
+	var payload rawNetworkPayloadV2
+	size := binary.Size(payload)
+	if len(data) < size {
+		return fmt.Errorf("%w: network payload is %d bytes, need %d", ErrMalformedKernelEvent, len(data), size)
+	}
+	if err := binary.Read(bytes.NewReader(data[:size]), binary.LittleEndian, &payload); err != nil {
+		return fmt.Errorf("%w: decode network payload: %v", ErrMalformedKernelEvent, err)
+	}
+
+	var address netip.Addr
+	switch payload.AddressFamily {
+	case AddressFamilyIPv4:
+		address = netip.AddrFrom4([4]byte(payload.DestinationAddress[:4]))
+	case AddressFamilyIPv6:
+		address = netip.AddrFrom16(payload.DestinationAddress)
+	default:
+		return fmt.Errorf("%w: unsupported network address family %d", ErrMalformedKernelEvent, payload.AddressFamily)
+	}
+	if payload.Protocol != ProtocolTCP {
+		return fmt.Errorf("%w: unsupported network protocol %d", ErrMalformedKernelEvent, payload.Protocol)
+	}
+
+	event.DestinationIP = address.String()
+	event.DestinationPort = payload.DestinationPort
+	event.AddressFamily = payload.AddressFamily
+	event.AddressFamilyName = AddressFamilyName(payload.AddressFamily)
+	event.Protocol = payload.Protocol
+	event.ProtocolName = ProtocolName(payload.Protocol)
+	return nil
 }
 
 func CleanCString(value []byte) string {
@@ -256,4 +315,22 @@ func ActionResultName(result uint16) string {
 	default:
 		return "unknown"
 	}
+}
+
+func AddressFamilyName(family uint16) string {
+	switch family {
+	case AddressFamilyIPv4:
+		return "ipv4"
+	case AddressFamilyIPv6:
+		return "ipv6"
+	default:
+		return "unknown"
+	}
+}
+
+func ProtocolName(protocol uint8) string {
+	if protocol == ProtocolTCP {
+		return "tcp"
+	}
+	return "unknown"
 }

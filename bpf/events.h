@@ -8,6 +8,9 @@
 #define AGENTSHIELD_EXEC_EXE_LEN 128
 #define AGENTSHIELD_EXEC_ARG_COUNT 4
 #define AGENTSHIELD_EXEC_ARG_LEN 32
+#define AGENTSHIELD_AF_INET 2
+#define AGENTSHIELD_AF_INET6 10
+#define AGENTSHIELD_IPPROTO_TCP 6
 
 enum agentshield_event_type {
 	AGENTSHIELD_EVENT_UNSPECIFIED = 0,
@@ -40,6 +43,15 @@ enum agentshield_action_result {
 enum agentshield_event_flags {
 	AGENTSHIELD_FLAG_TRUNCATED = 1 << 0,
 	AGENTSHIELD_FLAG_FALLBACK = 1 << 1,
+	AGENTSHIELD_FLAG_FIELD_UNAVAILABLE = 1 << 2,
+};
+
+struct agentshield_network_payload {
+	__u8 destination_address[16];
+	__u16 destination_port;
+	__u16 address_family;
+	__u8 protocol;
+	__u8 reserved[3];
 };
 
 struct agentshield_event {
@@ -75,5 +87,7 @@ _Static_assert(__builtin_offsetof(struct agentshield_event,
 	       "agentshield_event argc offset changed");
 _Static_assert(__builtin_offsetof(struct agentshield_event, data) == 80,
 	       "agentshield_event data offset changed");
+_Static_assert(sizeof(struct agentshield_network_payload) == 24,
+	       "agentshield_network_payload ABI size changed");
 
 #endif // AGENTSHIELD_EVENTS_H

@@ -122,7 +122,7 @@ func inspectObject(objectPath string, metadata map[string]string) (objectManifes
 		return objectManifest{}, fmt.Errorf("parse BPF ELF/spec %q: %w", objectPath, err)
 	}
 
-	for _, name := range []string{"agentshield_trace_execve", "agentshield_trace_openat"} {
+	for _, name := range []string{"agentshield_connect4", "agentshield_connect6", "agentshield_trace_execve", "agentshield_trace_openat"} {
 		if spec.Programs[name] == nil {
 			return objectManifest{}, fmt.Errorf("required BPF program %q is missing", name)
 		}

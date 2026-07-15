@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	openATProgramName = "agentshield_trace_openat"
-	execVEProgramName = "agentshield_trace_execve"
-	eventsMapName     = "agentshield_events"
+	openATProgramName   = "agentshield_trace_openat"
+	execVEProgramName   = "agentshield_trace_execve"
+	connect4ProgramName = "agentshield_connect4"
+	connect6ProgramName = "agentshield_connect6"
+	eventsMapName       = "agentshield_events"
 )
 
 func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
@@ -63,6 +65,37 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 		return fmt.Errorf("attach execve tracepoint: %w", err)
 	}
 	defer execVETracepoint.Close()
+
+	if opts.CgroupPath != "" {
+		connect4Program := collection.Programs[connect4ProgramName]
+		if connect4Program == nil {
+			return fmt.Errorf("bpf program %q not found", connect4ProgramName)
+		}
+		connect6Program := collection.Programs[connect6ProgramName]
+		if connect6Program == nil {
+			return fmt.Errorf("bpf program %q not found", connect6ProgramName)
+		}
+
+		connect4Link, err := link.AttachCgroup(link.CgroupOptions{
+			Path:    opts.CgroupPath,
+			Attach:  ebpf.AttachCGroupInet4Connect,
+			Program: connect4Program,
+		})
+		if err != nil {
+			return fmt.Errorf("attach connect4 to cgroup %q: %w", opts.CgroupPath, err)
+		}
+		defer connect4Link.Close()
+
+		connect6Link, err := link.AttachCgroup(link.CgroupOptions{
+			Path:    opts.CgroupPath,
+			Attach:  ebpf.AttachCGroupInet6Connect,
+			Program: connect6Program,
+		})
+		if err != nil {
+			return fmt.Errorf("attach connect6 to cgroup %q: %w", opts.CgroupPath, err)
+		}
+		defer connect6Link.Close()
+	}
 
 	reader, err := ringbuf.NewReader(events)
 	if err != nil {

@@ -10,6 +10,8 @@ Current files:
   attach, attempt semantics, empty-argv, truncation, and ABI acceptance gate.
 - `test-audit.sh`: triggers one file-open action and one process execution for
   the Linux audit loop.
+- `test-network.sh`: triggers TCP IPv4 and IPv6 connection attempts from the
+  caller's current cgroup; connection refusal is an acceptable fixture result.
 
 The trigger script only produces syscalls; it does not build or load BPF. The current
 audit loop is host-wide and should only be run in an isolated VM/test host.

@@ -13,6 +13,7 @@ The project is currently in early MVP development. The repository already contai
 | eBPF source layout | Started | `bpf/agentshield.bpf.c`, `events.h`, and `maps.h` exist. |
 | File audit probe | Started | `tracepoint/syscalls/sys_enter_openat` emits a file-open event shape. |
 | Process audit probe | Started | `tracepoint/syscalls/sys_enter_execve` captures executable and bounded argv summaries. |
+| Network audit probe | Source complete, Linux evidence pending | Explicit-cgroup `connect4/connect6` hooks emit TCP destination IP/port/family and always allow. |
 | BPF build flow | Implemented, Linux evidence pending | `make bpf-object` compiles a CO-RE ELF and records object/BTF hashes, exact tool versions, and parsed program/map specs. |
 | Dashboard | Scaffolded | Next.js App Router pages exist with mock data. |
 | Runtime BPF loading | Started | `agentshield audit` loads a compiled BPF object and attaches file/exec probes on Linux. |
@@ -113,7 +114,7 @@ object into the kernel. Then start the unified audit loop with:
 go run ./cmd/agentshield audit --bpf-object ./bpf/agentshield.bpf.o
 ```
 
-This command attaches `syscalls/sys_enter_openat` and `syscalls/sys_enter_execve`, reads `agentshield_events`, and prints one JSON object per event. Run `./scripts/test-audit.sh` in another terminal to trigger both event types. See [docs/file-exec-audit.md](docs/file-exec-audit.md) for field semantics and current limitations. On non-Linux hosts the audit command exits with an unsupported-platform error.
+This command attaches `syscalls/sys_enter_openat` and `syscalls/sys_enter_execve`, reads `agentshield_events`, and prints one JSON object per event. Add `--cgroup /sys/fs/cgroup/PATH` to attach the audit-only `connect4/connect6` programs to an explicit cgroup. Run `./scripts/test-audit.sh` or `./scripts/test-network.sh` in the appropriate test context to trigger events. See [docs/file-exec-audit.md](docs/file-exec-audit.md) and [docs/network-audit.md](docs/network-audit.md) for field semantics and current limitations. On non-Linux hosts the audit command exits with an unsupported-platform error.
 
 The strict Day 14 verifier/load/attach and edge-case gate is
 `sudo ./scripts/accept-file-exec.sh`; see
@@ -164,7 +165,8 @@ The current BPF program includes:
 
 - `tracepoint/syscalls/sys_enter_openat`
 - `tracepoint/syscalls/sys_enter_execve`
-- Event types: `AGENTSHIELD_EVENT_FILE_OPEN` and `AGENTSHIELD_EVENT_EXEC_ATTEMPT`
+- `cgroup/connect4` and `cgroup/connect6` when an explicit cgroup path is supplied
+- Event types: `AGENTSHIELD_EVENT_FILE_OPEN`, `AGENTSHIELD_EVENT_EXEC_ATTEMPT`, and `AGENTSHIELD_EVENT_NET_CONNECT`
 - Captured fields: pid, tgid, ppid, uid, comm, filename or executable, bounded argv, flags, timestamp, cgroup id placeholder
 - Go consumer: `agentshield audit --bpf-object ./bpf/agentshield.bpf.o`
 - Go event model: `internal/events.KernelEvent` with wire schema v2 and JSON schema v2

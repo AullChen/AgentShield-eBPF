@@ -34,10 +34,11 @@ func run(args []string) int {
 	case "audit", "audit-openat":
 		flags := newFlagSet(command, &cfg)
 		bpfObject := flags.String("bpf-object", "bpf/agentshield.bpf.o", "path to the compiled AgentShield BPF object")
+		cgroupPath := flags.String("cgroup", "", "cgroup v2 path for connect4/connect6 audit hooks")
 		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
 			return exitCode
 		}
-		return runAudit(cfg, *bpfObject)
+		return runAudit(cfg, *bpfObject, *cgroupPath)
 	case "diagnose":
 		flags := newFlagSet(command, &cfg)
 		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
@@ -121,7 +122,7 @@ func runHealth(ctx context.Context, cfg config.Config) int {
 	return 0
 }
 
-func runAudit(cfg config.Config, objectPath string) int {
+func runAudit(cfg config.Config, objectPath, cgroupPath string) int {
 	logger, err := logging.New(cfg.LogLevel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "invalid logger configuration: %v\n", err)
@@ -131,9 +132,10 @@ func runAudit(cfg config.Config, objectPath string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	logger.InfoContext(ctx, "starting kernel audit", slog.String("bpf_object", objectPath))
+	logger.InfoContext(ctx, "starting kernel audit", slog.String("bpf_object", objectPath), slog.String("network_cgroup", cgroupPath))
 	err = bpfmgr.RunAudit(ctx, bpfmgr.AuditOptions{
 		ObjectPath: objectPath,
+		CgroupPath: cgroupPath,
 		OnReady: func() {
 			logger.InfoContext(ctx, "kernel audit hooks attached")
 		},
@@ -198,4 +200,5 @@ func printUsage(out *os.File) {
 	fmt.Fprintln(out, "  --log-level string   log level: debug, info, warn, or error")
 	fmt.Fprintln(out, "\nCommand flags:")
 	fmt.Fprintln(out, "  audit --bpf-object string   path to compiled AgentShield BPF object")
+	fmt.Fprintln(out, "        --cgroup string      cgroup v2 path for connect4/connect6 audit hooks")
 }

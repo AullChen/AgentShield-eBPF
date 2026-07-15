@@ -103,6 +103,80 @@ func TestDecodeKernelEventV2(t *testing.T) {
 	}
 }
 
+func TestDecodeKernelNetworkIPv4EventV2(t *testing.T) {
+	raw := rawKernelEventV2{
+		SchemaVersion: SchemaVersion,
+		EventType:     EventTypeNetConnect,
+		Action:        ActionAudit,
+		ActionResult:  ActionResultNone,
+		Flags:         FlagFieldUnavailable,
+	}
+	encodeNetworkPayloadForTest(t, raw.Data[:], rawNetworkPayloadV2{
+		DestinationAddress: [16]byte{203, 0, 113, 10},
+		DestinationPort:    443,
+		AddressFamily:      AddressFamilyIPv4,
+		Protocol:           ProtocolTCP,
+	})
+
+	event := decodeRawForTest(t, raw)
+	if event.DestinationIP != "203.0.113.10" || event.DestinationPort != 443 {
+		t.Fatalf("destination = %s:%d, want 203.0.113.10:443", event.DestinationIP, event.DestinationPort)
+	}
+	if event.AddressFamilyName != "ipv4" || event.ProtocolName != "tcp" {
+		t.Fatalf("network names = %q/%q, want ipv4/tcp", event.AddressFamilyName, event.ProtocolName)
+	}
+	if !event.FieldsUnavailable {
+		t.Fatal("FieldsUnavailable = false, want true for unavailable network ppid")
+	}
+}
+
+func TestDecodeKernelNetworkIPv6EventV2(t *testing.T) {
+	raw := rawKernelEventV2{
+		SchemaVersion: SchemaVersion,
+		EventType:     EventTypeNetConnect,
+	}
+	encodeNetworkPayloadForTest(t, raw.Data[:], rawNetworkPayloadV2{
+		DestinationAddress: [16]byte{0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+		DestinationPort:    8443,
+		AddressFamily:      AddressFamilyIPv6,
+		Protocol:           ProtocolTCP,
+	})
+
+	event := decodeRawForTest(t, raw)
+	if event.DestinationIP != "2001:db8::1" || event.DestinationPort != 8443 {
+		t.Fatalf("destination = [%s]:%d, want [2001:db8::1]:8443", event.DestinationIP, event.DestinationPort)
+	}
+	if event.AddressFamilyName != "ipv6" {
+		t.Fatalf("AddressFamilyName = %q, want ipv6", event.AddressFamilyName)
+	}
+}
+
+func TestDecodeKernelNetworkRejectsUnknownFamily(t *testing.T) {
+	raw := rawKernelEventV2{SchemaVersion: SchemaVersion, EventType: EventTypeNetConnect}
+	encodeNetworkPayloadForTest(t, raw.Data[:], rawNetworkPayloadV2{
+		AddressFamily: 999,
+		Protocol:      ProtocolTCP,
+	})
+
+	_, err := decodeRawBytesForTest(t, raw)
+	if !errors.Is(err, ErrMalformedKernelEvent) {
+		t.Fatalf("DecodeKernelEvent error = %v, want ErrMalformedKernelEvent", err)
+	}
+}
+
+func TestDecodeKernelNetworkRejectsUnknownProtocol(t *testing.T) {
+	raw := rawKernelEventV2{SchemaVersion: SchemaVersion, EventType: EventTypeNetConnect}
+	encodeNetworkPayloadForTest(t, raw.Data[:], rawNetworkPayloadV2{
+		AddressFamily: AddressFamilyIPv4,
+		Protocol:      17,
+	})
+
+	_, err := decodeRawBytesForTest(t, raw)
+	if !errors.Is(err, ErrMalformedKernelEvent) {
+		t.Fatalf("DecodeKernelEvent error = %v, want ErrMalformedKernelEvent", err)
+	}
+}
+
 func TestDecodeKernelExecEventV2(t *testing.T) {
 	raw := rawKernelEventV2{
 		SchemaVersion:       SchemaVersion,
@@ -335,4 +409,14 @@ func decodeRawBytesForTest(t *testing.T, raw rawKernelEventV2) (KernelEvent, err
 		t.Fatalf("binary.Write: %v", err)
 	}
 	return DecodeKernelEvent(buf.Bytes())
+}
+
+func encodeNetworkPayloadForTest(t *testing.T, destination []byte, payload rawNetworkPayloadV2) {
+	t.Helper()
+
+	var buffer bytes.Buffer
+	if err := binary.Write(&buffer, binary.LittleEndian, payload); err != nil {
+		t.Fatalf("encode network payload: %v", err)
+	}
+	copy(destination, buffer.Bytes())
 }
