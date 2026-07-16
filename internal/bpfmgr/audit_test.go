@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/agentshield/agentshield-ebpf/internal/events"
 )
@@ -242,6 +244,96 @@ func TestStreamAuditEventsReturnsWriteError(t *testing.T) {
 	}
 }
 
+func TestStreamAuditEventsStampsReceiptClocks(t *testing.T) {
+	valid := encodeAuditSample(t, rawAuditEventV2{
+		SchemaVersion: events.SchemaVersion,
+		EventType:     events.EventTypeFileOpen,
+		TimestampNS:   101,
+	})
+	read := false
+	var out bytes.Buffer
+
+	err := streamAuditEvents(auditSampleReaderFunc(func() ([]byte, error) {
+		if read {
+			return nil, io.EOF
+		}
+		read = true
+		return valid, nil
+	}), AuditOptions{ReceiptClock: func() (ReceiptTime, error) {
+		return ReceiptTime{MonotonicNS: 202, UnixNS: 303, CalibrationErrorNS: 4}, nil
+	}}, &out)
+	if err != nil {
+		t.Fatalf("streamAuditEvents returned error: %v", err)
+	}
+
+	var event AuditEvent
+	if err := json.Unmarshal(out.Bytes(), &event); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	if event.TimestampNS != 101 || event.KernelMonotonicNS != 101 {
+		t.Fatalf("kernel clocks = %d/%d, want 101/101", event.TimestampNS, event.KernelMonotonicNS)
+	}
+	if event.ServerReceivedMonotonicNS != 202 || event.ServerReceivedUnixNS != 303 || event.ClockCalibrationErrorNS != 4 {
+		t.Fatalf("receipt clocks = %d/%d +/- %d, want 202/303 +/- 4", event.ServerReceivedMonotonicNS, event.ServerReceivedUnixNS, event.ClockCalibrationErrorNS)
+	}
+}
+
+func TestStreamAuditEventsReturnsReceiptClockError(t *testing.T) {
+	wantErr := errors.New("clock failed")
+	valid := encodeAuditSample(t, rawAuditEventV2{SchemaVersion: events.SchemaVersion})
+	reader := auditSampleReaderFunc(func() ([]byte, error) { return valid, nil })
+
+	err := streamAuditEvents(reader, AuditOptions{ReceiptClock: func() (ReceiptTime, error) {
+		return ReceiptTime{}, wantErr
+	}}, io.Discard)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("streamAuditEvents error = %v, want clock error", err)
+	}
+}
+
+func TestMonitorDropCountersEmitsDeltaAndStops(t *testing.T) {
+	reader := &sequenceDropReader{snapshots: []map[uint16]uint64{
+		{events.EventTypeFileOpen: 2},
+		{events.EventTypeFileOpen: 5},
+	}}
+	writes := make(chan []byte, 1)
+	emitter := newAuditEventEmitter(channelWriter{writes: writes})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- monitorDropCounters(ctx, time.Millisecond, reader, func() (ReceiptTime, error) {
+			return ReceiptTime{MonotonicNS: 10, UnixNS: 20, CalibrationErrorNS: 1}, nil
+		}, emitter)
+	}()
+
+	var payload []byte
+	select {
+	case payload = <-writes:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for drop notice")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("monitorDropCounters returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("monitorDropCounters did not stop after cancellation")
+	}
+
+	var event AuditEvent
+	if err := json.Unmarshal(payload, &event); err != nil {
+		t.Fatalf("decode drop notice: %v", err)
+	}
+	if event.EventType != events.EventTypeDropNotice || event.DroppedEventType != events.EventTypeFileOpen || event.DroppedCount != 3 {
+		t.Fatalf("drop notice = %+v, want file_open delta 3", event)
+	}
+	if event.ServerReceivedMonotonicNS != 10 || event.ServerReceivedUnixNS != 20 {
+		t.Fatalf("drop notice receipt clocks = %d/%d", event.ServerReceivedMonotonicNS, event.ServerReceivedUnixNS)
+	}
+}
+
 func TestInterruptOnContextDoneStopsWithoutInterrupting(t *testing.T) {
 	interrupted := false
 	stop := interruptOnContextDone(context.Background(), func() {
@@ -272,6 +364,41 @@ func TestInterruptOnContextDoneInterruptsAfterCancellation(t *testing.T) {
 
 type errorWriter struct {
 	err error
+}
+
+type channelWriter struct {
+	writes chan<- []byte
+}
+
+func (writer channelWriter) Write(payload []byte) (int, error) {
+	copyOfPayload := append([]byte(nil), payload...)
+	writer.writes <- copyOfPayload
+	return len(payload), nil
+}
+
+type sequenceDropReader struct {
+	mu        sync.Mutex
+	snapshots []map[uint16]uint64
+	next      int
+}
+
+func (reader *sequenceDropReader) Snapshot() (map[uint16]uint64, error) {
+	reader.mu.Lock()
+	defer reader.mu.Unlock()
+	if len(reader.snapshots) == 0 {
+		return map[uint16]uint64{}, nil
+	}
+	index := reader.next
+	if index >= len(reader.snapshots) {
+		index = len(reader.snapshots) - 1
+	} else {
+		reader.next++
+	}
+	result := make(map[uint16]uint64, len(reader.snapshots[index]))
+	for key, value := range reader.snapshots[index] {
+		result[key] = value
+	}
+	return result, nil
 }
 
 func (w errorWriter) Write([]byte) (int, error) {

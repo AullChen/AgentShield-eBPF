@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/agentshield/agentshield-ebpf/internal/events"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -20,7 +22,29 @@ const (
 	connect4ProgramName = "agentshield_connect4"
 	connect6ProgramName = "agentshield_connect6"
 	eventsMapName       = "agentshield_events"
+	statsMapName        = "agentshield_stats_map"
+	droppedStatsBase    = uint32(16)
 )
+
+type ebpfDropCounterReader struct {
+	stats        *ebpf.Map
+	possibleCPUs int
+}
+
+func (reader ebpfDropCounterReader) Snapshot() (map[uint16]uint64, error) {
+	snapshot := make(map[uint16]uint64)
+	for eventType := uint16(events.EventTypeExecAttempt); eventType <= events.EventTypeSelfDiag; eventType++ {
+		key := droppedStatsBase + uint32(eventType)
+		values := make([]uint64, reader.possibleCPUs)
+		if err := reader.stats.Lookup(key, &values); err != nil {
+			return nil, fmt.Errorf("lookup event type %d: %w", eventType, err)
+		}
+		for _, value := range values {
+			snapshot[eventType] += value
+		}
+	}
+	return snapshot, nil
+}
 
 func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 	if opts.ObjectPath == "" {
@@ -52,6 +76,18 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 	events := collection.Maps[eventsMapName]
 	if events == nil {
 		return fmt.Errorf("bpf map %q not found", eventsMapName)
+	}
+	stats := collection.Maps[statsMapName]
+	if stats == nil {
+		return fmt.Errorf("bpf map %q not found", statsMapName)
+	}
+	possibleCPUs, err := ebpf.PossibleCPU()
+	if err != nil {
+		return fmt.Errorf("determine possible CPUs for per-CPU stats: %w", err)
+	}
+	dropReader := ebpfDropCounterReader{stats: stats, possibleCPUs: possibleCPUs}
+	if opts.ReceiptClock == nil {
+		opts.ReceiptClock = captureReceiptTime
 	}
 
 	openATTracepoint, err := link.Tracepoint("syscalls", "sys_enter_openat", openATProgram, nil)
@@ -107,11 +143,22 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 		_ = reader.Close()
 	})
 	defer stopInterrupt()
+
+	emitter := newAuditEventEmitter(out)
+	statsContext, cancelStats := context.WithCancel(ctx)
+	statsDone := make(chan error, 1)
+	go func() {
+		err := monitorDropCounters(statsContext, opts.StatsInterval, dropReader, opts.ReceiptClock, emitter)
+		if err != nil {
+			_ = reader.Close()
+		}
+		statsDone <- err
+	}()
 	if opts.OnReady != nil {
 		opts.OnReady()
 	}
 
-	return streamAuditEvents(auditSampleReaderFunc(func() ([]byte, error) {
+	streamErr := streamAuditEventsTo(auditSampleReaderFunc(func() ([]byte, error) {
 		record, err := reader.Read()
 		if err != nil {
 			if errors.Is(err, ringbuf.ErrClosed) {
@@ -120,5 +167,42 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 			return nil, err
 		}
 		return record.RawSample, nil
-	}), opts, out)
+	}), opts, emitter)
+	cancelStats()
+	statsErr := <-statsDone
+	if streamErr != nil && statsErr != nil {
+		return errors.Join(streamErr, statsErr)
+	}
+	if streamErr != nil {
+		return streamErr
+	}
+	return statsErr
+}
+
+func captureReceiptTime() (ReceiptTime, error) {
+	var before unix.Timespec
+	var realtime unix.Timespec
+	var after unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &before); err != nil {
+		return ReceiptTime{}, fmt.Errorf("read monotonic clock before realtime: %w", err)
+	}
+	if err := unix.ClockGettime(unix.CLOCK_REALTIME, &realtime); err != nil {
+		return ReceiptTime{}, fmt.Errorf("read realtime clock: %w", err)
+	}
+	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &after); err != nil {
+		return ReceiptTime{}, fmt.Errorf("read monotonic clock after realtime: %w", err)
+	}
+
+	beforeNS := before.Nano()
+	afterNS := after.Nano()
+	realtimeNS := realtime.Nano()
+	if beforeNS < 0 || afterNS < beforeNS || realtimeNS < 0 {
+		return ReceiptTime{}, errors.New("clock_gettime returned an invalid sample")
+	}
+	interval := uint64(afterNS - beforeNS)
+	return ReceiptTime{
+		MonotonicNS:        uint64(beforeNS) + interval/2,
+		UnixNS:             uint64(realtimeNS),
+		CalibrationErrorNS: (interval + 1) / 2,
+	}, nil
 }

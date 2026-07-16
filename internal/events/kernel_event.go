@@ -59,38 +59,46 @@ const (
 )
 
 type KernelEvent struct {
-	JSONSchemaVersion uint16            `json:"schema_version"`
-	SchemaVersion     uint16            `json:"wire_schema_version"`
-	EventType         uint16            `json:"event_type"`
-	EventTypeName     string            `json:"event_type_name"`
-	Action            uint16            `json:"action"`
-	ActionName        string            `json:"action_name"`
-	ActionResult      uint16            `json:"action_result"`
-	ActionResultName  string            `json:"action_result_name"`
-	TimestampNS       uint64            `json:"timestamp_ns,string"`
-	CgroupID          uint64            `json:"cgroup_id,string"`
-	PID               uint32            `json:"pid"`
-	TGID              uint32            `json:"tgid"`
-	PPID              uint32            `json:"ppid"`
-	UID               uint32            `json:"uid"`
-	ProfileID         uint32            `json:"profile_id"`
-	PolicyID          uint32            `json:"policy_id"`
-	RuleID            uint32            `json:"rule_id"`
-	Flags             uint32            `json:"flags"`
-	SyscallFlags      uint32            `json:"syscall_flags"`
-	Comm              string            `json:"comm"`
-	Data              string            `json:"data"`
-	Argv              []string          `json:"argv,omitempty"`
-	CapturedArgc      uint32            `json:"captured_argc,omitempty"`
-	DestinationIP     string            `json:"dst_ip,omitempty"`
-	DestinationPort   uint16            `json:"dst_port,omitempty"`
-	AddressFamily     uint16            `json:"family,omitempty"`
-	AddressFamilyName string            `json:"family_name,omitempty"`
-	Protocol          uint8             `json:"protocol,omitempty"`
-	ProtocolName      string            `json:"protocol_name,omitempty"`
-	Truncated         bool              `json:"truncated"`
-	FieldsUnavailable bool              `json:"fields_unavailable"`
-	RawEncoding       map[string]string `json:"raw_encoding,omitempty"`
+	JSONSchemaVersion uint16 `json:"schema_version"`
+	SchemaVersion     uint16 `json:"wire_schema_version"`
+	EventType         uint16 `json:"event_type"`
+	EventTypeName     string `json:"event_type_name"`
+	Action            uint16 `json:"action"`
+	ActionName        string `json:"action_name"`
+	ActionResult      uint16 `json:"action_result"`
+	ActionResultName  string `json:"action_result_name"`
+	// TimestampNS is the deprecated JSON alias for KernelMonotonicNS.
+	TimestampNS               uint64            `json:"timestamp_ns,string"`
+	KernelMonotonicNS         uint64            `json:"kernel_monotonic_ns,string"`
+	ServerReceivedMonotonicNS uint64            `json:"server_received_monotonic_ns,string,omitempty"`
+	ServerReceivedUnixNS      uint64            `json:"server_received_unix_ns,string,omitempty"`
+	ClockCalibrationErrorNS   uint64            `json:"clock_calibration_error_ns,string,omitempty"`
+	CgroupID                  uint64            `json:"cgroup_id,string"`
+	PID                       uint32            `json:"pid"`
+	TGID                      uint32            `json:"tgid"`
+	PPID                      uint32            `json:"ppid"`
+	UID                       uint32            `json:"uid"`
+	ProfileID                 uint32            `json:"profile_id"`
+	PolicyID                  uint32            `json:"policy_id"`
+	RuleID                    uint32            `json:"rule_id"`
+	Flags                     uint32            `json:"flags"`
+	SyscallFlags              uint32            `json:"syscall_flags"`
+	Comm                      string            `json:"comm"`
+	Data                      string            `json:"data"`
+	Argv                      []string          `json:"argv,omitempty"`
+	CapturedArgc              uint32            `json:"captured_argc,omitempty"`
+	DestinationIP             string            `json:"dst_ip,omitempty"`
+	DestinationPort           uint16            `json:"dst_port,omitempty"`
+	AddressFamily             uint16            `json:"family,omitempty"`
+	AddressFamilyName         string            `json:"family_name,omitempty"`
+	Protocol                  uint8             `json:"protocol,omitempty"`
+	ProtocolName              string            `json:"protocol_name,omitempty"`
+	DroppedEventType          uint16            `json:"dropped_event_type,omitempty"`
+	DroppedEventTypeName      string            `json:"dropped_event_type_name,omitempty"`
+	DroppedCount              uint64            `json:"dropped_count,string,omitempty"`
+	Truncated                 bool              `json:"truncated"`
+	FieldsUnavailable         bool              `json:"fields_unavailable"`
+	RawEncoding               map[string]string `json:"raw_encoding,omitempty"`
 }
 
 type rawKernelEventV2 struct {
@@ -154,6 +162,7 @@ func DecodeKernelEvent(sample []byte) (KernelEvent, error) {
 		ActionResult:      raw.ActionResult,
 		ActionResultName:  ActionResultName(raw.ActionResult),
 		TimestampNS:       raw.TimestampNS,
+		KernelMonotonicNS: raw.TimestampNS,
 		CgroupID:          raw.CgroupID,
 		PID:               raw.PID,
 		TGID:              raw.TGID,

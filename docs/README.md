@@ -4,6 +4,8 @@ Public project documentation belongs here.
 
 Current notes:
 
+- `audit-reliability.md`: Day 16 per-type drop counters, Go-synthesized loss
+  notices, double-clock receipt fields, and shutdown/failure semantics.
 - `bpf-build.md`: supported CO-RE toolchain, BTF provenance, object manifest,
   and ELF/spec versus kernel-load acceptance boundary.
 - `file-exec-acceptance.md`: reproducible Day 14 Linux kernel load/attach and

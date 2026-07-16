@@ -18,7 +18,8 @@ The project is currently in early MVP development. The repository already contai
 | Dashboard | Scaffolded | Next.js App Router pages exist with mock data. |
 | Runtime BPF loading | Started | `agentshield audit` loads a compiled BPF object and attaches file/exec probes on Linux. |
 | Ring buffer consumption | Started | `audit` decodes file and process ring buffer events as JSON schema v2 Lines carrying wire schema v2 records. |
-| Kernel Event v2 | Started | Go-side decoding validates schema/size, preserves JavaScript-unsafe `uint64` values as JSON strings, bounds consecutive malformed records, and rejects legacy/incompatible wire schemas. |
+| Audit reliability | Source complete, Linux saturation pending | Per-type per-CPU reserve failures become Go-synthesized `drop_notice` records; SIGINT/SIGTERM close and join the reader/monitor path. |
+| Kernel Event v2 | Started | Go-side decoding validates schema/size, preserves JavaScript-unsafe `uint64` values as JSON strings, adds same-host monotonic/realtime receipt calibration, bounds consecutive malformed records, and rejects incompatible wire schemas. |
 | cgroup scoping | Not implemented | Planned after the first audit loop. |
 | Policy engine | Not implemented | Planned after cgroup-scoped event capture. |
 
@@ -171,7 +172,7 @@ The current BPF program includes:
 - Go consumer: `agentshield audit --bpf-object ./bpf/agentshield.bpf.o`
 - Go event model: `internal/events.KernelEvent` with wire schema v2 and JSON schema v2
 
-Day 8 intentionally does not filter by cgroup or PID yet; events record the observed cgroup ID, but it is not a security boundary until the later scope-filtering milestone. The timestamp is a kernel monotonic timestamp, not Unix epoch time. JSON schema v2 encodes `timestamp_ns` and `cgroup_id` as decimal strings so a future JavaScript client does not lose 64-bit precision; `wire_schema_version` independently identifies the BPF ABI (currently v2). Legacy v1 objects are rejected because the corrected attempt-result and argv-count semantics are not compatible.
+Day 8 intentionally does not filter by cgroup or PID yet; events record the observed cgroup ID, but it is not a security boundary until the later scope-filtering milestone. `kernel_monotonic_ns` is the authoritative kernel event time, while Go adds same-host receipt monotonic/Unix fields and a calibration error bound; `timestamp_ns` remains a deprecated alias. JSON schema v2 encodes time fields and `cgroup_id` as decimal strings so a future JavaScript client does not lose 64-bit precision; `wire_schema_version` independently identifies the BPF ABI (currently v2). Legacy v1 objects are rejected because the corrected attempt-result and argv-count semantics are not compatible. See [docs/audit-reliability.md](docs/audit-reliability.md).
 
 The local syntax check uses a bootstrap stub:
 

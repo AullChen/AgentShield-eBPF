@@ -32,8 +32,10 @@ For the actual Day 14 verifier/load/attach and edge-case gate, use
 
 Both are attempt events. Their `action_result` is `none`; a syscall-entry
 tracepoint cannot establish that the operation was allowed, succeeded, or read
-any data. `timestamp_ns` is a monotonic kernel timestamp rather than Unix epoch
-time. JSON schema v2 encodes `timestamp_ns` and `cgroup_id` as decimal strings
+any data. `kernel_monotonic_ns` is the authoritative monotonic kernel timestamp;
+`timestamp_ns` remains its deprecated compatibility alias. Receipt monotonic,
+Unix display time, and calibration error are sampled in Go as described in
+`docs/audit-reliability.md`. JSON schema v2 encodes time fields and `cgroup_id` as decimal strings
 to preserve all 64-bit values in JavaScript clients. The separate
 `wire_schema_version` field identifies the BPF record ABI (currently v2).
 Invalid UTF-8 in `comm`, `data`, or an argv slot is Base64-encoded, with that
@@ -69,3 +71,5 @@ Important semantics:
   the audit loop to expose a likely object/decoder mismatch. Any legacy or
   future wire schema stops immediately rather than being silently
   misinterpreted.
+- Per-type ring-buffer reserve failures are counted in a per-CPU map and
+  surfaced by Go as synthetic `drop_notice` records.

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/agentshield/agentshield-ebpf/internal/bpfmgr"
 	"github.com/agentshield/agentshield-ebpf/internal/config"
@@ -129,7 +130,7 @@ func runAudit(cfg config.Config, objectPath, cgroupPath string) int {
 		return 2
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	logger.InfoContext(ctx, "starting kernel audit", slog.String("bpf_object", objectPath), slog.String("network_cgroup", cgroupPath))

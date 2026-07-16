@@ -21,14 +21,20 @@ func TestKernelEventV2WireSize(t *testing.T) {
 	if got, want := unsafe.Offsetof(raw.Data), uintptr(80); got != want {
 		t.Fatalf("Data offset = %d, want %d", got, want)
 	}
+	if got, want := binary.Size(rawNetworkPayloadV2{}), 24; got != want {
+		t.Fatalf("rawNetworkPayloadV2 size = %d, want %d", got, want)
+	}
 }
 
 func TestKernelEventJSONPreservesUint64Precision(t *testing.T) {
 	event := KernelEvent{
-		JSONSchemaVersion: JSONSchemaVersion,
-		SchemaVersion:     WireSchemaVersion,
-		TimestampNS:       9_007_199_254_740_993,
-		CgroupID:          18_446_744_073_709_551_615,
+		JSONSchemaVersion:         JSONSchemaVersion,
+		SchemaVersion:             WireSchemaVersion,
+		TimestampNS:               9_007_199_254_740_993,
+		KernelMonotonicNS:         9_007_199_254_740_993,
+		ServerReceivedMonotonicNS: 9_007_199_254_740_994,
+		ServerReceivedUnixNS:      9_007_199_254_740_995,
+		CgroupID:                  18_446_744_073_709_551_615,
 	}
 
 	payload, err := json.Marshal(event)
@@ -44,6 +50,15 @@ func TestKernelEventJSONPreservesUint64Precision(t *testing.T) {
 	}
 	if got := decoded["cgroup_id"]; got != "18446744073709551615" {
 		t.Fatalf("cgroup_id = %#v, want exact decimal string", got)
+	}
+	if got := decoded["kernel_monotonic_ns"]; got != "9007199254740993" {
+		t.Fatalf("kernel_monotonic_ns = %#v, want exact decimal string", got)
+	}
+	if got := decoded["server_received_monotonic_ns"]; got != "9007199254740994" {
+		t.Fatalf("server_received_monotonic_ns = %#v, want exact decimal string", got)
+	}
+	if got := decoded["server_received_unix_ns"]; got != "9007199254740995" {
+		t.Fatalf("server_received_unix_ns = %#v, want exact decimal string", got)
 	}
 	if got := decoded["schema_version"]; got != float64(JSONSchemaVersion) {
 		t.Fatalf("schema_version = %#v, want JSON schema %d", got, JSONSchemaVersion)

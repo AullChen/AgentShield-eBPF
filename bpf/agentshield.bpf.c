@@ -12,6 +12,7 @@ typedef unsigned long long __u64;
 #define __type(name, value) value *name
 #define BPF_MAP_TYPE_HASH 1
 #define BPF_MAP_TYPE_ARRAY 2
+#define BPF_MAP_TYPE_PERCPU_ARRAY 6
 #define BPF_MAP_TYPE_RINGBUF 27
 
 static __u64 bpf_ktime_get_ns(void) { return 0; }
@@ -118,6 +119,32 @@ static __always_inline __u32 agentshield_current_ppid(void)
 	return BPF_CORE_READ(task, real_parent, tgid);
 }
 
+static __always_inline void agentshield_increment_stat(__u32 base,
+						__u16 event_type)
+{
+	__u32 key = base + event_type;
+	__u64 *counter = bpf_map_lookup_elem(&agentshield_stats_map, &key);
+
+	if (counter)
+		(*counter)++;
+}
+
+static __always_inline struct agentshield_event *
+agentshield_reserve_event(__u16 event_type)
+{
+	struct agentshield_event *event;
+
+	event = bpf_ringbuf_reserve(&agentshield_events, sizeof(*event), 0);
+	if (!event) {
+		agentshield_increment_stat(AGENTSHIELD_STAT_EVENTS_DROPPED_BASE,
+					   event_type);
+		return 0;
+	}
+	agentshield_increment_stat(AGENTSHIELD_STAT_EVENTS_TOTAL_BASE,
+				   event_type);
+	return event;
+}
+
 SEC("tracepoint/syscalls/sys_enter_execve")
 int agentshield_trace_execve(struct trace_event_raw_sys_enter *ctx)
 {
@@ -131,7 +158,7 @@ int agentshield_trace_execve(struct trace_event_raw_sys_enter *ctx)
 	__u32 captured_argc = 0;
 	int i;
 
-	event = bpf_ringbuf_reserve(&agentshield_events, sizeof(*event), 0);
+	event = agentshield_reserve_event(AGENTSHIELD_EVENT_EXEC_ATTEMPT);
 	if (!event)
 		return 0;
 
@@ -188,7 +215,7 @@ int agentshield_trace_openat(struct trace_event_raw_sys_enter *ctx)
 	__u32 profile_id = 0;
 	long read_len;
 
-	event = bpf_ringbuf_reserve(&agentshield_events, sizeof(*event), 0);
+	event = agentshield_reserve_event(AGENTSHIELD_EVENT_FILE_OPEN);
 	if (!event)
 		return 0;
 
@@ -217,7 +244,7 @@ agentshield_audit_connect(struct bpf_sock_addr *ctx, __u16 address_family)
 	if (ctx->protocol != AGENTSHIELD_IPPROTO_TCP)
 		return 1;
 
-	event = bpf_ringbuf_reserve(&agentshield_events, sizeof(*event), 0);
+	event = agentshield_reserve_event(AGENTSHIELD_EVENT_NET_CONNECT);
 	if (!event)
 		return 1;
 
