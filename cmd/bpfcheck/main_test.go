@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cilium/ebpf"
 )
 
 func TestMetadataFlagsRejectInvalidValues(t *testing.T) {
@@ -94,5 +96,29 @@ func TestVerifyManifestRejectsDifferentHash(t *testing.T) {
 	actual.SHA256 = "new"
 	if err := verifyManifest(path, actual); err == nil {
 		t.Fatal("verifyManifest returned nil for a different object hash")
+	}
+}
+
+func TestValidateRequiredSpecsRejectsMissingStatsMap(t *testing.T) {
+	spec := requiredCollectionSpecForTest()
+	delete(spec.Maps, "agentshield_stats_map")
+
+	err := validateRequiredSpecs(spec)
+	if err == nil || !strings.Contains(err.Error(), "agentshield_stats_map") {
+		t.Fatalf("validateRequiredSpecs error = %v, want missing stats map", err)
+	}
+}
+
+func requiredCollectionSpecForTest() *ebpf.CollectionSpec {
+	programs := make(map[string]*ebpf.ProgramSpec)
+	for _, name := range []string{"agentshield_connect4", "agentshield_connect6", "agentshield_trace_execve", "agentshield_trace_openat"} {
+		programs[name] = &ebpf.ProgramSpec{}
+	}
+	return &ebpf.CollectionSpec{
+		Programs: programs,
+		Maps: map[string]*ebpf.MapSpec{
+			"agentshield_events":    {},
+			"agentshield_stats_map": {},
+		},
 	}
 }

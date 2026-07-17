@@ -158,13 +158,8 @@ func inspectObject(objectPath string, metadata map[string]string) (objectManifes
 		return objectManifest{}, fmt.Errorf("parse BPF ELF/spec %q: %w", objectPath, err)
 	}
 
-	for _, name := range []string{"agentshield_connect4", "agentshield_connect6", "agentshield_trace_execve", "agentshield_trace_openat"} {
-		if spec.Programs[name] == nil {
-			return objectManifest{}, fmt.Errorf("required BPF program %q is missing", name)
-		}
-	}
-	if spec.Maps["agentshield_events"] == nil {
-		return objectManifest{}, errors.New("required BPF map \"agentshield_events\" is missing")
+	if err := validateRequiredSpecs(spec); err != nil {
+		return objectManifest{}, err
 	}
 
 	hash := sha256.Sum256(contents)
@@ -209,4 +204,18 @@ func inspectObject(objectPath string, metadata map[string]string) (objectManifes
 	}
 
 	return manifest, nil
+}
+
+func validateRequiredSpecs(spec *ebpf.CollectionSpec) error {
+	for _, name := range []string{"agentshield_connect4", "agentshield_connect6", "agentshield_trace_execve", "agentshield_trace_openat"} {
+		if spec.Programs[name] == nil {
+			return fmt.Errorf("required BPF program %q is missing", name)
+		}
+	}
+	for _, name := range []string{"agentshield_events", "agentshield_stats_map"} {
+		if spec.Maps[name] == nil {
+			return fmt.Errorf("required BPF map %q is missing", name)
+		}
+	}
+	return nil
 }
