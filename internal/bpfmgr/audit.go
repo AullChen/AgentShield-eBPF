@@ -123,9 +123,54 @@ func monitorDropCounters(ctx context.Context, interval time.Duration, reader dro
 	if interval <= 0 {
 		interval = defaultStatsInterval
 	}
-	previous, err := reader.Snapshot()
+	previous := make(map[uint16]uint64)
+	emitDeltas := func(current map[uint16]uint64) error {
+		keys := make([]int, 0, len(current))
+		for eventType := range current {
+			keys = append(keys, int(eventType))
+		}
+		sort.Ints(keys)
+		for _, key := range keys {
+			eventType := uint16(key)
+			value := current[eventType]
+			prior := previous[eventType]
+			delta := value
+			if value >= prior {
+				delta = value - prior
+			}
+			if delta == 0 {
+				continue
+			}
+			event := AuditEvent{
+				JSONSchemaVersion:    events.JSONSchemaVersion,
+				SchemaVersion:        events.WireSchemaVersion,
+				EventType:            events.EventTypeDropNotice,
+				EventTypeName:        events.EventTypeName(events.EventTypeDropNotice),
+				Action:               events.ActionAudit,
+				ActionName:           events.ActionName(events.ActionAudit),
+				ActionResult:         events.ActionResultNone,
+				ActionResultName:     events.ActionResultName(events.ActionResultNone),
+				DroppedEventType:     eventType,
+				DroppedEventTypeName: events.EventTypeName(eventType),
+				DroppedCount:         delta,
+			}
+			if err := stampReceiptTime(&event, clock); err != nil {
+				return fmt.Errorf("drop notice receipt clocks: %w", err)
+			}
+			if err := emitter.Emit(event); err != nil {
+				return fmt.Errorf("write drop notice: %w", err)
+			}
+		}
+		previous = current
+		return nil
+	}
+
+	current, err := reader.Snapshot()
 	if err != nil {
 		return fmt.Errorf("read initial drop counters: %w", err)
+	}
+	if err := emitDeltas(current); err != nil {
+		return err
 	}
 
 	ticker := time.NewTicker(interval)
@@ -139,43 +184,9 @@ func monitorDropCounters(ctx context.Context, interval time.Duration, reader dro
 			if err != nil {
 				return fmt.Errorf("read drop counters: %w", err)
 			}
-			keys := make([]int, 0, len(current))
-			for eventType := range current {
-				keys = append(keys, int(eventType))
+			if err := emitDeltas(current); err != nil {
+				return err
 			}
-			sort.Ints(keys)
-			for _, key := range keys {
-				eventType := uint16(key)
-				value := current[eventType]
-				prior := previous[eventType]
-				delta := value
-				if value >= prior {
-					delta = value - prior
-				}
-				if delta == 0 {
-					continue
-				}
-				event := AuditEvent{
-					JSONSchemaVersion:    events.JSONSchemaVersion,
-					SchemaVersion:        events.WireSchemaVersion,
-					EventType:            events.EventTypeDropNotice,
-					EventTypeName:        events.EventTypeName(events.EventTypeDropNotice),
-					Action:               events.ActionAudit,
-					ActionName:           events.ActionName(events.ActionAudit),
-					ActionResult:         events.ActionResultNone,
-					ActionResultName:     events.ActionResultName(events.ActionResultNone),
-					DroppedEventType:     eventType,
-					DroppedEventTypeName: events.EventTypeName(eventType),
-					DroppedCount:         delta,
-				}
-				if err := stampReceiptTime(&event, clock); err != nil {
-					return fmt.Errorf("drop notice receipt clocks: %w", err)
-				}
-				if err := emitter.Emit(event); err != nil {
-					return fmt.Errorf("write drop notice: %w", err)
-				}
-			}
-			previous = current
 		}
 	}
 }

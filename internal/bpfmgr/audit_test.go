@@ -293,8 +293,8 @@ func TestStreamAuditEventsReturnsReceiptClockError(t *testing.T) {
 
 func TestMonitorDropCountersEmitsDeltaAndStops(t *testing.T) {
 	reader := &sequenceDropReader{snapshots: []map[uint16]uint64{
-		{events.EventTypeFileOpen: 2},
-		{events.EventTypeFileOpen: 5},
+		{events.EventTypeFileOpen: 0},
+		{events.EventTypeFileOpen: 3},
 	}}
 	writes := make(chan []byte, 1)
 	emitter := newAuditEventEmitter(channelWriter{writes: writes})
@@ -331,6 +331,43 @@ func TestMonitorDropCountersEmitsDeltaAndStops(t *testing.T) {
 	}
 	if event.ServerReceivedMonotonicNS != 10 || event.ServerReceivedUnixNS != 20 {
 		t.Fatalf("drop notice receipt clocks = %d/%d", event.ServerReceivedMonotonicNS, event.ServerReceivedUnixNS)
+	}
+}
+
+func TestMonitorDropCountersEmitsInitialNonzeroCounts(t *testing.T) {
+	reader := &sequenceDropReader{snapshots: []map[uint16]uint64{
+		{events.EventTypeExecAttempt: 2},
+	}}
+	writes := make(chan []byte, 1)
+	emitter := newAuditEventEmitter(channelWriter{writes: writes})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- monitorDropCounters(ctx, time.Hour, reader, nil, emitter)
+	}()
+
+	select {
+	case payload := <-writes:
+		var event AuditEvent
+		if err := json.Unmarshal(payload, &event); err != nil {
+			t.Fatalf("decode initial drop notice: %v", err)
+		}
+		if event.DroppedEventType != events.EventTypeExecAttempt || event.DroppedCount != 2 {
+			t.Fatalf("initial drop notice = %+v, want exec_attempt count 2", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("initial nonzero drop counters were not emitted")
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("monitorDropCounters returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("monitorDropCounters did not stop after cancellation")
 	}
 }
 
