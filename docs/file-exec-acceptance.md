@@ -23,9 +23,12 @@ The command fails unless all of these conditions hold:
 5. A legal empty argument is preserved before a marker argument.
 6. A long argument produces `truncated=true`.
 7. The C/Go wire-v2 size/offset and exec decode tests pass.
+8. The supplied object hash and parsed program/map specifications match the
+   supplied build manifest.
 
 The owner-only evidence directory contains the environment, object/manifest
-hashes, ABI test output, runtime log, raw JSON Lines, and a sanitized summary.
+hashes, object/manifest verification output, ABI test output, runtime log, raw
+JSON Lines, and a sanitized summary.
 Only the sanitized summary is suitable for review. Raw output is intentionally
 under ignored `tmp/` because the current unscoped probes may capture unrelated
 host paths and argv values.

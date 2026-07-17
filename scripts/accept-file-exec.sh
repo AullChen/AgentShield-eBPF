@@ -57,6 +57,9 @@ trap cleanup EXIT INT TERM
 } >"$evidence_dir/environment.txt"
 
 cp "$manifest_path" "$evidence_dir/object.manifest.json"
+go run ./cmd/bpfcheck \
+  --object "$object_path" \
+  --verify-manifest "$manifest_path" >"$evidence_dir/object-verification.json"
 go test ./internal/events -run 'TestKernelEventV2WireSize|TestDecodeKernelExecEventV2' -count=1 >"$evidence_dir/abi-test.txt"
 go build -trimpath -buildvcs=false -o "$binary" ./cmd/agentshield
 
