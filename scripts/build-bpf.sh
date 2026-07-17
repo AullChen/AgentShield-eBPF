@@ -14,7 +14,7 @@ case "$(uname -m)" in
   *) echo "unsupported build architecture: $(uname -m); expected x86_64 or arm64" >&2; exit 1 ;;
 esac
 
-for command in "$clang_bin" "$strip_bin" "$bpftool_bin" go sha256sum; do
+for command in "$clang_bin" "$strip_bin" "$bpftool_bin" gcc go sha256sum; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "required command not found: $command" >&2
     exit 1
@@ -26,6 +26,7 @@ case "$clang_version" in
   *"clang version 18."*|*"Ubuntu clang version 18."*) ;;
   *) echo "unsupported clang toolchain: $clang_version; AgentShield requires clang 18.x" >&2; exit 1 ;;
 esac
+gcc_version=$(gcc --version | head -n 1)
 
 if [ ! -r "$btf_path" ]; then
   echo "kernel BTF is not readable: $btf_path" >&2
@@ -64,5 +65,6 @@ go run ./cmd/bpfcheck \
   --metadata "btf_path=$btf_path" \
   --metadata "btf_sha256=$btf_sha256" \
   --metadata "clang=$clang_version" \
+  --metadata "gcc=$gcc_version" \
   --metadata "llvm_strip=$strip_version" \
   --metadata "bpftool=$bpftool_version"

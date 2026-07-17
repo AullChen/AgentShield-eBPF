@@ -30,8 +30,8 @@ The command writes ignored local artifacts:
 
 - `bpf/agentshield.bpf.o`: the loadable little-endian BPF ELF object.
 - `bpf/agentshield.bpf.manifest.json`: the object SHA-256, object size,
-  program/map spec, build architecture, exact tool versions, and the SHA-256 of
-  the source kernel BTF.
+  program/map spec, build architecture, exact clang/LLVM, GCC, and bpftool
+  versions, and the SHA-256 of the source kernel BTF.
 
 The build creates `vmlinux.h` from `/sys/kernel/btf/vmlinux` in a temporary
 directory. Override only for controlled compatibility testing:
