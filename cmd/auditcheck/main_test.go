@@ -71,6 +71,22 @@ func TestAnalyzeRejectsMissingEmptyArg(t *testing.T) {
 	}
 }
 
+func TestAnalyzePreservesTruncationAcrossDuplicateMarkerEvents(t *testing.T) {
+	input := encodeEvents(t,
+		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
+		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"", "exec"}, Truncated: true},
+		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"", "exec"}, Truncated: false},
+	)
+
+	summary, err := analyze(input, "file", "exec")
+	if err != nil {
+		t.Fatalf("analyze returned error: %v", err)
+	}
+	if !summary.TruncationSeen {
+		t.Fatal("TruncationSeen = false, want true when any marker event was truncated")
+	}
+}
+
 func TestAnalyzeAcceptsIPv4AndIPv6Coverage(t *testing.T) {
 	input := encodeEvents(t,
 		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},

@@ -159,7 +159,7 @@ func analyzeWithOptions(input io.Reader, fileMarker, execMarker string, options 
 					return acceptanceSummary{}, fmt.Errorf("exec marker event action_result=%s, want none", event.ActionResultName)
 				}
 				summary.ExecMarkerMatched = true
-				summary.TruncationSeen = event.Truncated
+				summary.TruncationSeen = summary.TruncationSeen || event.Truncated
 				if markerIndex > 0 && event.Argv[markerIndex-1] == "" {
 					summary.EmptyArgPreserved = true
 				}
