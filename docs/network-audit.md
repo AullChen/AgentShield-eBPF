@@ -53,5 +53,6 @@ capture `ppid`; zero must not be interpreted as a real parent PID.
 | `AF_UNIX` | Not implemented | Not covered | Roadmap |
 | DNS/domain name | Unavailable at cgroup sock_addr hook | Not covered | User-space observe/alert only |
 
-The final Day 17 gate must replace the pending cells with environment, command,
-object hash, and sanitized evidence paths from a supported Linux run.
+The Day 17 gate writes an ignored, per-run evidence matrix. After review, a
+maintainer must manually update this tracked matrix with sanitized evidence
+paths; the script intentionally never commits or rewrites public claims.

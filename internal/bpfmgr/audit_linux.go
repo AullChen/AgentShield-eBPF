@@ -58,6 +58,10 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("load bpf collection spec %q: %w", opts.ObjectPath, err)
 	}
+	if opts.CgroupPath == "" {
+		delete(spec.Programs, connect4ProgramName)
+		delete(spec.Programs, connect6ProgramName)
+	}
 
 	collection, err := ebpf.NewCollection(spec)
 	if err != nil {

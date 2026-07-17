@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -67,6 +68,55 @@ func TestAnalyzeRejectsMissingEmptyArg(t *testing.T) {
 	_, err := analyze(input, "file", "exec")
 	if err == nil || !strings.Contains(err.Error(), "empty argv") {
 		t.Fatalf("analyze error = %v, want empty argv error", err)
+	}
+}
+
+func TestAnalyzeAcceptsIPv4AndIPv6Coverage(t *testing.T) {
+	input := encodeEvents(t,
+		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
+		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"/bin/echo", "", "exec", strings.Repeat("x", 31)}, Truncated: true},
+		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeNetConnect, EventTypeName: "net_connect", DestinationIP: "127.0.0.1", DestinationPort: 18080},
+		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeNetConnect, EventTypeName: "net_connect", DestinationIP: "::1", DestinationPort: 18080},
+	)
+	ipv4 := netip.MustParseAddrPort("127.0.0.1:18080")
+	ipv6 := netip.MustParseAddrPort("[::1]:18080")
+
+	summary, err := analyze(input, "file", "exec", ipv4, ipv6)
+	if err != nil {
+		t.Fatalf("analyze returned error: %v", err)
+	}
+	if !summary.NetworkDestinationsMatched[ipv4.String()] || !summary.NetworkDestinationsMatched[ipv6.String()] {
+		t.Fatalf("network matches = %v, want both destinations", summary.NetworkDestinationsMatched)
+	}
+}
+
+func TestAnalyzeRejectsMissingNetworkCoverage(t *testing.T) {
+	input := encodeEvents(t,
+		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
+		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"", "exec"}, Truncated: true},
+	)
+
+	_, err := analyze(input, "file", "exec", netip.MustParseAddrPort("127.0.0.1:18080"))
+	if err == nil || !strings.Contains(err.Error(), "no net_connect") {
+		t.Fatalf("analyze error = %v, want missing network error", err)
+	}
+}
+
+func TestAnalyzeRequiresNonNegativeReceiptClocks(t *testing.T) {
+	input := encodeEvents(t, events.KernelEvent{
+		JSONSchemaVersion:         2,
+		SchemaVersion:             2,
+		EventType:                 events.EventTypeFileOpen,
+		EventTypeName:             "file_open",
+		Data:                      "file",
+		KernelMonotonicNS:         20,
+		ServerReceivedMonotonicNS: 10,
+		ServerReceivedUnixNS:      30,
+	})
+
+	_, err := analyzeWithOptions(input, "file", "exec", analysisOptions{RequireReceiptClocks: true})
+	if err == nil || !strings.Contains(err.Error(), "negative ring-buffer receipt latency") {
+		t.Fatalf("analyze error = %v, want negative latency error", err)
 	}
 }
 

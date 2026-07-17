@@ -17,7 +17,7 @@ The project is currently in early MVP development. The repository already contai
 | BPF build flow | Implemented, Linux evidence pending | `make bpf-object` compiles a CO-RE ELF and records object/BTF hashes, exact tool versions, and parsed program/map specs. |
 | Dashboard | Scaffolded | Next.js App Router pages exist with mock data. |
 | Runtime BPF loading | Started | `agentshield audit` loads a compiled BPF object and attaches file/exec probes on Linux. |
-| Ring buffer consumption | Started | `audit` decodes file and process ring buffer events as JSON schema v2 Lines carrying wire schema v2 records. |
+| Ring buffer consumption | Started | `audit` decodes file, process, and network ring-buffer events and emits Go-synthesized loss notices as JSON schema v2 Lines. |
 | Audit reliability | Source complete, Linux saturation pending | Per-type per-CPU reserve failures become Go-synthesized `drop_notice` records; SIGINT/SIGTERM close and join the reader/monitor path. |
 | Kernel Event v2 | Started | Go-side decoding validates schema/size, preserves JavaScript-unsafe `uint64` values as JSON strings, adds same-host monotonic/realtime receipt calibration, bounds consecutive malformed records, and rejects incompatible wire schemas. |
 | cgroup scoping | Not implemented | Planned after the first audit loop. |
@@ -219,23 +219,40 @@ Source milestones completed:
 - Day 12: unified file/exec audit loop, trigger script, and tracepoint field notes
 
 Days 8-12 have source and unit-test artifacts, but their Linux runtime acceptance is
-still pending because the repository cannot yet build a real CO-RE object. They must
-not be described as end-to-end verified.
+still pending. Day 13-17 add the real CO-RE build, automated kernel gate,
+connect4/connect6 source, drop/time reliability, and combined coverage harness,
+but this Windows snapshot cannot execute the Linux verifier/load/attach gate.
+They must not be described as end-to-end verified.
+
+Additional source milestones:
+
+- Day 13: reproducible clang 18 CO-RE build and parsed object/hash manifest
+- Day 14: automated file/exec verifier, attach, empty-argv, truncation, and ABI gate
+- Day 15: explicit-cgroup TCP connect4/connect6 audit source and Go decoding
+- Day 16: per-type per-CPU drop stats, synthesized notices, calibrated receipt clocks, and SIGTERM shutdown
+- Day 17: single-run P1 pre-M1 acceptance harness and sanitized coverage matrix
 
 Current gate:
 
-- Validate file/exec end-to-end on a supported isolated Linux host before starting network work
-- Publish a syscall/hook coverage matrix and sanitized runtime evidence
+- Run `make accept-p1` on a supported isolated Linux host. This one command
+  rebuilds the object and binary, then invokes `scripts/accept-p1.sh`; running
+  `make bpf-object` followed by the script directly is the equivalent manual path.
+- Preserve environment/toolchain/object hashes and sanitized runtime evidence.
+- Require file and exec as the two P1 pre-M1 baseline classes. Network is the
+  optional third class and is stable only when both IPv4 and IPv6 pass. Final
+  MVP still requires all three classes.
 
 Subsequent work:
 
-- Add network connection audit coverage
+- Obtain supported-Linux connect4/connect6 runtime evidence and later extend
+  network coverage beyond TCP IPv4/IPv6
 - Add cgroup filtering after the first audit loop is stable; PID-only scope remains a diagnostic Roadmap item
 
 ## Limitations
 
 - The CO-RE build path must still be run on a supported Linux host; this Windows workspace cannot produce or load the object.
 - The Linux unified `audit` runtime path is implemented but not end-to-end validated in this Windows workspace.
+- The tracked P1 coverage matrix is a pending source matrix, not Linux runtime evidence; see [docs/p1-coverage.md](docs/p1-coverage.md).
 - Current file/exec records are syscall-entry attempts; they do not prove success or file contents read.
 - Current audit output is host-wide and may contain sensitive path/argv fragments.
 - The project does not yet enforce policies or block behavior.

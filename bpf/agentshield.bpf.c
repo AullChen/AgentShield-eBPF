@@ -72,8 +72,8 @@ char LICENSE[] SEC("license") = "Dual MIT/GPL";
 const volatile __u16 agentshield_schema_version =
 	AGENTSHIELD_EVENT_SCHEMA_VERSION;
 
-static __always_inline int agentshield_current_scope(__u64 *cgroup_id,
-						     __u32 *profile_id)
+static __always_inline __attribute__((unused)) int
+agentshield_current_scope(__u64 *cgroup_id, __u32 *profile_id)
 {
 	__u32 *found;
 

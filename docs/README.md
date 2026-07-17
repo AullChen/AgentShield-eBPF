@@ -14,5 +14,7 @@ Current notes:
 - `network-audit.md`: Day 15 cgroup connect4/connect6 semantics, fixture, and
   explicit coverage/fallback matrix.
 - `p0-integration-check.md`: historical Day 1-6 integration snapshot.
+- `p1-coverage.md`: Day 17 pre-M1 source/runtime coverage matrix, reproducible
+  Linux evidence command, and current pending acceptance status.
 
 Local planning documents, drafts, and proposal materials are kept in `.local-docs/` and ignored by Git.

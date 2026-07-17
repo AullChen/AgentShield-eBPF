@@ -45,7 +45,8 @@ manifest when a byte-for-byte rebuild is required. A matching object hash is
 expected only when source, clang/llvm patch release, bpftool output, BTF input,
 and architecture all match.
 
-To re-check an existing object without loading it into the kernel:
+To re-check an existing object and prove that it still matches its manifest,
+without loading it into the kernel:
 
 ```sh
 make verify-bpf-object

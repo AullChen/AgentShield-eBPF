@@ -4,9 +4,10 @@ Date: 2026-07-03
 Scope: Day 1 through Day 6 project initialization.
 
 > This is a historical P0 snapshot, not the current capability report. Later
-> commits added a Linux audit loader and file/exec probes; the root README and
-> development plan describe the current Day 12 source baseline and remaining
-> real CO-RE/Linux acceptance gate.
+> commits added a Linux audit loader, file/exec/network probes, a real CO-RE
+> build path, and Day 13-17 acceptance/reliability harnesses; the root README
+> and P1 coverage note describe the current source baseline and remaining
+> Linux runtime acceptance gate.
 
 ## Purpose
 

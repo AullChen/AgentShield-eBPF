@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -76,12 +77,14 @@ func main() {
 func run(args []string, out io.Writer) error {
 	var objectPath string
 	var manifestPath string
+	var verifyManifestPath string
 	metadata := metadataFlags{}
 
 	flags := flag.NewFlagSet("bpfcheck", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.StringVar(&objectPath, "object", "", "path to the compiled BPF ELF object")
 	flags.StringVar(&manifestPath, "manifest", "", "optional path to write the JSON object manifest")
+	flags.StringVar(&verifyManifestPath, "verify-manifest", "", "optional existing manifest to verify against the object")
 	flags.Var(metadata, "metadata", "build metadata key=value; may be repeated")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -97,6 +100,11 @@ func run(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if verifyManifestPath != "" {
+		if err := verifyManifest(verifyManifestPath, manifest); err != nil {
+			return err
+		}
+	}
 	payload, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode manifest: %w", err)
@@ -110,6 +118,21 @@ func run(args []string, out io.Writer) error {
 	}
 	_, err = out.Write(payload)
 	return err
+}
+
+func verifyManifest(path string, actual objectManifest) error {
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read manifest %q: %w", path, err)
+	}
+	var expected objectManifest
+	if err := json.Unmarshal(payload, &expected); err != nil {
+		return fmt.Errorf("decode manifest %q: %w", path, err)
+	}
+	if expected.SchemaVersion != actual.SchemaVersion || expected.SHA256 != actual.SHA256 || expected.Size != actual.Size || expected.ByteOrder != actual.ByteOrder || !reflect.DeepEqual(expected.Programs, actual.Programs) || !reflect.DeepEqual(expected.Maps, actual.Maps) {
+		return fmt.Errorf("manifest %q does not describe object %q", path, actual.ObjectPath)
+	}
+	return nil
 }
 
 func inspectObject(objectPath string, metadata map[string]string) (objectManifest, error) {

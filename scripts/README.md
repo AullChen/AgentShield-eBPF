@@ -8,6 +8,8 @@ Current files:
   toolchain and records object/BTF hashes and a parsed spec manifest.
 - `accept-file-exec.sh`: performs the Day 14 kernel load, verifier, tracepoint
   attach, attempt semantics, empty-argv, truncation, and ABI acceptance gate.
+- `accept-p1.sh`: performs the Day 17 single-run file/exec/connect pre-M1 gate
+  and produces owner-only evidence plus a sanitized coverage matrix.
 - `test-audit.sh`: triggers one file-open action and one process execution for
   the Linux audit loop.
 - `test-network.sh`: triggers TCP IPv4 and IPv6 connection attempts from the
