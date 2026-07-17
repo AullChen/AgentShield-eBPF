@@ -72,7 +72,9 @@ cleanup() {
   fi
   rmdir "$cgroup_path" 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 {
   echo "captured_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
