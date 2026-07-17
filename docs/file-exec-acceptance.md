@@ -26,9 +26,10 @@ The command fails unless all of these conditions hold:
 8. The supplied object hash and parsed program/map specifications match the
    supplied build manifest.
 
-The owner-only evidence directory contains the environment, object/manifest
-hashes, object/manifest verification output, ABI test output, runtime log, raw
-JSON Lines, and a sanitized summary.
+Each invocation atomically creates a distinct owner-only evidence directory,
+including for concurrent runs. The directory contains the environment,
+object/manifest hashes, object/manifest verification output, ABI test output,
+runtime log, raw JSON Lines, and a sanitized summary.
 Only the sanitized summary is suitable for review. Raw output is intentionally
 under ignored `tmp/` because the current unscoped probes may capture unrelated
 host paths and argv values.

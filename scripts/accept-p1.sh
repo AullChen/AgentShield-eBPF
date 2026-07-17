@@ -48,10 +48,11 @@ for path in "$object_path" "$manifest_path"; do
 done
 
 umask 077
-run_id=$(date -u +%Y%m%dT%H%M%SZ)
-evidence_dir="$evidence_root/$run_id"
+mkdir -p "$evidence_root"
+evidence_dir=$(mktemp -d "$evidence_root/$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")
+run_id=${evidence_dir##*/}
 cgroup_path="/sys/fs/cgroup/agentshield-p1-$run_id"
-mkdir -p "$evidence_dir" "$cgroup_path"
+mkdir "$cgroup_path"
 
 binary="$evidence_dir/agentshield"
 events_log="$evidence_dir/events.raw.jsonl"

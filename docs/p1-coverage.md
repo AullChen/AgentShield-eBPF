@@ -42,7 +42,9 @@ then triggers file/exec/TCP IPv4/TCP IPv6, terminates the reader with SIGTERM,
 and validates attempt semantics, empty argv, truncation, exact destinations,
 JSON/wire schemas, and non-negative calibrated receipt timing.
 
-Owner-only evidence under ignored `tmp/acceptance/day17/` includes:
+Each invocation atomically creates a distinct owner-only directory under
+ignored `tmp/acceptance/day17/`, including for concurrent runs. Its evidence
+includes:
 
 - distribution, kernel/config subset, BTF availability, architecture;
 - BPF object and manifest hashes plus verified object/manifest correspondence;
