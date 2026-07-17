@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,6 +42,26 @@ func TestRunRejectsInvalidELF(t *testing.T) {
 	err := run([]string{"--object", "main_test.go"}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "parse BPF ELF/spec") {
 		t.Fatalf("run error = %v, want parse error", err)
+	}
+}
+
+func TestRunDoesNotOverwriteObjectWithManifest(t *testing.T) {
+	objectPath := filepath.Join(t.TempDir(), "agentshield.bpf.o")
+	const contents = "not an ELF, but it must remain intact"
+	if err := os.WriteFile(objectPath, []byte(contents), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	err := run([]string{"--object", objectPath, "--manifest", objectPath}, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "must not overwrite") {
+		t.Fatalf("run error = %v, want overwrite rejection", err)
+	}
+	payload, readErr := os.ReadFile(objectPath)
+	if readErr != nil {
+		t.Fatalf("ReadFile: %v", readErr)
+	}
+	if string(payload) != contents {
+		t.Fatalf("object contents = %q, want %q", payload, contents)
 	}
 }
 

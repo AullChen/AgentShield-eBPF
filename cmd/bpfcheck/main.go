@@ -95,6 +95,19 @@ func run(args []string, out io.Writer) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments: %q", flags.Args())
 	}
+	if manifestPath != "" {
+		objectInfo, err := os.Stat(objectPath)
+		if err != nil {
+			return fmt.Errorf("stat BPF object %q: %w", objectPath, err)
+		}
+		manifestInfo, err := os.Stat(manifestPath)
+		if err == nil && os.SameFile(objectInfo, manifestInfo) {
+			return fmt.Errorf("manifest %q must not overwrite BPF object %q", manifestPath, objectPath)
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("stat manifest %q: %w", manifestPath, err)
+		}
+	}
 
 	manifest, err := inspectObject(objectPath, metadata)
 	if err != nil {
