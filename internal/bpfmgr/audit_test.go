@@ -21,6 +21,8 @@ type rawAuditEventV2 struct {
 	ActionResult        uint16
 	TimestampNS         uint64
 	CgroupID            uint64
+	InstanceID          uint64
+	ScopeCookie         uint64
 	PID                 uint32
 	TGID                uint32
 	PPID                uint32

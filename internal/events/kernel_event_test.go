@@ -9,16 +9,16 @@ import (
 	"unsafe"
 )
 
-func TestKernelEventV2WireSize(t *testing.T) {
-	const want = 336
-	if got := KernelEventV2Size(); got != want {
-		t.Fatalf("KernelEventV2Size() = %d, want %d", got, want)
+func TestKernelEventV3WireSize(t *testing.T) {
+	const want = 352
+	if got := KernelEventV3Size(); got != want {
+		t.Fatalf("KernelEventV3Size() = %d, want %d", got, want)
 	}
-	var raw rawKernelEventV2
-	if got, want := unsafe.Offsetof(raw.CapturedArgcPlusOne), uintptr(60); got != want {
+	var raw rawKernelEventV3
+	if got, want := unsafe.Offsetof(raw.CapturedArgcPlusOne), uintptr(76); got != want {
 		t.Fatalf("CapturedArgcPlusOne offset = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Offsetof(raw.Data), uintptr(80); got != want {
+	if got, want := unsafe.Offsetof(raw.Data), uintptr(96); got != want {
 		t.Fatalf("Data offset = %d, want %d", got, want)
 	}
 	if got, want := binary.Size(rawNetworkPayloadV2{}), 24; got != want {
@@ -35,6 +35,8 @@ func TestKernelEventJSONPreservesUint64Precision(t *testing.T) {
 		ServerReceivedMonotonicNS: 9_007_199_254_740_994,
 		ServerReceivedUnixNS:      9_007_199_254_740_995,
 		CgroupID:                  18_446_744_073_709_551_615,
+		InstanceID:                18_446_744_073_709_551_614,
+		ScopeCookie:               18_446_744_073_709_551_613,
 	}
 
 	payload, err := json.Marshal(event)
@@ -50,6 +52,12 @@ func TestKernelEventJSONPreservesUint64Precision(t *testing.T) {
 	}
 	if got := decoded["cgroup_id"]; got != "18446744073709551615" {
 		t.Fatalf("cgroup_id = %#v, want exact decimal string", got)
+	}
+	if got := decoded["instance_id"]; got != "18446744073709551614" {
+		t.Fatalf("instance_id = %#v, want exact decimal string", got)
+	}
+	if got := decoded["scope_cookie"]; got != "18446744073709551613" {
+		t.Fatalf("scope_cookie = %#v, want exact decimal string", got)
 	}
 	if got := decoded["kernel_monotonic_ns"]; got != "9007199254740993" {
 		t.Fatalf("kernel_monotonic_ns = %#v, want exact decimal string", got)
@@ -68,14 +76,16 @@ func TestKernelEventJSONPreservesUint64Precision(t *testing.T) {
 	}
 }
 
-func TestDecodeKernelEventV2(t *testing.T) {
-	raw := rawKernelEventV2{
+func TestDecodeKernelEventV3(t *testing.T) {
+	raw := rawKernelEventV3{
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeFileOpen,
 		Action:        ActionAudit,
 		ActionResult:  ActionResultNone,
 		TimestampNS:   42,
 		CgroupID:      77,
+		InstanceID:    88,
+		ScopeCookie:   99,
 		PID:           1001,
 		TGID:          1001,
 		UID:           501,
@@ -101,6 +111,9 @@ func TestDecodeKernelEventV2(t *testing.T) {
 	if event.TimestampNS != 42 {
 		t.Fatalf("TimestampNS = %d, want 42", event.TimestampNS)
 	}
+	if event.InstanceID != 88 || event.ScopeCookie != 99 {
+		t.Fatalf("scope identity = %d/%d, want 88/99", event.InstanceID, event.ScopeCookie)
+	}
 	if event.PID != 1001 {
 		t.Fatalf("PID = %d, want 1001", event.PID)
 	}
@@ -118,8 +131,8 @@ func TestDecodeKernelEventV2(t *testing.T) {
 	}
 }
 
-func TestDecodeKernelNetworkIPv4EventV2(t *testing.T) {
-	raw := rawKernelEventV2{
+func TestDecodeKernelNetworkIPv4EventV3(t *testing.T) {
+	raw := rawKernelEventV3{
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeNetConnect,
 		Action:        ActionAudit,
@@ -145,8 +158,8 @@ func TestDecodeKernelNetworkIPv4EventV2(t *testing.T) {
 	}
 }
 
-func TestDecodeKernelNetworkIPv6EventV2(t *testing.T) {
-	raw := rawKernelEventV2{
+func TestDecodeKernelNetworkIPv6EventV3(t *testing.T) {
+	raw := rawKernelEventV3{
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeNetConnect,
 	}
@@ -167,7 +180,7 @@ func TestDecodeKernelNetworkIPv6EventV2(t *testing.T) {
 }
 
 func TestDecodeKernelNetworkRejectsUnknownFamily(t *testing.T) {
-	raw := rawKernelEventV2{SchemaVersion: SchemaVersion, EventType: EventTypeNetConnect}
+	raw := rawKernelEventV3{SchemaVersion: SchemaVersion, EventType: EventTypeNetConnect}
 	encodeNetworkPayloadForTest(t, raw.Data[:], rawNetworkPayloadV2{
 		AddressFamily: 999,
 		Protocol:      ProtocolTCP,
@@ -180,7 +193,7 @@ func TestDecodeKernelNetworkRejectsUnknownFamily(t *testing.T) {
 }
 
 func TestDecodeKernelNetworkRejectsUnknownProtocol(t *testing.T) {
-	raw := rawKernelEventV2{SchemaVersion: SchemaVersion, EventType: EventTypeNetConnect}
+	raw := rawKernelEventV3{SchemaVersion: SchemaVersion, EventType: EventTypeNetConnect}
 	encodeNetworkPayloadForTest(t, raw.Data[:], rawNetworkPayloadV2{
 		AddressFamily: AddressFamilyIPv4,
 		Protocol:      17,
@@ -192,8 +205,8 @@ func TestDecodeKernelNetworkRejectsUnknownProtocol(t *testing.T) {
 	}
 }
 
-func TestDecodeKernelExecEventV2(t *testing.T) {
-	raw := rawKernelEventV2{
+func TestDecodeKernelExecEventV3(t *testing.T) {
+	raw := rawKernelEventV3{
 		SchemaVersion:       SchemaVersion,
 		EventType:           EventTypeExecAttempt,
 		Action:              ActionAudit,
@@ -233,7 +246,7 @@ func TestDecodeKernelExecEventV2(t *testing.T) {
 }
 
 func TestDecodeKernelExecEventPreservesEmptyArgument(t *testing.T) {
-	raw := rawKernelEventV2{
+	raw := rawKernelEventV3{
 		SchemaVersion:       SchemaVersion,
 		EventType:           EventTypeExecAttempt,
 		CapturedArgcPlusOne: 4,
@@ -259,7 +272,7 @@ func TestDecodeKernelExecEventPreservesEmptyArgument(t *testing.T) {
 }
 
 func TestDecodeKernelExecEventRejectsInvalidCapturedArgc(t *testing.T) {
-	raw := rawKernelEventV2{
+	raw := rawKernelEventV3{
 		SchemaVersion:       SchemaVersion,
 		EventType:           EventTypeExecAttempt,
 		CapturedArgcPlusOne: execArgumentCount + 2,
@@ -272,7 +285,7 @@ func TestDecodeKernelExecEventRejectsInvalidCapturedArgc(t *testing.T) {
 }
 
 func TestDecodeKernelExecEventRejectsMissingCapturedArgc(t *testing.T) {
-	raw := rawKernelEventV2{
+	raw := rawKernelEventV3{
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeExecAttempt,
 	}
@@ -284,7 +297,7 @@ func TestDecodeKernelExecEventRejectsMissingCapturedArgc(t *testing.T) {
 }
 
 func TestDecodeKernelExecEventRejectsMaxUint32CapturedArgc(t *testing.T) {
-	raw := rawKernelEventV2{
+	raw := rawKernelEventV3{
 		SchemaVersion:       SchemaVersion,
 		EventType:           EventTypeExecAttempt,
 		CapturedArgcPlusOne: ^uint32(0),
@@ -314,7 +327,7 @@ func TestDecodeKernelEventRejectsSampleWithoutSchema(t *testing.T) {
 }
 
 func TestDecodeKernelEventRejectsUnsupportedSchema(t *testing.T) {
-	raw := rawKernelEventV2{SchemaVersion: SchemaVersion + 1}
+	raw := rawKernelEventV3{SchemaVersion: SchemaVersion + 1}
 	var buf bytes.Buffer
 	if err := binary.Write(&buf, binary.LittleEndian, raw); err != nil {
 		t.Fatalf("binary.Write: %v", err)
@@ -327,7 +340,7 @@ func TestDecodeKernelEventRejectsUnsupportedSchema(t *testing.T) {
 }
 
 func TestDecodeKernelEventRejectsLegacyWireSchema(t *testing.T) {
-	raw := rawKernelEventV2{SchemaVersion: SchemaVersion - 1}
+	raw := rawKernelEventV3{SchemaVersion: SchemaVersion - 1}
 
 	_, err := decodeRawBytesForTest(t, raw)
 	if !errors.Is(err, ErrUnsupportedSchema) {
@@ -336,7 +349,7 @@ func TestDecodeKernelEventRejectsLegacyWireSchema(t *testing.T) {
 }
 
 func TestDecodeKernelEventRejectsLargerFutureSchema(t *testing.T) {
-	sample := make([]byte, KernelEventV2Size()+16)
+	sample := make([]byte, KernelEventV3Size()+16)
 	binary.LittleEndian.PutUint16(sample, SchemaVersion+1)
 
 	_, err := DecodeKernelEvent(sample)
@@ -367,7 +380,7 @@ func TestCleanCString(t *testing.T) {
 }
 
 func TestDecodeKernelEventEncodesInvalidUTF8WithoutReplacement(t *testing.T) {
-	raw := rawKernelEventV2{
+	raw := rawKernelEventV3{
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeFileOpen,
 	}
@@ -406,7 +419,7 @@ func TestNameFallbacks(t *testing.T) {
 	}
 }
 
-func decodeRawForTest(t *testing.T, raw rawKernelEventV2) KernelEvent {
+func decodeRawForTest(t *testing.T, raw rawKernelEventV3) KernelEvent {
 	t.Helper()
 
 	event, err := decodeRawBytesForTest(t, raw)
@@ -416,7 +429,7 @@ func decodeRawForTest(t *testing.T, raw rawKernelEventV2) KernelEvent {
 	return event
 }
 
-func decodeRawBytesForTest(t *testing.T, raw rawKernelEventV2) (KernelEvent, error) {
+func decodeRawBytesForTest(t *testing.T, raw rawKernelEventV3) (KernelEvent, error) {
 	t.Helper()
 
 	var buf bytes.Buffer

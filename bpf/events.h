@@ -2,7 +2,7 @@
 #ifndef AGENTSHIELD_EVENTS_H
 #define AGENTSHIELD_EVENTS_H
 
-#define AGENTSHIELD_EVENT_SCHEMA_VERSION 2
+#define AGENTSHIELD_EVENT_SCHEMA_VERSION 3
 #define AGENTSHIELD_COMM_LEN 16
 #define AGENTSHIELD_DATA_LEN 256
 #define AGENTSHIELD_EXEC_EXE_LEN 128
@@ -62,6 +62,8 @@ struct agentshield_event {
 
 	__u64 timestamp_ns;
 	__u64 cgroup_id;
+	__u64 instance_id;
+	__u64 scope_cookie;
 
 	__u32 pid;
 	__u32 tgid;
@@ -80,12 +82,12 @@ struct agentshield_event {
 	char data[AGENTSHIELD_DATA_LEN];
 };
 
-_Static_assert(sizeof(struct agentshield_event) == 336,
+_Static_assert(sizeof(struct agentshield_event) == 352,
 	       "agentshield_event ABI size changed");
 _Static_assert(__builtin_offsetof(struct agentshield_event,
-				 captured_argc_plus_one) == 60,
+				 captured_argc_plus_one) == 76,
 	       "agentshield_event argc offset changed");
-_Static_assert(__builtin_offsetof(struct agentshield_event, data) == 80,
+_Static_assert(__builtin_offsetof(struct agentshield_event, data) == 96,
 	       "agentshield_event data offset changed");
 _Static_assert(sizeof(struct agentshield_network_payload) == 24,
 	       "agentshield_network_payload ABI size changed");

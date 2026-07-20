@@ -212,10 +212,15 @@ func validateRequiredSpecs(spec *ebpf.CollectionSpec) error {
 			return fmt.Errorf("required BPF program %q is missing", name)
 		}
 	}
-	for _, name := range []string{"agentshield_events", "agentshield_stats_map"} {
+	for _, name := range []string{"agentshield_events", "agentshield_scope_map", "agentshield_stats_map"} {
 		if spec.Maps[name] == nil {
 			return fmt.Errorf("required BPF map %q is missing", name)
 		}
+	}
+	scope := spec.Maps["agentshield_scope_map"]
+	if scope.Type != ebpf.Hash || scope.KeySize != 8 || scope.ValueSize != 24 || scope.MaxEntries != 1024 {
+		return fmt.Errorf("required BPF map %q has incompatible layout: type=%s key=%d value=%d max_entries=%d",
+			"agentshield_scope_map", scope.Type, scope.KeySize, scope.ValueSize, scope.MaxEntries)
 	}
 	return nil
 }

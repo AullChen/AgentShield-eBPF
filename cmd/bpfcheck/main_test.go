@@ -109,6 +109,16 @@ func TestValidateRequiredSpecsRejectsMissingStatsMap(t *testing.T) {
 	}
 }
 
+func TestValidateRequiredSpecsRejectsIncompatibleScopeMap(t *testing.T) {
+	spec := requiredCollectionSpecForTest()
+	spec.Maps["agentshield_scope_map"].ValueSize = 4
+
+	err := validateRequiredSpecs(spec)
+	if err == nil || !strings.Contains(err.Error(), "incompatible layout") {
+		t.Fatalf("validateRequiredSpecs error = %v, want incompatible scope map", err)
+	}
+}
+
 func requiredCollectionSpecForTest() *ebpf.CollectionSpec {
 	programs := make(map[string]*ebpf.ProgramSpec)
 	for _, name := range []string{"agentshield_connect4", "agentshield_connect6", "agentshield_trace_execve", "agentshield_trace_openat"} {
@@ -117,7 +127,13 @@ func requiredCollectionSpecForTest() *ebpf.CollectionSpec {
 	return &ebpf.CollectionSpec{
 		Programs: programs,
 		Maps: map[string]*ebpf.MapSpec{
-			"agentshield_events":    {},
+			"agentshield_events": {},
+			"agentshield_scope_map": {
+				Type:       ebpf.Hash,
+				KeySize:    8,
+				ValueSize:  24,
+				MaxEntries: 1024,
+			},
 			"agentshield_stats_map": {},
 		},
 	}

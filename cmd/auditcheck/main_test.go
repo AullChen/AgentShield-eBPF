@@ -61,8 +61,8 @@ func TestAnalyzeRejectsSuccessClaimAtSyscallEntry(t *testing.T) {
 
 func TestAnalyzeRejectsMissingEmptyArg(t *testing.T) {
 	input := encodeEvents(t,
-		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
-		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"/bin/echo", "exec"}, Truncated: true},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"/bin/echo", "exec"}, Truncated: true},
 	)
 
 	_, err := analyze(input, "file", "exec")
@@ -73,9 +73,9 @@ func TestAnalyzeRejectsMissingEmptyArg(t *testing.T) {
 
 func TestAnalyzePreservesTruncationAcrossDuplicateMarkerEvents(t *testing.T) {
 	input := encodeEvents(t,
-		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
-		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"", "exec"}, Truncated: true},
-		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"", "exec"}, Truncated: false},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"", "exec"}, Truncated: true},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"", "exec"}, Truncated: false},
 	)
 
 	summary, err := analyze(input, "file", "exec")
@@ -89,10 +89,10 @@ func TestAnalyzePreservesTruncationAcrossDuplicateMarkerEvents(t *testing.T) {
 
 func TestAnalyzeAcceptsIPv4AndIPv6Coverage(t *testing.T) {
 	input := encodeEvents(t,
-		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
-		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"/bin/echo", "", "exec", strings.Repeat("x", 31)}, Truncated: true},
-		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeNetConnect, EventTypeName: "net_connect", DestinationIP: "127.0.0.1", DestinationPort: 18080},
-		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeNetConnect, EventTypeName: "net_connect", DestinationIP: "::1", DestinationPort: 18080},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"/bin/echo", "", "exec", strings.Repeat("x", 31)}, Truncated: true},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeNetConnect, EventTypeName: "net_connect", DestinationIP: "127.0.0.1", DestinationPort: 18080},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeNetConnect, EventTypeName: "net_connect", DestinationIP: "::1", DestinationPort: 18080},
 	)
 	ipv4 := netip.MustParseAddrPort("127.0.0.1:18080")
 	ipv6 := netip.MustParseAddrPort("[::1]:18080")
@@ -108,8 +108,8 @@ func TestAnalyzeAcceptsIPv4AndIPv6Coverage(t *testing.T) {
 
 func TestAnalyzeRejectsMissingNetworkCoverage(t *testing.T) {
 	input := encodeEvents(t,
-		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
-		events.KernelEvent{JSONSchemaVersion: 2, SchemaVersion: 2, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"", "exec"}, Truncated: true},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"", "exec"}, Truncated: true},
 	)
 
 	_, err := analyze(input, "file", "exec", netip.MustParseAddrPort("127.0.0.1:18080"))
@@ -120,8 +120,8 @@ func TestAnalyzeRejectsMissingNetworkCoverage(t *testing.T) {
 
 func TestAnalyzeRequiresNonNegativeReceiptClocks(t *testing.T) {
 	input := encodeEvents(t, events.KernelEvent{
-		JSONSchemaVersion:         2,
-		SchemaVersion:             2,
+		JSONSchemaVersion:         events.JSONSchemaVersion,
+		SchemaVersion:             events.WireSchemaVersion,
 		EventType:                 events.EventTypeFileOpen,
 		EventTypeName:             "file_open",
 		Data:                      "file",

@@ -72,23 +72,25 @@ char LICENSE[] SEC("license") = "Dual MIT/GPL";
 const volatile __u16 agentshield_schema_version =
 	AGENTSHIELD_EVENT_SCHEMA_VERSION;
 
-static __always_inline __attribute__((unused)) int
-agentshield_current_scope(__u64 *cgroup_id, __u32 *profile_id)
+static __always_inline int
+agentshield_current_scope(__u64 *cgroup_id,
+			  struct agentshield_scope_value *scope)
 {
-	__u32 *found;
+	struct agentshield_scope_value *found;
 
 	*cgroup_id = bpf_get_current_cgroup_id();
 	found = bpf_map_lookup_elem(&agentshield_scope_map, cgroup_id);
 	if (!found)
 		return 0;
 
-	*profile_id = *found;
+	*scope = *found;
 	return 1;
 }
 
 static __always_inline void
 agentshield_fill_common(struct agentshield_event *event, __u16 event_type,
-			__u64 cgroup_id, __u32 profile_id, __u32 ppid)
+			__u64 cgroup_id,
+			const struct agentshield_scope_value *scope, __u32 ppid)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u64 uid_gid = bpf_get_current_uid_gid();
@@ -99,11 +101,13 @@ agentshield_fill_common(struct agentshield_event *event, __u16 event_type,
 	event->action_result = AGENTSHIELD_RESULT_NONE;
 	event->timestamp_ns = bpf_ktime_get_ns();
 	event->cgroup_id = cgroup_id;
+	event->instance_id = scope->instance_id;
+	event->scope_cookie = scope->scope_cookie;
 	event->pid = (__u32)pid_tgid;
 	event->tgid = pid_tgid >> 32;
 	event->ppid = ppid;
 	event->uid = (__u32)uid_gid;
-	event->profile_id = profile_id;
+	event->profile_id = scope->profile_id;
 	event->policy_id = 0;
 	event->rule_id = 0;
 	event->flags = 0;
@@ -152,11 +156,14 @@ int agentshield_trace_execve(struct trace_event_raw_sys_enter *ctx)
 	const char *filename = (const char *)ctx->args[0];
 	const char *const *argv = (const char *const *)ctx->args[1];
 	const char *arg = 0;
-	__u64 cgroup_id = bpf_get_current_cgroup_id();
-	__u32 profile_id = 0;
+	struct agentshield_scope_value scope = {};
+	__u64 cgroup_id;
 	long read_len;
 	__u32 captured_argc = 0;
 	int i;
+
+	if (!agentshield_current_scope(&cgroup_id, &scope))
+		return 0;
 
 	event = agentshield_reserve_event(AGENTSHIELD_EVENT_EXEC_ATTEMPT);
 	if (!event)
@@ -164,7 +171,7 @@ int agentshield_trace_execve(struct trace_event_raw_sys_enter *ctx)
 
 	__builtin_memset(event, 0, sizeof(*event));
 	agentshield_fill_common(event, AGENTSHIELD_EVENT_EXEC_ATTEMPT,
-				cgroup_id, profile_id, agentshield_current_ppid());
+				cgroup_id, &scope, agentshield_current_ppid());
 
 	read_len = bpf_probe_read_user_str(event->data,
 					   AGENTSHIELD_EXEC_EXE_LEN, filename);
@@ -211,9 +218,12 @@ int agentshield_trace_openat(struct trace_event_raw_sys_enter *ctx)
 {
 	struct agentshield_event *event;
 	const char *filename;
-	__u64 cgroup_id = bpf_get_current_cgroup_id();
-	__u32 profile_id = 0;
+	struct agentshield_scope_value scope = {};
+	__u64 cgroup_id;
 	long read_len;
+
+	if (!agentshield_current_scope(&cgroup_id, &scope))
+		return 0;
 
 	event = agentshield_reserve_event(AGENTSHIELD_EVENT_FILE_OPEN);
 	if (!event)
@@ -221,7 +231,7 @@ int agentshield_trace_openat(struct trace_event_raw_sys_enter *ctx)
 
 	__builtin_memset(event, 0, sizeof(*event));
 	agentshield_fill_common(event, AGENTSHIELD_EVENT_FILE_OPEN, cgroup_id,
-				profile_id, agentshield_current_ppid());
+				&scope, agentshield_current_ppid());
 
 	filename = (const char *)ctx->args[1];
 	event->syscall_flags = (__u32)ctx->args[2];
@@ -239,9 +249,12 @@ agentshield_audit_connect(struct bpf_sock_addr *ctx, __u16 address_family)
 {
 	struct agentshield_network_payload *payload;
 	struct agentshield_event *event;
-	__u64 cgroup_id = bpf_get_current_cgroup_id();
-	__u32 profile_id = 0;
+	struct agentshield_scope_value scope = {};
+	__u64 cgroup_id;
+
 	if (ctx->protocol != AGENTSHIELD_IPPROTO_TCP)
+		return 1;
+	if (!agentshield_current_scope(&cgroup_id, &scope))
 		return 1;
 
 	event = agentshield_reserve_event(AGENTSHIELD_EVENT_NET_CONNECT);
@@ -250,7 +263,7 @@ agentshield_audit_connect(struct bpf_sock_addr *ctx, __u16 address_family)
 
 	__builtin_memset(event, 0, sizeof(*event));
 	agentshield_fill_common(event, AGENTSHIELD_EVENT_NET_CONNECT, cgroup_id,
-				profile_id, 0);
+				&scope, 0);
 	event->flags |= AGENTSHIELD_FLAG_FIELD_UNAVAILABLE;
 
 	payload = (struct agentshield_network_payload *)event->data;

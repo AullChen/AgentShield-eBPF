@@ -16,7 +16,7 @@ var (
 )
 
 const (
-	WireSchemaVersion uint16 = 2
+	WireSchemaVersion uint16 = 3
 	JSONSchemaVersion uint16 = 2
 	// SchemaVersion is kept as the wire-schema name used by the decoder and BPF ABI.
 	SchemaVersion = WireSchemaVersion
@@ -74,6 +74,8 @@ type KernelEvent struct {
 	ServerReceivedUnixNS      uint64            `json:"server_received_unix_ns,string,omitempty"`
 	ClockCalibrationErrorNS   uint64            `json:"clock_calibration_error_ns,string,omitempty"`
 	CgroupID                  uint64            `json:"cgroup_id,string"`
+	InstanceID                uint64            `json:"instance_id,string"`
+	ScopeCookie               uint64            `json:"scope_cookie,string"`
 	PID                       uint32            `json:"pid"`
 	TGID                      uint32            `json:"tgid"`
 	PPID                      uint32            `json:"ppid"`
@@ -101,13 +103,15 @@ type KernelEvent struct {
 	RawEncoding               map[string]string `json:"raw_encoding,omitempty"`
 }
 
-type rawKernelEventV2 struct {
+type rawKernelEventV3 struct {
 	SchemaVersion       uint16
 	EventType           uint16
 	Action              uint16
 	ActionResult        uint16
 	TimestampNS         uint64
 	CgroupID            uint64
+	InstanceID          uint64
+	ScopeCookie         uint64
 	PID                 uint32
 	TGID                uint32
 	PPID                uint32
@@ -130,8 +134,8 @@ type rawNetworkPayloadV2 struct {
 	Reserved           [3]byte
 }
 
-func KernelEventV2Size() int {
-	return binary.Size(rawKernelEventV2{})
+func KernelEventV3Size() int {
+	return binary.Size(rawKernelEventV3{})
 }
 
 func DecodeKernelEvent(sample []byte) (KernelEvent, error) {
@@ -144,9 +148,9 @@ func DecodeKernelEvent(sample []byte) (KernelEvent, error) {
 		return KernelEvent{}, fmt.Errorf("%w: got %d want %d", ErrUnsupportedSchema, schemaVersion, SchemaVersion)
 	}
 
-	var raw rawKernelEventV2
-	if len(sample) != KernelEventV2Size() {
-		return KernelEvent{}, fmt.Errorf("%w: invalid size: got %d want %d", ErrMalformedKernelEvent, len(sample), KernelEventV2Size())
+	var raw rawKernelEventV3
+	if len(sample) != KernelEventV3Size() {
+		return KernelEvent{}, fmt.Errorf("%w: invalid size: got %d want %d", ErrMalformedKernelEvent, len(sample), KernelEventV3Size())
 	}
 	if err := binary.Read(bytes.NewReader(sample), binary.LittleEndian, &raw); err != nil {
 		return KernelEvent{}, fmt.Errorf("%w: decode: %v", ErrMalformedKernelEvent, err)
@@ -164,6 +168,8 @@ func DecodeKernelEvent(sample []byte) (KernelEvent, error) {
 		TimestampNS:       raw.TimestampNS,
 		KernelMonotonicNS: raw.TimestampNS,
 		CgroupID:          raw.CgroupID,
+		InstanceID:        raw.InstanceID,
+		ScopeCookie:       raw.ScopeCookie,
 		PID:               raw.PID,
 		TGID:              raw.TGID,
 		PPID:              raw.PPID,

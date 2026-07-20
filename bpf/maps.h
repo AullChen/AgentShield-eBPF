@@ -13,6 +13,13 @@ enum agentshield_stat_base {
 	AGENTSHIELD_STAT_EVENTS_DROPPED_BASE = 16,
 };
 
+struct agentshield_scope_value {
+	__u64 instance_id;
+	__u64 scope_cookie;
+	__u32 profile_id;
+	__u32 reserved;
+};
+
 struct {
 	__uint(type, BPF_MAP_TYPE_RINGBUF);
 	__uint(max_entries, AGENTSHIELD_RINGBUF_SIZE);
@@ -22,7 +29,7 @@ struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
 	__uint(max_entries, AGENTSHIELD_MAX_SCOPES);
 	__type(key, __u64);
-	__type(value, __u32);
+	__type(value, struct agentshield_scope_value);
 } agentshield_scope_map SEC(".maps");
 
 struct {
