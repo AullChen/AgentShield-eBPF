@@ -1,0 +1,25 @@
+services:
+  agent:
+    build:
+      context: ./agent
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    environment:
+      EXPECTED_FIXTURE_SHA256: "${AGENTSHIELD_FIXTURE_SHA256:?set by scripts/accept-sandbox.sh}"
+    volumes:
+      - type: bind
+        source: ./fixtures/demo-secrets/example-token
+        target: /demo-secrets/example-token
+        read_only: true
+    networks:
+      - sandbox
+
+networks:
+  sandbox:
+    enable_ipv6: true

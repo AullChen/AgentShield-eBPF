@@ -6,7 +6,7 @@ ifeq ($(OS),Windows_NT)
 BINARY := bin/agentshield.exe
 endif
 
-.PHONY: generate verify-generated bpf-object verify-bpf-object accept-p1 check-bpf-syntax check-linux-bpfmgr test build check clean
+.PHONY: generate verify-generated bpf-object verify-bpf-object accept-p1 accept-sandbox check-bpf-syntax check-linux-bpfmgr test build check clean
 
 generate:
 	go generate ./internal/bpfmgr
@@ -22,6 +22,9 @@ verify-bpf-object:
 
 accept-p1: bpf-object build
 	sudo ./scripts/accept-p1.sh $(BPF_OBJECT) $(BPF_MANIFEST)
+
+accept-sandbox:
+	./scripts/accept-sandbox.sh
 
 check-bpf-syntax:
 	clang -DAGENTSHIELD_BPF_SYNTAX_CHECK -Wall -Wextra -Werror -Wno-unused-parameter -fsyntax-only bpf/agentshield.bpf.c
