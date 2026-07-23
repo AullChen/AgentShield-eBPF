@@ -136,6 +136,30 @@ func TestManagerRejectsDuplicateCgroup(t *testing.T) {
 	}
 }
 
+func TestManagerRejectsOverlappingCgroupPaths(t *testing.T) {
+	store := &memoryMap{}
+	resolver := fakeResolver{handle: &Handle{ID: 42, Path: "/agent/leaf"}}
+	manager := newTestManager(t, store, resolver, fakeProbe{id: 42})
+	value := Value{InstanceID: 1, ScopeCookie: 2}
+	if _, err := manager.Register(context.Background(), Target{Path: "/agent/leaf"}, value); err != nil {
+		t.Fatalf("first Register: %v", err)
+	}
+
+	for _, candidate := range []struct {
+		id   uint64
+		path string
+	}{{43, "/agent"}, {44, "/agent/leaf/child"}} {
+		manager.resolver = fakeResolver{handle: &Handle{ID: candidate.id, Path: candidate.path}}
+		manager.probe = fakeProbe{id: candidate.id}
+		if _, err := manager.Register(context.Background(), Target{Path: candidate.path}, value); !errors.Is(err, ErrOverlap) {
+			t.Fatalf("Register(%q) error = %v, want ErrOverlap", candidate.path, err)
+		}
+	}
+	if len(store.values) != 1 {
+		t.Fatalf("scope map contains %d entries, want only original binding", len(store.values))
+	}
+}
+
 type nilReader struct{}
 
 func (nilReader) Read([]byte) (int, error) { return 0, io.EOF }

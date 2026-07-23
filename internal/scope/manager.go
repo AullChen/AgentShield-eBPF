@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"sync"
 )
 
@@ -12,6 +13,7 @@ var (
 	ErrInvalidTarget    = errors.New("scope target must select exactly one trusted cgroup path or PID")
 	ErrIdentityMismatch = errors.New("resolved cgroup ID does not match BPF observation")
 	ErrAlreadyActive    = errors.New("cgroup scope is already active")
+	ErrOverlap          = errors.New("cgroup scope overlaps an active binding")
 	ErrNotActive        = errors.New("cgroup scope is not active")
 )
 
@@ -131,6 +133,12 @@ func (manager *Manager) Register(ctx context.Context, target Target, value Value
 		_ = handle.Close()
 		return Registration{}, fmt.Errorf("%w: %d", ErrAlreadyActive, handle.ID)
 	}
+	for _, active := range manager.active {
+		if pathsOverlap(active.registration.Path, handle.Path) {
+			_ = handle.Close()
+			return Registration{}, fmt.Errorf("%w: %q and %q", ErrOverlap, active.registration.Path, handle.Path)
+		}
+	}
 	if err := manager.scopes.Put(handle.ID, value); err != nil {
 		_ = handle.Close()
 		return Registration{}, fmt.Errorf("write scope map: %w", err)
@@ -157,6 +165,16 @@ func (manager *Manager) Unregister(cgroupID uint64) error {
 		return fmt.Errorf("close cgroup handle: %w", err)
 	}
 	return nil
+}
+
+func pathsOverlap(first, second string) bool {
+	first = path.Clean(first)
+	second = path.Clean(second)
+	return first == second ||
+		first == "/" ||
+		second == "/" ||
+		len(first) < len(second) && second[:len(first)] == first && second[len(first)] == '/' ||
+		len(second) < len(first) && first[:len(second)] == second && first[len(second)] == '/'
 }
 
 func (manager *Manager) Lookup(cgroupID uint64) (Registration, bool) {

@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/agentshield/agentshield-ebpf/internal/events"
+	"github.com/agentshield/agentshield-ebpf/internal/scope"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
@@ -23,8 +24,27 @@ const (
 	connect6ProgramName = "agentshield_connect6"
 	eventsMapName       = "agentshield_events"
 	statsMapName        = "agentshield_stats_map"
+	scopeMapName        = "agentshield_scope_map"
 	droppedStatsBase    = uint32(16)
 )
+
+type ebpfScopeMap struct {
+	scopes *ebpf.Map
+}
+
+func (store ebpfScopeMap) Put(cgroupID uint64, value scope.Value) error {
+	if err := store.scopes.Update(cgroupID, value, ebpf.UpdateNoExist); err != nil {
+		return fmt.Errorf("update cgroup %d: %w", cgroupID, err)
+	}
+	return nil
+}
+
+func (store ebpfScopeMap) Delete(cgroupID uint64) error {
+	if err := store.scopes.Delete(cgroupID); err != nil {
+		return fmt.Errorf("delete cgroup %d: %w", cgroupID, err)
+	}
+	return nil
+}
 
 type ebpfDropCounterReader struct {
 	stats        *ebpf.Map
@@ -84,6 +104,15 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 	stats := collection.Maps[statsMapName]
 	if stats == nil {
 		return fmt.Errorf("bpf map %q not found", statsMapName)
+	}
+	scopes := collection.Maps[scopeMapName]
+	if scopes == nil {
+		return fmt.Errorf("bpf map %q not found", scopeMapName)
+	}
+	if opts.OnScopeMapReady != nil {
+		if err := opts.OnScopeMapReady(ebpfScopeMap{scopes: scopes}); err != nil {
+			return fmt.Errorf("initialize scope manager: %w", err)
+		}
 	}
 	possibleCPUs, err := ebpf.PossibleCPU()
 	if err != nil {

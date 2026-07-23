@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/agentshield/agentshield-ebpf/internal/events"
+	"github.com/agentshield/agentshield-ebpf/internal/scope"
 )
 
 var ErrUnsupported = errors.New("bpf audit is not supported on this platform")
@@ -32,8 +33,14 @@ type AuditOptions struct {
 	CgroupPath       string
 	OnMalformedEvent func(error)
 	OnReady          func()
+	OnScopeMapReady  func(ScopeMap) error
 	ReceiptClock     ReceiptClock
 	StatsInterval    time.Duration
+}
+
+type ScopeMap interface {
+	Put(cgroupID uint64, value scope.Value) error
+	Delete(cgroupID uint64) error
 }
 
 type AuditEvent = events.KernelEvent

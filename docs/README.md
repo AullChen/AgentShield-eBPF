@@ -6,6 +6,8 @@ Current notes:
 
 - `audit-reliability.md`: Day 16 per-type drop counters, Go-synthesized loss
   notices, double-clock receipt fields, and shutdown/failure semantics.
+- `agent-registration.md`: trusted Agent Run registration contract, identity
+  ownership, and short-lived ingest tokens.
 - `bpf-build.md`: supported CO-RE toolchain, BTF provenance, object manifest,
   and ELF/spec versus kernel-load acceptance boundary.
 - `file-exec-acceptance.md`: reproducible Day 14 Linux kernel load/attach and
