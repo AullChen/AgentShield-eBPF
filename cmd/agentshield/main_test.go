@@ -38,3 +38,18 @@ func TestRunRejectsUnexpectedArguments(t *testing.T) {
 		t.Fatalf("run exit code = %d, want 2", exitCode)
 	}
 }
+
+func TestAuditRequiresExactScope(t *testing.T) {
+	t.Setenv("AGENTSHIELD_CONFIG", "")
+
+	if exitCode := run([]string{"audit"}); exitCode != 2 {
+		t.Fatalf("run(audit) = %d, want usage error 2", exitCode)
+	}
+	if exitCode := run([]string{
+		"audit",
+		"--cgroup", "/sys/fs/cgroup/one",
+		"--scope-cgroup", "/sys/fs/cgroup/two",
+	}); exitCode != 2 {
+		t.Fatalf("run(audit with mismatched cgroups) = %d, want usage error 2", exitCode)
+	}
+}

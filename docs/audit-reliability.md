@@ -1,7 +1,7 @@
 # Audit Reliability and Clock Semantics
 
 Day 16 makes event loss and receipt timing explicit without changing the
-336-byte wire-v2 record.
+352-byte wire-v3 record.
 
 ## Reserve-failure counters
 
@@ -42,7 +42,7 @@ event ordering. A synthetic drop notice has no kernel occurrence time.
 
 - SIGINT and SIGTERM cancel the audit context and close the ring-buffer reader.
 - The drop monitor is canceled and joined before `RunAudit` returns.
-- Isolated malformed wire-v2 records remain bounded and skippable; three
+- Isolated malformed wire-v3 records remain bounded and skippable; three
   consecutive malformed records stop the reader.
 - A future or legacy wire schema still fails immediately.
 - A stats-map read or clock-sampling error stops the audit process visibly

@@ -50,7 +50,7 @@ includes:
 - BPF object and manifest hashes plus verified object/manifest correspondence;
 - reproduction commands and Go ABI/robustness test output;
 - runtime/verifier/attachment log;
-- raw JSON Lines (never commit because file/exec remain host-wide);
+- raw exact-scope JSON Lines (never commit because paths/argv may be sensitive);
 - sanitized summary and coverage matrix.
 
 The concrete pre-M1 baseline is file + exec. Network is the optional third

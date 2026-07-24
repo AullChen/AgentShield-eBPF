@@ -136,6 +136,37 @@ func TestAnalyzeRequiresNonNegativeReceiptClocks(t *testing.T) {
 	}
 }
 
+func TestAnalyzeRequiresConsistentScopeIdentity(t *testing.T) {
+	input := encodeEvents(t,
+		events.KernelEvent{
+			JSONSchemaVersion: events.JSONSchemaVersion,
+			SchemaVersion:     events.WireSchemaVersion,
+			EventType:         events.EventTypeFileOpen,
+			EventTypeName:     "file_open",
+			Data:              "file",
+			CgroupID:          11,
+			InstanceID:        12,
+			ScopeCookie:       13,
+		},
+		events.KernelEvent{
+			JSONSchemaVersion: events.JSONSchemaVersion,
+			SchemaVersion:     events.WireSchemaVersion,
+			EventType:         events.EventTypeExecAttempt,
+			EventTypeName:     "exec_attempt",
+			Argv:              []string{"", "exec"},
+			Truncated:         true,
+			CgroupID:          11,
+			InstanceID:        12,
+			ScopeCookie:       14,
+		},
+	)
+
+	_, err := analyzeWithOptions(input, "file", "exec", analysisOptions{RequireScopeIdentity: true})
+	if err == nil || !strings.Contains(err.Error(), "inconsistent scope identity") {
+		t.Fatalf("analyze error = %v, want inconsistent scope identity", err)
+	}
+}
+
 func encodeEvents(t *testing.T, values ...events.KernelEvent) *bytes.Buffer {
 	t.Helper()
 	var buffer bytes.Buffer

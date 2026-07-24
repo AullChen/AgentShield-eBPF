@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -16,6 +18,7 @@ import (
 	"github.com/agentshield/agentshield-ebpf/internal/config"
 	"github.com/agentshield/agentshield-ebpf/internal/envcheck"
 	"github.com/agentshield/agentshield-ebpf/internal/logging"
+	"github.com/agentshield/agentshield-ebpf/internal/scope"
 	"github.com/agentshield/agentshield-ebpf/internal/version"
 )
 
@@ -36,10 +39,11 @@ func run(args []string) int {
 		flags := newFlagSet(command, &cfg)
 		bpfObject := flags.String("bpf-object", "bpf/agentshield.bpf.o", "path to the compiled AgentShield BPF object")
 		cgroupPath := flags.String("cgroup", "", "cgroup v2 path for connect4/connect6 audit hooks")
+		scopeCgroupPath := flags.String("scope-cgroup", "", "trusted exact leaf cgroup v2 path to register for audit")
 		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
 			return exitCode
 		}
-		return runAudit(cfg, *bpfObject, *cgroupPath)
+		return runAudit(cfg, *bpfObject, *cgroupPath, *scopeCgroupPath)
 	case "diagnose":
 		flags := newFlagSet(command, &cfg)
 		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
@@ -123,12 +127,43 @@ func runHealth(ctx context.Context, cfg config.Config) int {
 	return 0
 }
 
-func runAudit(cfg config.Config, objectPath, cgroupPath string) int {
+func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath string) int {
 	logger, err := logging.New(cfg.LogLevel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "invalid logger configuration: %v\n", err)
 		return 2
 	}
+
+	if scopeCgroupPath == "" {
+		fmt.Fprintln(os.Stderr, "audit requires --scope-cgroup with a trusted exact leaf cgroup")
+		return 2
+	}
+	if cgroupPath != "" && cgroupPath != scopeCgroupPath {
+		fmt.Fprintln(os.Stderr, "--cgroup and --scope-cgroup must identify the same exact leaf")
+		return 2
+	}
+	resolver, err := scope.NewLinuxResolver("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "initialize trusted cgroup resolver: %v\n", err)
+		return 1
+	}
+	handle, err := resolver.ResolvePath(scopeCgroupPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "resolve trusted audit scope: %v\n", err)
+		return 1
+	}
+	defer handle.Close()
+	instanceID, err := randomNonZeroUint64()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "generate audit instance ID: %v\n", err)
+		return 1
+	}
+	scopeCookie, err := randomNonZeroUint64()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "generate audit scope cookie: %v\n", err)
+		return 1
+	}
+	cgroupPath = handle.Path
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -137,6 +172,12 @@ func runAudit(cfg config.Config, objectPath, cgroupPath string) int {
 	err = bpfmgr.RunAudit(ctx, bpfmgr.AuditOptions{
 		ObjectPath: objectPath,
 		CgroupPath: cgroupPath,
+		OnScopeMapReady: func(scopes bpfmgr.ScopeMap) error {
+			return scopes.Put(handle.ID, scope.Value{
+				InstanceID:  instanceID,
+				ScopeCookie: scopeCookie,
+			})
+		},
 		OnReady: func() {
 			logger.InfoContext(ctx, "kernel audit hooks attached")
 		},
@@ -154,6 +195,19 @@ func runAudit(cfg config.Config, objectPath, cgroupPath string) int {
 
 	logger.ErrorContext(ctx, "kernel audit failed", slog.Any("error", err))
 	return 1
+}
+
+func randomNonZeroUint64() (uint64, error) {
+	var encoded [8]byte
+	for range 8 {
+		if _, err := rand.Read(encoded[:]); err != nil {
+			return 0, err
+		}
+		if value := binary.BigEndian.Uint64(encoded[:]); value != 0 {
+			return value, nil
+		}
+	}
+	return 0, errors.New("random source returned zero repeatedly")
 }
 
 func runDiagnose(ctx context.Context, cfg config.Config) int {
@@ -202,4 +256,5 @@ func printUsage(out *os.File) {
 	fmt.Fprintln(out, "\nCommand flags:")
 	fmt.Fprintln(out, "  audit --bpf-object string   path to compiled AgentShield BPF object")
 	fmt.Fprintln(out, "        --cgroup string      cgroup v2 path for connect4/connect6 audit hooks")
+	fmt.Fprintln(out, "        --scope-cgroup string trusted exact leaf cgroup v2 path to audit")
 }

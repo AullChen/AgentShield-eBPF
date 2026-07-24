@@ -2,19 +2,20 @@
 
 The unified Linux audit loop attaches both syscall-entry tracepoints and emits
 their events through the same ring buffer as JSON schema v2 Lines carrying
-Kernel Event wire schema v2 records.
+Kernel Event wire schema v3 records.
 
-> **Safety warning:** scope filtering is not implemented yet. The probes observe
-> matching syscalls from the entire host, and the JSON output contains raw bounded
-> path/argv fragments that may include credentials. Use this command only in an
-> isolated VM or dedicated test host.
+The probes emit only when the current cgroup has an exact entry in
+`agentshield_scope_map`. Raw bounded path/argv fragments may still contain
+credentials from that sandbox and remain owner-only.
 
 ## Trigger Check
 
 Start the audit loop with a compiled CO-RE object:
 
 ```sh
-sudo ./bin/agentshield audit --bpf-object ./bpf/agentshield.bpf.o
+sudo ./bin/agentshield audit \
+  --bpf-object ./bpf/agentshield.bpf.o \
+  --scope-cgroup /sys/fs/cgroup/agentshield-demo-leaf
 ```
 
 In another terminal, run:
@@ -37,7 +38,7 @@ any data. `kernel_monotonic_ns` is the authoritative monotonic kernel timestamp;
 Unix display time, and calibration error are sampled in Go as described in
 `docs/audit-reliability.md`. JSON schema v2 encodes time fields and `cgroup_id` as decimal strings
 to preserve all 64-bit values in JavaScript clients. The separate
-`wire_schema_version` field identifies the BPF record ABI (currently v2).
+`wire_schema_version` field identifies the BPF record ABI (currently v3).
 Invalid UTF-8 in `comm`, `data`, or an argv slot is Base64-encoded, with that
 field listed as `base64` in the `raw_encoding` object; it is never silently
 replaced with the Unicode replacement character.
@@ -66,7 +67,7 @@ Important semantics:
   file open or process execution succeeded.
 - Up to four arguments are captured. The wire record carries the captured slot
   count so a legal empty-string argument does not hide later arguments.
-- An isolated malformed v2 ring-buffer record is skipped; at most the first
+- An isolated malformed v3 ring-buffer record is skipped; at most the first
   three malformed records are logged. Three consecutive malformed records stop
   the audit loop to expose a likely object/decoder mismatch. Any legacy or
   future wire schema stops immediately rather than being silently

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -36,6 +37,35 @@ func TestEmbeddedSources(t *testing.T) {
 	for path, found := range required {
 		if !found {
 			t.Fatalf("generated binding missing %s", path)
+		}
+	}
+}
+
+func TestEmbeddedBPFRejectsUnregisteredScopesBeforeRingBufferReserve(t *testing.T) {
+	var program string
+	for _, source := range EmbeddedSources() {
+		if strings.HasSuffix(source.Path, "agentshield.bpf.c") {
+			program = source.Contents
+			break
+		}
+	}
+	if program == "" {
+		t.Fatal("embedded BPF program source not found")
+	}
+	for _, function := range []string{
+		"int agentshield_trace_execve",
+		"int agentshield_trace_openat",
+		"agentshield_audit_connect",
+	} {
+		start := strings.Index(program, function)
+		if start < 0 {
+			t.Fatalf("BPF function %q not found", function)
+		}
+		body := program[start:]
+		scopeLookup := strings.Index(body, "agentshield_current_scope(")
+		reserve := strings.Index(body, "agentshield_reserve_event(")
+		if scopeLookup < 0 || reserve < 0 || scopeLookup > reserve {
+			t.Fatalf("%s does not check scope before ring-buffer reserve", function)
 		}
 	}
 }

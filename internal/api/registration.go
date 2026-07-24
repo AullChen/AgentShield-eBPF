@@ -65,6 +65,7 @@ type AgentRun struct {
 	ProfileID    uint32
 	Labels       map[string]string
 	Status       string
+	StatusReason string
 	RegisteredAt time.Time
 	TokenHash    [sha256.Size]byte
 	TokenExpiry  time.Time
@@ -102,6 +103,22 @@ func (store *RunStore) Len() int {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 	return len(store.runs)
+}
+
+func (store *RunStore) FailScope(cgroupID uint64, reason string) (AgentRun, bool) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	for runID, run := range store.runs {
+		if run.CgroupID != cgroupID {
+			continue
+		}
+		run.Status = "failed"
+		run.StatusReason = reason
+		store.runs[runID] = run
+		run.Labels = cloneLabels(run.Labels)
+		return run, true
+	}
+	return AgentRun{}, false
 }
 
 type RegistrationHandler struct {

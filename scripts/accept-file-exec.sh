@@ -33,6 +33,7 @@ summary="$evidence_dir/summary.sanitized.json"
 file_marker="agentshield-day14-file-$run_id"
 exec_marker="agentshield-day14-exec-$run_id"
 fixture="$evidence_dir/$file_marker"
+cgroup_path="/sys/fs/cgroup/agentshield-day14-$run_id"
 audit_pid=
 
 cleanup() {
@@ -40,6 +41,7 @@ cleanup() {
     kill -INT "$audit_pid" 2>/dev/null || true
     wait "$audit_pid" 2>/dev/null || true
   fi
+  rmdir "$cgroup_path" 2>/dev/null || true
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -62,10 +64,11 @@ cp "$manifest_path" "$evidence_dir/object.manifest.json"
 go run ./cmd/bpfcheck \
   --object "$object_path" \
   --verify-manifest "$manifest_path" >"$evidence_dir/object-verification.json"
-go test ./internal/events -run 'TestKernelEventV2WireSize|TestDecodeKernelExecEventV2' -count=1 >"$evidence_dir/abi-test.txt"
+go test ./internal/events -run 'TestKernelEventV3WireSize|TestDecodeKernelExecEventV3' -count=1 >"$evidence_dir/abi-test.txt"
 go build -trimpath -buildvcs=false -o "$binary" ./cmd/agentshield
 
-"$binary" audit --bpf-object "$object_path" >"$events_log" 2>"$runtime_log" &
+mkdir "$cgroup_path"
+"$binary" audit --bpf-object "$object_path" --scope-cgroup "$cgroup_path" >"$events_log" 2>"$runtime_log" &
 audit_pid=$!
 
 ready=false
@@ -87,9 +90,12 @@ if [ "$ready" != true ]; then
 fi
 
 printf 'AgentShield Day 14 fixture\n' >"$fixture"
-cat -- "$fixture" >/dev/null
-long_arg=$(printf 'x%.0s' $(seq 1 96))
-/bin/echo "" "$exec_marker" "$long_arg" >/dev/null
+(
+  echo "$BASHPID" >"$cgroup_path/cgroup.procs"
+  cat -- "$fixture" >/dev/null
+  long_arg=$(printf 'x%.0s' $(seq 1 96))
+  /bin/echo "" "$exec_marker" "$long_arg" >/dev/null
+)
 sleep 1
 
 kill -INT "$audit_pid"
@@ -99,7 +105,8 @@ audit_pid=
 go run ./cmd/auditcheck \
   --input "$events_log" \
   --file-marker "$file_marker" \
-  --exec-marker "$exec_marker" >"$summary"
+  --exec-marker "$exec_marker" \
+  --require-scope-identity >"$summary"
 
 echo "Day 14 acceptance passed. Sanitized summary: $summary"
-echo "Raw host-wide events remain owner-only under $evidence_dir and must not be committed."
+echo "Raw exact-scope events remain owner-only under $evidence_dir and must not be committed."

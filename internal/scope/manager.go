@@ -42,6 +42,8 @@ type Handle struct {
 	ID     uint64
 	Path   string
 	closer io.Closer
+	fd     int
+	hasFD  bool
 }
 
 func (handle *Handle) Close() error {
@@ -59,6 +61,7 @@ type Target struct {
 type Registration struct {
 	CgroupID uint64
 	Path     string
+	RootPID  int
 	Value    Value
 }
 
@@ -144,7 +147,7 @@ func (manager *Manager) Register(ctx context.Context, target Target, value Value
 		return Registration{}, fmt.Errorf("write scope map: %w", err)
 	}
 
-	registration := Registration{CgroupID: handle.ID, Path: handle.Path, Value: value}
+	registration := Registration{CgroupID: handle.ID, Path: handle.Path, RootPID: target.PID, Value: value}
 	manager.active[handle.ID] = activeScope{registration: registration, handle: handle}
 	return registration, nil
 }
@@ -182,4 +185,14 @@ func (manager *Manager) Lookup(cgroupID uint64) (Registration, bool) {
 	defer manager.mu.Unlock()
 	active, exists := manager.active[cgroupID]
 	return active.registration, exists
+}
+
+func (manager *Manager) ActiveIDs() []uint64 {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	ids := make([]uint64, 0, len(manager.active))
+	for id := range manager.active {
+		ids = append(ids, id)
+	}
+	return ids
 }

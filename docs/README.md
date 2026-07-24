@@ -10,6 +10,8 @@ Current notes:
   ownership, and short-lived ingest tokens.
 - `bpf-build.md`: supported CO-RE toolchain, BTF provenance, object manifest,
   and ELF/spec versus kernel-load acceptance boundary.
+- `cgroup-scope-acceptance.md`: exact-leaf positive/host-negative gate,
+  subtree rejection, and escape monitoring.
 - `file-exec-acceptance.md`: reproducible Day 14 Linux kernel load/attach and
   file/exec semantic acceptance gate.
 - `file-exec-audit.md`: current Day 12 file/exec attempt-event semantics and safety limits.

@@ -23,11 +23,15 @@ type acceptanceSummary struct {
 	EmptyArgPreserved          bool            `json:"empty_arg_preserved"`
 	TruncationSeen             bool            `json:"truncation_seen"`
 	NetworkDestinationsMatched map[string]bool `json:"network_destinations_matched,omitempty"`
+	CgroupID                   string          `json:"cgroup_id,omitempty"`
+	InstanceID                 string          `json:"instance_id,omitempty"`
+	ScopeCookie                string          `json:"scope_cookie,omitempty"`
 }
 
 type analysisOptions struct {
 	RequiredDestinations []netip.AddrPort
 	RequireReceiptClocks bool
+	RequireScopeIdentity bool
 }
 
 func main() {
@@ -44,6 +48,7 @@ func run(args []string, out io.Writer) error {
 	var ipv4Destination string
 	var ipv6Destination string
 	var requireReceiptClocks bool
+	var requireScopeIdentity bool
 
 	flags := flag.NewFlagSet("auditcheck", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -53,6 +58,7 @@ func run(args []string, out io.Writer) error {
 	flags.StringVar(&ipv4Destination, "ipv4-destination", "", "optional IPv4 address:port required in a network event")
 	flags.StringVar(&ipv6Destination, "ipv6-destination", "", "optional [IPv6]:port required in a network event")
 	flags.BoolVar(&requireReceiptClocks, "require-receipt-clocks", false, "require calibrated kernel/receipt clock fields")
+	flags.BoolVar(&requireScopeIdentity, "require-scope-identity", false, "require one consistent non-zero cgroup/instance/cookie tuple")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -88,6 +94,7 @@ func run(args []string, out io.Writer) error {
 	summary, err := analyzeWithOptions(input, fileMarker, execMarker, analysisOptions{
 		RequiredDestinations: destinations,
 		RequireReceiptClocks: requireReceiptClocks,
+		RequireScopeIdentity: requireScopeIdentity,
 	})
 	if err != nil {
 		return err
@@ -133,6 +140,21 @@ func analyzeWithOptions(input io.Reader, fileMarker, execMarker string, options 
 			}
 			if event.ServerReceivedMonotonicNS < event.KernelMonotonicNS {
 				return acceptanceSummary{}, fmt.Errorf("line %d has negative ring-buffer receipt latency", line)
+			}
+		}
+		if options.RequireScopeIdentity && event.EventType != events.EventTypeDropNotice {
+			if event.CgroupID == 0 || event.InstanceID == 0 || event.ScopeCookie == 0 {
+				return acceptanceSummary{}, fmt.Errorf("line %d is missing required scope identity", line)
+			}
+			cgroupID := fmt.Sprint(event.CgroupID)
+			instanceID := fmt.Sprint(event.InstanceID)
+			scopeCookie := fmt.Sprint(event.ScopeCookie)
+			if summary.CgroupID == "" {
+				summary.CgroupID = cgroupID
+				summary.InstanceID = instanceID
+				summary.ScopeCookie = scopeCookie
+			} else if summary.CgroupID != cgroupID || summary.InstanceID != instanceID || summary.ScopeCookie != scopeCookie {
+				return acceptanceSummary{}, fmt.Errorf("line %d has inconsistent scope identity", line)
 			}
 		}
 		summary.TotalEvents++

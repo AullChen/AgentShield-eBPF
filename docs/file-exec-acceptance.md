@@ -22,7 +22,7 @@ The command fails unless all of these conditions hold:
 4. `/bin/echo` produces `exec_attempt` with `action_result=none`.
 5. A legal empty argument is preserved before a marker argument.
 6. A long argument produces `truncated=true`.
-7. The C/Go wire-v2 size/offset and exec decode tests pass.
+7. The C/Go wire-v3 size/offset, scope identity, and exec decode tests pass.
 8. The supplied object hash and parsed program/map specifications match the
    supplied build manifest.
 
@@ -31,8 +31,7 @@ including for concurrent runs. The directory contains the environment,
 object/manifest hashes, object/manifest verification output, ABI test output,
 runtime log, raw JSON Lines, and a sanitized summary.
 Only the sanitized summary is suitable for review. Raw output is intentionally
-under ignored `tmp/` because the current unscoped probes may capture unrelated
-host paths and argv values.
+under ignored `tmp/` because scoped paths and argv values may still be sensitive.
 
 `LoadCollectionSpec` or `make verify-bpf-object` alone does not satisfy this
 gate. If verifier or attachment fails, preserve `runtime.log`, record the exact

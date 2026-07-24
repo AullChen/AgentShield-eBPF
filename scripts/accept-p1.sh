@@ -63,6 +63,8 @@ coverage="$evidence_dir/coverage-matrix.sanitized.md"
 file_marker="agentshield-day17-file-$run_id"
 exec_marker="agentshield-day17-exec-$run_id"
 fixture="$evidence_dir/$file_marker"
+host_marker="agentshield-host-negative-$run_id"
+host_fixture="$evidence_dir/$host_marker"
 audit_pid=
 
 cleanup() {
@@ -129,16 +131,10 @@ wait_for_ready() {
 }
 
 network_attach_status=PASS
-start_audit --cgroup "$cgroup_path"
+start_audit --scope-cgroup "$cgroup_path"
 if ! wait_for_ready; then
-  network_attach_status=ROADMAP
-  mv "$runtime_log" "$evidence_dir/network-attach.log"
-  mv "$events_log" "$evidence_dir/network-attach-events.raw.jsonl"
-  start_audit
-  if ! wait_for_ready; then
-    echo "file/exec kernel load or tracepoint attachment failed; see $runtime_log" >&2
-    exit 1
-  fi
+  echo "exact-scope kernel load or attachment failed; see $runtime_log" >&2
+  exit 1
 fi
 
 printf 'AgentShield P1 fixture\n' >"$fixture"
@@ -151,11 +147,26 @@ printf 'AgentShield P1 fixture\n' >"$fixture"
     http://127.0.0.1:18080/agentshield-day17-ipv4 \
     'http://[::1]:18080/agentshield-day17-ipv6'
 )
+printf 'AgentShield host negative fixture\n' >"$host_fixture"
+cat -- "$host_fixture" >/dev/null
+/bin/echo "$host_marker" >/dev/null
+./scripts/test-network.sh \
+  http://127.0.0.1:18081/agentshield-host-negative \
+  'http://[::1]:18081/agentshield-host-negative'
 sleep 1
 
 kill -TERM "$audit_pid"
 wait "$audit_pid"
 audit_pid=
+
+if grep -F "$host_marker" "$events_log" >/dev/null; then
+  echo "unregistered host file/exec activity leaked into exact-scope events" >&2
+  exit 1
+fi
+if grep -E '"dst_port":18081([,}])' "$events_log" >/dev/null; then
+  echo "unregistered host network activity leaked into exact-scope events" >&2
+  exit 1
+fi
 
 ipv4_status=$network_attach_status
 if [ "$network_attach_status" != PASS ]; then
@@ -166,8 +177,10 @@ if [ "$ipv4_status" = PASS ] && ! go run ./cmd/auditcheck \
   --file-marker "$file_marker" \
   --exec-marker "$exec_marker" \
   --ipv4-destination 127.0.0.1:18080 \
-  --require-receipt-clocks >/dev/null 2>"$strict_error"; then
-  ipv4_status=ROADMAP
+  --require-receipt-clocks \
+  --require-scope-identity >/dev/null 2>"$strict_error"; then
+  echo "IPv4 exact-scope acceptance failed; see $strict_error" >&2
+  exit 1
 fi
 ipv6_status=$network_attach_status
 if [ "$ipv6_status" = PASS ] && ! go run ./cmd/auditcheck \
@@ -175,8 +188,10 @@ if [ "$ipv6_status" = PASS ] && ! go run ./cmd/auditcheck \
   --file-marker "$file_marker" \
   --exec-marker "$exec_marker" \
   --ipv6-destination '[::1]:18080' \
-  --require-receipt-clocks >/dev/null 2>>"$strict_error"; then
-  ipv6_status=ROADMAP
+  --require-receipt-clocks \
+  --require-scope-identity >/dev/null 2>>"$strict_error"; then
+  echo "IPv6 exact-scope acceptance failed; see $strict_error" >&2
+  exit 1
 fi
 
 stable_types=2
@@ -188,13 +203,15 @@ if [ "$ipv4_status" = PASS ] && [ "$ipv6_status" = PASS ]; then
     --exec-marker "$exec_marker" \
     --ipv4-destination 127.0.0.1:18080 \
     --ipv6-destination '[::1]:18080' \
-    --require-receipt-clocks >"$summary"
+    --require-receipt-clocks \
+    --require-scope-identity >"$summary"
 else
   go run ./cmd/auditcheck \
     --input "$events_log" \
     --file-marker "$file_marker" \
     --exec-marker "$exec_marker" \
-    --require-receipt-clocks >"$summary"
+    --require-receipt-clocks \
+    --require-scope-identity >"$summary"
 fi
 
 cat >"$coverage" <<EOF
@@ -216,4 +233,4 @@ EOF
 
 echo "P1 pre-M1 acceptance passed with $stable_types/3 stable event classes."
 echo "Sanitized coverage: $coverage"
-echo "Raw host-wide file/exec events remain owner-only and must not be committed."
+echo "Raw exact-scope events remain owner-only and must not be committed."

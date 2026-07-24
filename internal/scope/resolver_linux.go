@@ -82,7 +82,7 @@ func (resolver *LinuxResolver) ResolvePath(path string) (*Handle, error) {
 		_ = file.Close()
 		return nil, errors.New("opened cgroup has zero inode identity")
 	}
-	return &Handle{ID: stat.Ino, Path: resolved, closer: file}, nil
+	return &Handle{ID: stat.Ino, Path: resolved, closer: file, fd: fd, hasFD: true}, nil
 }
 
 func (resolver *LinuxResolver) ResolvePID(pid int) (*Handle, error) {

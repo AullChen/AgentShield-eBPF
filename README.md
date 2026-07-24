@@ -2,7 +2,7 @@
 
 AgentShield-eBPF is a Linux eBPF based runtime security and audit system for AI Agent sandboxes.
 
-The project is currently in early MVP development. The repository already contains the Go control-plane skeleton, file and process audit tracepoints, a unified ring-buffer consumer, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard scaffold. Kernel load/attach acceptance, cgroup scoping, policy enforcement, event correlation, and live dashboard streaming are still under development.
+The project is currently in early MVP development. The repository contains the Go control-plane skeleton, exact-leaf cgroup filtering and registration, file/process/network audit probes, a minimal demo sandbox, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard scaffold. Kernel load/attach evidence, policy enforcement, event correlation, and live dashboard streaming are still under development.
 
 ## Current Status
 
@@ -19,8 +19,8 @@ The project is currently in early MVP development. The repository already contai
 | Runtime BPF loading | Started | `agentshield audit` loads a compiled BPF object and attaches file/exec probes on Linux. |
 | Ring buffer consumption | Started | `audit` decodes file, process, and network ring-buffer events and emits Go-synthesized loss notices as JSON schema v2 Lines. |
 | Audit reliability | Source complete, Linux saturation pending | Per-type per-CPU reserve failures become Go-synthesized `drop_notice` records; SIGINT/SIGTERM close and join the reader/monitor path. |
-| Kernel Event v2 | Started | Go-side decoding validates schema/size, preserves JavaScript-unsafe `uint64` values as JSON strings, adds same-host monotonic/realtime receipt calibration, bounds consecutive malformed records, and rejects incompatible wire schemas. |
-| cgroup scoping | Not implemented | Planned after the first audit loop. |
+| Kernel Event v3 | Started | Go-side decoding validates schema/size, preserves all 64-bit scope/time identities as JSON strings, adds receipt calibration, and rejects incompatible wire schemas. |
+| cgroup scoping | Source complete, Linux evidence pending | Scope-map lookup precedes ring-buffer reserve; trusted registration rejects duplicate/subtree bindings and monitors child cgroups and member escape. |
 | Policy engine | Not implemented | Planned after cgroup-scoped event capture. |
 
 ## MVP Direction
@@ -45,7 +45,7 @@ cmd/bpfgen/          Local BPF source binding generator
 internal/            Go internal packages
 dashboard/           Next.js dashboard scaffold
 sdk/python/          Future Python Agent adapter SDK
-sandbox/             Future demo Agent sandbox and attack scenarios
+sandbox/             Minimal hardened demo Agent and repository-owned fake secret
 deploy/              Future local deployment files
 configs/             Runtime and policy configuration examples
 docs/                Public project documentation
@@ -106,16 +106,21 @@ make bpf-object
 This produces ignored object and manifest artifacts; it does not load the
 object into the kernel. Then start the unified audit loop with:
 
-> **Safety warning:** the current probes are not cgroup-filtered. They observe matching
-> syscalls from the whole host and print raw path/argv fragments that may contain
-> secrets. Run this prototype only in an isolated VM or dedicated test host, never on
-> a shared or production machine.
+> **Safety warning:** raw scoped events still contain bounded path/argv fragments
+> that may contain secrets. Use only a trusted exact leaf cgroup and retain raw
+> evidence as owner-only data.
 
 ```sh
-go run ./cmd/agentshield audit --bpf-object ./bpf/agentshield.bpf.o
+go run ./cmd/agentshield audit \
+  --bpf-object ./bpf/agentshield.bpf.o \
+  --scope-cgroup /sys/fs/cgroup/agentshield-demo-leaf
 ```
 
-This command attaches `syscalls/sys_enter_openat` and `syscalls/sys_enter_execve`, reads `agentshield_events`, and prints one JSON object per event. Add `--cgroup /sys/fs/cgroup/PATH` to attach the audit-only `connect4/connect6` programs to an explicit cgroup. Run `./scripts/test-audit.sh` or `./scripts/test-network.sh` in the appropriate test context to trigger events. See [docs/file-exec-audit.md](docs/file-exec-audit.md) and [docs/network-audit.md](docs/network-audit.md) for field semantics and current limitations. On non-Linux hosts the audit command exits with an unsupported-platform error.
+This command registers the trusted leaf in `agentshield_scope_map`, attaches the
+file/exec tracepoints and connect hooks, then prints only matching events. A map
+miss returns before ring-buffer reservation. See
+[docs/cgroup-scope-acceptance.md](docs/cgroup-scope-acceptance.md) for the
+boundary and current evidence status.
 
 The strict Day 14 verifier/load/attach and edge-case gate is
 `sudo ./scripts/accept-file-exec.sh`; see
@@ -168,11 +173,14 @@ The current BPF program includes:
 - `tracepoint/syscalls/sys_enter_execve`
 - `cgroup/connect4` and `cgroup/connect6` when an explicit cgroup path is supplied
 - Event types: `AGENTSHIELD_EVENT_FILE_OPEN`, `AGENTSHIELD_EVENT_EXEC_ATTEMPT`, and `AGENTSHIELD_EVENT_NET_CONNECT`
-- Captured fields: pid, tgid, ppid, uid, comm, filename or executable, bounded argv, flags, timestamp, cgroup id placeholder
-- Go consumer: `agentshield audit --bpf-object ./bpf/agentshield.bpf.o`
-- Go event model: `internal/events.KernelEvent` with wire schema v2 and JSON schema v2
+- Captured fields: pid, tgid, ppid, uid, comm, filename or executable, bounded argv, flags, timestamp, and binary cgroup/instance/cookie scope identity
+- Go consumer: `agentshield audit --bpf-object ... --scope-cgroup ...`
+- Go event model: `internal/events.KernelEvent` with wire schema v3 and JSON schema v2
 
-Day 8 intentionally does not filter by cgroup or PID yet; events record the observed cgroup ID, but it is not a security boundary until the later scope-filtering milestone. `kernel_monotonic_ns` is the authoritative kernel event time, while Go adds same-host receipt monotonic/Unix fields and a calibration error bound; `timestamp_ns` remains a deprecated alias. JSON schema v2 encodes time fields and `cgroup_id` as decimal strings so a future JavaScript client does not lose 64-bit precision; `wire_schema_version` independently identifies the BPF ABI (currently v2). Legacy v1 objects are rejected because the corrected attempt-result and argv-count semantics are not compatible. See [docs/audit-reliability.md](docs/audit-reliability.md).
+`kernel_monotonic_ns` is the authoritative kernel event time, while Go adds
+same-host receipt monotonic/Unix fields and a calibration error bound. JSON
+schema v2 encodes time, cgroup ID, instance ID, and scope cookie as decimal
+strings; `wire_schema_version` independently identifies the v3 BPF ABI.
 
 The local syntax check uses a bootstrap stub:
 
@@ -246,7 +254,7 @@ Subsequent work:
 
 - Obtain supported-Linux connect4/connect6 runtime evidence and later extend
   network coverage beyond TCP IPv4/IPv6
-- Add cgroup filtering after the first audit loop is stable; PID-only scope remains a diagnostic Roadmap item
+- Obtain supported-Linux exact-scope and Docker sandbox runtime evidence
 
 ## Limitations
 
@@ -254,9 +262,9 @@ Subsequent work:
 - The Linux unified `audit` runtime path is implemented but not end-to-end validated in this Windows workspace.
 - The tracked P1 coverage matrix is a pending source matrix, not Linux runtime evidence; see [docs/p1-coverage.md](docs/p1-coverage.md).
 - Current file/exec records are syscall-entry attempts; they do not prove success or file contents read.
-- Current audit output is host-wide and may contain sensitive path/argv fragments.
+- Current exact-scope audit output may still contain sensitive path/argv fragments from the registered sandbox.
 - The project does not yet enforce policies or block behavior.
-- The project does not yet isolate Agent runs by cgroup.
+- The source enforces exact-leaf cgroup capture, but supported-Linux runtime evidence is still pending.
 - The dashboard currently uses mock data.
 - The generated Go source binding embeds source text only; `make bpf-object` is the separate real ELF build.
 
