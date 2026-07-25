@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -153,7 +154,7 @@ func inspectObject(objectPath string, metadata map[string]string) (objectManifes
 	if err != nil {
 		return objectManifest{}, fmt.Errorf("read BPF object %q: %w", objectPath, err)
 	}
-	spec, err := ebpf.LoadCollectionSpec(objectPath)
+	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(contents))
 	if err != nil {
 		return objectManifest{}, fmt.Errorf("parse BPF ELF/spec %q: %w", objectPath, err)
 	}
