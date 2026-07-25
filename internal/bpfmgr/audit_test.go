@@ -45,6 +45,8 @@ func TestDecodeAuditEvent(t *testing.T) {
 		ActionResult:  events.ActionResultNone,
 		TimestampNS:   42,
 		CgroupID:      77,
+		InstanceID:    88,
+		ScopeCookie:   99,
 		PID:           1001,
 		TGID:          1001,
 		UID:           501,
@@ -447,6 +449,15 @@ func (w errorWriter) Write([]byte) (int, error) {
 func encodeAuditSample(t *testing.T, raw rawAuditEventV2) []byte {
 	t.Helper()
 
+	if raw.CgroupID == 0 {
+		raw.CgroupID = 1
+	}
+	if raw.InstanceID == 0 {
+		raw.InstanceID = 2
+	}
+	if raw.ScopeCookie == 0 {
+		raw.ScopeCookie = 3
+	}
 	var buf bytes.Buffer
 	if err := binary.Write(&buf, binary.LittleEndian, raw); err != nil {
 		t.Fatalf("binary.Write: %v", err)

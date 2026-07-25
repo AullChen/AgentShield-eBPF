@@ -155,6 +155,9 @@ func DecodeKernelEvent(sample []byte) (KernelEvent, error) {
 	if err := binary.Read(bytes.NewReader(sample), binary.LittleEndian, &raw); err != nil {
 		return KernelEvent{}, fmt.Errorf("%w: decode: %v", ErrMalformedKernelEvent, err)
 	}
+	if raw.CgroupID == 0 || raw.InstanceID == 0 || raw.ScopeCookie == 0 {
+		return KernelEvent{}, fmt.Errorf("%w: missing non-zero cgroup/instance/cookie scope identity", ErrMalformedKernelEvent)
+	}
 
 	event := KernelEvent{
 		JSONSchemaVersion: JSONSchemaVersion,

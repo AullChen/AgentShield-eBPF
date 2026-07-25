@@ -348,6 +348,48 @@ func TestDecodeKernelEventRejectsLegacyWireSchema(t *testing.T) {
 	}
 }
 
+func TestDecodeKernelEventRejectsMissingScopeIdentity(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  rawKernelEventV3
+	}{
+		{
+			name: "cgroup",
+			raw: rawKernelEventV3{
+				SchemaVersion: SchemaVersion,
+				InstanceID:    2,
+				ScopeCookie:   3,
+			},
+		},
+		{
+			name: "instance",
+			raw: rawKernelEventV3{
+				SchemaVersion: SchemaVersion,
+				CgroupID:      1,
+				ScopeCookie:   3,
+			},
+		},
+		{
+			name: "cookie",
+			raw: rawKernelEventV3{
+				SchemaVersion: SchemaVersion,
+				CgroupID:      1,
+				InstanceID:    2,
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var buffer bytes.Buffer
+			if err := binary.Write(&buffer, binary.LittleEndian, test.raw); err != nil {
+				t.Fatalf("binary.Write: %v", err)
+			}
+			if _, err := DecodeKernelEvent(buffer.Bytes()); !errors.Is(err, ErrMalformedKernelEvent) {
+				t.Fatalf("DecodeKernelEvent error = %v, want ErrMalformedKernelEvent", err)
+			}
+		})
+	}
+}
+
 func TestDecodeKernelEventRejectsLargerFutureSchema(t *testing.T) {
 	sample := make([]byte, KernelEventV3Size()+16)
 	binary.LittleEndian.PutUint16(sample, SchemaVersion+1)
@@ -432,6 +474,15 @@ func decodeRawForTest(t *testing.T, raw rawKernelEventV3) KernelEvent {
 func decodeRawBytesForTest(t *testing.T, raw rawKernelEventV3) (KernelEvent, error) {
 	t.Helper()
 
+	if raw.CgroupID == 0 {
+		raw.CgroupID = 1
+	}
+	if raw.InstanceID == 0 {
+		raw.InstanceID = 2
+	}
+	if raw.ScopeCookie == 0 {
+		raw.ScopeCookie = 3
+	}
 	var buf bytes.Buffer
 	if err := binary.Write(&buf, binary.LittleEndian, raw); err != nil {
 		t.Fatalf("binary.Write: %v", err)
