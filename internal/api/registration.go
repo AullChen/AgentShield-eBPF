@@ -72,12 +72,18 @@ type AgentRun struct {
 }
 
 type RunStore struct {
-	mu   sync.RWMutex
-	runs map[string]AgentRun
+	mu             sync.RWMutex
+	runs           map[string]AgentRun
+	activeByCgroup map[uint64]string
+	latestByCgroup map[uint64]string
 }
 
 func NewRunStore() *RunStore {
-	return &RunStore{runs: make(map[string]AgentRun)}
+	return &RunStore{
+		runs:           make(map[string]AgentRun),
+		activeByCgroup: make(map[uint64]string),
+		latestByCgroup: make(map[uint64]string),
+	}
 }
 
 func (store *RunStore) Add(run AgentRun) error {
@@ -86,6 +92,13 @@ func (store *RunStore) Add(run AgentRun) error {
 	if _, exists := store.runs[run.RunID]; exists {
 		return errors.New("run ID already exists")
 	}
+	if run.Status == "active" {
+		if _, exists := store.activeByCgroup[run.CgroupID]; exists {
+			return errors.New("active run already exists for cgroup")
+		}
+		store.activeByCgroup[run.CgroupID] = run.RunID
+	}
+	store.latestByCgroup[run.CgroupID] = run.RunID
 	run.Labels = cloneLabels(run.Labels)
 	store.runs[run.RunID] = run
 	return nil
@@ -108,21 +121,23 @@ func (store *RunStore) Len() int {
 func (store *RunStore) FailScope(cgroupID uint64, reason string) (AgentRun, bool, bool) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	for runID, run := range store.runs {
-		if run.CgroupID != cgroupID {
-			continue
+	runID, exists := store.activeByCgroup[cgroupID]
+	if !exists {
+		runID, exists = store.latestByCgroup[cgroupID]
+		if !exists {
+			return AgentRun{}, false, false
 		}
-		if run.Status != "active" {
-			run.Labels = cloneLabels(run.Labels)
-			return run, false, true
-		}
-		run.Status = "failed"
-		run.StatusReason = reason
-		store.runs[runID] = run
+		run := store.runs[runID]
 		run.Labels = cloneLabels(run.Labels)
-		return run, true, true
+		return run, false, true
 	}
-	return AgentRun{}, false, false
+	run := store.runs[runID]
+	run.Status = "failed"
+	run.StatusReason = reason
+	store.runs[runID] = run
+	delete(store.activeByCgroup, cgroupID)
+	run.Labels = cloneLabels(run.Labels)
+	return run, true, true
 }
 
 type RegistrationHandler struct {

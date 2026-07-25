@@ -238,6 +238,36 @@ func TestVerifyIngestTokenRejectsFailedRun(t *testing.T) {
 	}
 }
 
+func TestFailScopeTargetsActiveRunWhenCgroupIsReused(t *testing.T) {
+	store := NewRunStore()
+	if err := store.Add(AgentRun{
+		RunID:    "old-run",
+		CgroupID: 42,
+		Status:   "failed",
+	}); err != nil {
+		t.Fatalf("add old Run: %v", err)
+	}
+	if err := store.Add(AgentRun{
+		RunID:    "active-run",
+		CgroupID: 42,
+		Status:   "active",
+	}); err != nil {
+		t.Fatalf("add active Run: %v", err)
+	}
+
+	run, transitioned, exists := store.FailScope(42, scope.ViolationMemberEscape)
+	if !exists || !transitioned {
+		t.Fatalf("FailScope() = exists %v, transitioned %v; want true, true", exists, transitioned)
+	}
+	if run.RunID != "active-run" {
+		t.Fatalf("failed Run ID = %q, want current active Run", run.RunID)
+	}
+	active, _ := store.Get("active-run")
+	if active.Status != "failed" {
+		t.Fatalf("active Run status = %q, want failed", active.Status)
+	}
+}
+
 func postJSON(t *testing.T, handler http.Handler, input any) *httptest.ResponseRecorder {
 	t.Helper()
 	payload, err := json.Marshal(input)
