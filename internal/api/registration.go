@@ -313,8 +313,8 @@ func (handler *RegistrationHandler) VerifyIngestToken(token string) (AgentRun, e
 	if len(fields) != 3 {
 		return AgentRun{}, errors.New("invalid ingest token")
 	}
-	expiryUnix, err := strconv.ParseInt(fields[1], 10, 64)
-	if err != nil || !handler.now().Before(time.Unix(expiryUnix, 0)) {
+	expiryUnixNano, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil || !handler.now().Before(time.Unix(0, expiryUnixNano)) {
 		return AgentRun{}, errors.New("expired ingest token")
 	}
 	run, exists := handler.store.Get(fields[0])
@@ -329,7 +329,7 @@ func (handler *RegistrationHandler) signToken(runID string, expiry time.Time) (s
 	if err != nil {
 		return "", err
 	}
-	payload := []byte(runID + "\n" + strconv.FormatInt(expiry.Unix(), 10) + "\n" + nonce)
+	payload := []byte(runID + "\n" + strconv.FormatInt(expiry.UnixNano(), 10) + "\n" + nonce)
 	mac := hmac.New(sha256.New, handler.signingKey[:])
 	_, _ = mac.Write(payload)
 	return base64.RawURLEncoding.EncodeToString(payload) + "." +

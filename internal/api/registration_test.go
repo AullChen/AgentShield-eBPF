@@ -186,6 +186,33 @@ func TestVerifyIngestTokenRejectsTamperingAndExpiry(t *testing.T) {
 	}
 }
 
+func TestVerifyIngestTokenHonorsSubsecondExpiry(t *testing.T) {
+	scopeMap := &testScopeMap{}
+	manager, _ := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{"/agent": 1}}, testProbe{})
+	now := time.Date(2026, 7, 25, 12, 0, 0, 900_000_000, time.UTC)
+	handler, err := NewRegistrationHandler(manager, NewRunStore(), RegistrationOptions{
+		Now:      func() time.Time { return now },
+		TokenTTL: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewRegistrationHandler: %v", err)
+	}
+	response := postJSON(t, handler, map[string]any{"agent_name": "agent", "cgroup_path": "/agent"})
+	var output RegisterResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &output); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	handler.now = func() time.Time { return now.Add(500 * time.Millisecond) }
+	if _, err := handler.VerifyIngestToken(output.IngestToken); err != nil {
+		t.Fatalf("token expired before advertised subsecond deadline: %v", err)
+	}
+	handler.now = func() time.Time { return now.Add(time.Second) }
+	if _, err := handler.VerifyIngestToken(output.IngestToken); err == nil {
+		t.Fatal("token remained valid at its advertised deadline")
+	}
+}
+
 func postJSON(t *testing.T, handler http.Handler, input any) *httptest.ResponseRecorder {
 	t.Helper()
 	payload, err := json.Marshal(input)
