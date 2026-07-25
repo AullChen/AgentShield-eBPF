@@ -105,20 +105,24 @@ func (store *RunStore) Len() int {
 	return len(store.runs)
 }
 
-func (store *RunStore) FailScope(cgroupID uint64, reason string) (AgentRun, bool) {
+func (store *RunStore) FailScope(cgroupID uint64, reason string) (AgentRun, bool, bool) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	for runID, run := range store.runs {
 		if run.CgroupID != cgroupID {
 			continue
 		}
+		if run.Status != "active" {
+			run.Labels = cloneLabels(run.Labels)
+			return run, false, true
+		}
 		run.Status = "failed"
 		run.StatusReason = reason
 		store.runs[runID] = run
 		run.Labels = cloneLabels(run.Labels)
-		return run, true
+		return run, true, true
 	}
-	return AgentRun{}, false
+	return AgentRun{}, false, false
 }
 
 type RegistrationHandler struct {

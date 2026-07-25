@@ -71,4 +71,17 @@ func TestMonitorScopesEmitsViolationAndFailsRun(t *testing.T) {
 	if run.Status != "failed" || run.StatusReason == "" {
 		t.Fatalf("run status = %q/%q, want failed with reason", run.Status, run.StatusReason)
 	}
+
+	if err := MonitorScopesOnce(manager, monitorInspector{state: scope.State{
+		ChildCgroups: []string{registration.Path + "/child"},
+		RootPIDPath:  "/escaped",
+	}}, store, time.Date(2026, 7, 24, 13, 0, 1, 0, time.UTC), func(event ScopeViolationEvent) error {
+		events = append(events, event)
+		return nil
+	}); err != nil {
+		t.Fatalf("second MonitorScopesOnce: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events after repeated observation = %d, want no duplicates", len(events))
+	}
 }

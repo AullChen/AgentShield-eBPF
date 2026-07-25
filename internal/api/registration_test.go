@@ -229,7 +229,7 @@ func TestVerifyIngestTokenRejectsFailedRun(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &output); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if _, exists := store.FailScope(1, scope.ViolationMemberEscape); !exists {
+	if _, transitioned, exists := store.FailScope(1, scope.ViolationMemberEscape); !exists || !transitioned {
 		t.Fatal("registered Run was not found by cgroup ID")
 	}
 

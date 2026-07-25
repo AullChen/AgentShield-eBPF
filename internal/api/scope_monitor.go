@@ -28,11 +28,17 @@ func MonitorScopesOnce(manager *scope.Manager, inspector scope.Inspector, store 
 		if err != nil {
 			return err
 		}
+		if len(violations) == 0 {
+			continue
+		}
+		run, transitioned, exists := store.FailScope(cgroupID, violations[0].Reason)
+		if !exists {
+			return fmt.Errorf("active cgroup %d has no Agent Run", cgroupID)
+		}
+		if !transitioned {
+			continue
+		}
 		for _, violation := range violations {
-			run, exists := store.FailScope(cgroupID, violation.Reason)
-			if !exists {
-				return fmt.Errorf("active cgroup %d has no Agent Run", cgroupID)
-			}
 			event := ScopeViolationEvent{
 				EventType:   "scope_violation",
 				RunID:       run.RunID,
