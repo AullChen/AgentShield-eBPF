@@ -213,6 +213,31 @@ func TestVerifyIngestTokenHonorsSubsecondExpiry(t *testing.T) {
 	}
 }
 
+func TestVerifyIngestTokenRejectsFailedRun(t *testing.T) {
+	scopeMap := &testScopeMap{}
+	manager, _ := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{"/agent": 1}}, testProbe{})
+	store := NewRunStore()
+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
+	handler, err := NewRegistrationHandler(manager, store, RegistrationOptions{
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("NewRegistrationHandler: %v", err)
+	}
+	response := postJSON(t, handler, map[string]any{"agent_name": "agent", "cgroup_path": "/agent"})
+	var output RegisterResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &output); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if _, exists := store.FailScope(1, scope.ViolationMemberEscape); !exists {
+		t.Fatal("registered Run was not found by cgroup ID")
+	}
+
+	if _, err := handler.VerifyIngestToken(output.IngestToken); err == nil {
+		t.Fatal("failed Run retained ingest access")
+	}
+}
+
 func postJSON(t *testing.T, handler http.Handler, input any) *httptest.ResponseRecorder {
 	t.Helper()
 	payload, err := json.Marshal(input)

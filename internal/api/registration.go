@@ -321,6 +321,9 @@ func (handler *RegistrationHandler) VerifyIngestToken(token string) (AgentRun, e
 	if !exists || !hmac.Equal(run.TokenHash[:], sha256Sum(token)) {
 		return AgentRun{}, errors.New("invalid ingest token")
 	}
+	if run.Status != "active" || !handler.now().Before(run.TokenExpiry) {
+		return AgentRun{}, errors.New("inactive or expired ingest token")
+	}
 	return run, nil
 }
 
