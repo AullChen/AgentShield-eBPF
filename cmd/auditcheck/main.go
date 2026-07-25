@@ -134,6 +134,14 @@ func analyzeWithOptions(input io.Reader, fileMarker, execMarker string, options 
 		if event.JSONSchemaVersion != events.JSONSchemaVersion || event.SchemaVersion != events.WireSchemaVersion {
 			return acceptanceSummary{}, fmt.Errorf("line %d has incompatible JSON/wire schema %d/%d", line, event.JSONSchemaVersion, event.SchemaVersion)
 		}
+		if event.EventType == events.EventTypeDropNotice && event.DroppedCount > 0 {
+			return acceptanceSummary{}, fmt.Errorf(
+				"line %d reports %d dropped %s events; acceptance evidence is incomplete",
+				line,
+				event.DroppedCount,
+				event.DroppedEventTypeName,
+			)
+		}
 		if options.RequireReceiptClocks && event.EventType != events.EventTypeDropNotice {
 			if event.KernelMonotonicNS == 0 || event.ServerReceivedMonotonicNS == 0 || event.ServerReceivedUnixNS == 0 {
 				return acceptanceSummary{}, fmt.Errorf("line %d is missing required kernel/receipt clock fields", line)

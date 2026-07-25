@@ -118,6 +118,27 @@ func TestAnalyzeRejectsMissingNetworkCoverage(t *testing.T) {
 	}
 }
 
+func TestAnalyzeRejectsDroppedEvents(t *testing.T) {
+	input := encodeEvents(t,
+		events.KernelEvent{
+			JSONSchemaVersion:    events.JSONSchemaVersion,
+			SchemaVersion:        events.WireSchemaVersion,
+			EventType:            events.EventTypeDropNotice,
+			EventTypeName:        "drop_notice",
+			DroppedEventType:     events.EventTypeFileOpen,
+			DroppedEventTypeName: "file_open",
+			DroppedCount:         1,
+		},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeFileOpen, EventTypeName: "file_open", Data: "file"},
+		events.KernelEvent{JSONSchemaVersion: events.JSONSchemaVersion, SchemaVersion: events.WireSchemaVersion, EventType: events.EventTypeExecAttempt, EventTypeName: "exec_attempt", Argv: []string{"", "exec"}, Truncated: true},
+	)
+
+	_, err := analyze(input, "file", "exec")
+	if err == nil || !strings.Contains(err.Error(), "acceptance evidence is incomplete") {
+		t.Fatalf("analyze error = %v, want dropped-event rejection", err)
+	}
+}
+
 func TestAnalyzeRequiresNonNegativeReceiptClocks(t *testing.T) {
 	input := encodeEvents(t, events.KernelEvent{
 		JSONSchemaVersion:         events.JSONSchemaVersion,
