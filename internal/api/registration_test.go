@@ -268,6 +268,21 @@ func TestFailScopeTargetsActiveRunWhenCgroupIsReused(t *testing.T) {
 	}
 }
 
+func TestRunStoreZeroValueCanAdd(t *testing.T) {
+	var store RunStore
+	if err := store.Add(AgentRun{
+		RunID:    "run-1",
+		CgroupID: 42,
+		Status:   "active",
+	}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	run, exists := store.Get("run-1")
+	if !exists || run.Status != "active" {
+		t.Fatalf("Get() = %+v, %v; want active Run", run, exists)
+	}
+}
+
 func postJSON(t *testing.T, handler http.Handler, input any) *httptest.ResponseRecorder {
 	t.Helper()
 	payload, err := json.Marshal(input)

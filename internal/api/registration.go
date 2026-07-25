@@ -89,6 +89,11 @@ func NewRunStore() *RunStore {
 func (store *RunStore) Add(run AgentRun) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	if store.runs == nil {
+		store.runs = make(map[string]AgentRun)
+		store.activeByCgroup = make(map[uint64]string)
+		store.latestByCgroup = make(map[uint64]string)
+	}
 	if _, exists := store.runs[run.RunID]; exists {
 		return errors.New("run ID already exists")
 	}
