@@ -1,8 +1,11 @@
 # Agent Run registration
 
 `POST /api/v1/agents/register` is a management-plane endpoint intended only for
-the trusted supervisor over an owner-only Unix socket. The sandbox and Agent
-must not receive the socket or write access to cgroupfs.
+the trusted supervisor over an owner-only Unix socket. The socket must be
+created inside a non-symlink directory owned by Core's effective UID with
+permissions no broader than `0700`; the socket itself is restricted to `0600`.
+The sandbox and Agent must not receive the directory, socket, or write access
+to cgroupfs.
 
 The request selects exactly one trusted lookup input:
 
