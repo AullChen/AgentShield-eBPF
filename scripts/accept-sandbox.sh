@@ -16,7 +16,7 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
-repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 compose_file="$repo_root/sandbox/compose.yaml"
 fixture="$repo_root/sandbox/fixtures/demo-secrets/example-token"
 evidence_root=${AGENTSHIELD_EVIDENCE_DIR:-"$repo_root/tmp/acceptance/day20"}
