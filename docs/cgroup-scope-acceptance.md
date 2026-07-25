@@ -11,6 +11,7 @@ Automated source and Go tests verify:
 - every captured event carries one consistent non-zero cgroup/instance/cookie tuple;
 - registration rejects duplicate and overlapping bindings;
 - a new child cgroup and root-PID migration produce `scope_violation`;
+- an inspection error fails the run closed with `inspection_failed`;
 - a violation changes the associated Agent Run status to `failed`.
 
 On a supported isolated Ubuntu 24.04 Linux host, run:

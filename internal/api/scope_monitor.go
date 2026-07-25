@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -26,7 +27,15 @@ func MonitorScopesOnce(manager *scope.Manager, inspector scope.Inspector, store 
 	for _, cgroupID := range manager.ActiveIDs() {
 		violations, err := manager.Check(cgroupID, inspector)
 		if err != nil {
-			return err
+			if errors.Is(err, scope.ErrNotActive) {
+				continue
+			}
+			violations = []scope.Violation{{
+				EventType: "scope_violation",
+				CgroupID:  cgroupID,
+				Reason:    scope.ViolationInspectionFailed,
+				Detail:    err.Error(),
+			}}
 		}
 		if len(violations) == 0 {
 			continue

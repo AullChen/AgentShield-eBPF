@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	ViolationChildCgroup  = "child_cgroup"
-	ViolationMemberEscape = "member_escape"
+	ViolationChildCgroup      = "child_cgroup"
+	ViolationMemberEscape     = "member_escape"
+	ViolationInspectionFailed = "inspection_failed"
 )
 
 type State struct {

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -11,10 +12,11 @@ import (
 
 type monitorInspector struct {
 	state scope.State
+	err   error
 }
 
 func (inspector monitorInspector) Inspect(*scope.Handle, int) (scope.State, error) {
-	return inspector.state, nil
+	return inspector.state, inspector.err
 }
 
 func TestMonitorScopesEmitsViolationAndFailsRun(t *testing.T) {
@@ -83,5 +85,52 @@ func TestMonitorScopesEmitsViolationAndFailsRun(t *testing.T) {
 	}
 	if len(events) != 2 {
 		t.Fatalf("events after repeated observation = %d, want no duplicates", len(events))
+	}
+}
+
+func TestMonitorScopesFailsClosedWhenInspectionErrors(t *testing.T) {
+	scopeMap := &testScopeMap{}
+	manager, err := scope.NewManager(scopeMap, testResolver{}, testProbe{})
+	if err != nil {
+		t.Fatalf("scope.NewManager: %v", err)
+	}
+	registration, err := manager.Register(context.Background(), scope.Target{PID: 42}, scope.Value{
+		InstanceID:  1,
+		ScopeCookie: 2,
+	})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	store := NewRunStore()
+	if err := store.Add(AgentRun{
+		RunID:       "run-1",
+		CgroupID:    registration.CgroupID,
+		InstanceID:  registration.Value.InstanceID,
+		ScopeCookie: registration.Value.ScopeCookie,
+		Status:      "active",
+	}); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
+
+	var events []ScopeViolationEvent
+	err = MonitorScopesOnce(
+		manager,
+		monitorInspector{err: errors.New("root PID disappeared")},
+		store,
+		time.Date(2026, 7, 26, 1, 0, 0, 0, time.UTC),
+		func(event ScopeViolationEvent) error {
+			events = append(events, event)
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("MonitorScopesOnce: %v", err)
+	}
+	if len(events) != 1 || events[0].Reason != scope.ViolationInspectionFailed {
+		t.Fatalf("events = %+v, want one inspection failure", events)
+	}
+	run, _ := store.Get("run-1")
+	if run.Status != "failed" || run.StatusReason != scope.ViolationInspectionFailed {
+		t.Fatalf("run status = %q/%q, want failed inspection", run.Status, run.StatusReason)
 	}
 }
