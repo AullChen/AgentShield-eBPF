@@ -121,6 +121,24 @@ func TestManagerRejectsAmbiguousOrIncompleteTargets(t *testing.T) {
 	}
 }
 
+func TestManagerRejectsInvalidScopeValuesBeforeResolution(t *testing.T) {
+	store := &memoryMap{}
+	resolver := fakeResolver{handle: &Handle{ID: 42, Path: "/scope"}}
+	manager := newTestManager(t, store, resolver, fakeProbe{id: 42})
+	for _, value := range []Value{
+		{ScopeCookie: 2},
+		{InstanceID: 1},
+		{InstanceID: 1, ScopeCookie: 2, Reserved: 1},
+	} {
+		if _, err := manager.Register(context.Background(), Target{Path: "/scope"}, value); err == nil {
+			t.Fatalf("Register(%+v) returned nil error", value)
+		}
+	}
+	if len(store.values) != 0 {
+		t.Fatalf("scope map changed after invalid values: %v", store.values)
+	}
+}
+
 func TestManagerRejectsDuplicateCgroup(t *testing.T) {
 	store := &memoryMap{}
 	resolver := fakeResolver{handle: &Handle{ID: 42, Path: "/scope", closer: io.NopCloser(nilReader{})}}

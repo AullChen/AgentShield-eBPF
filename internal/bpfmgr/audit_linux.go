@@ -33,6 +33,12 @@ type ebpfScopeMap struct {
 }
 
 func (store ebpfScopeMap) Put(cgroupID uint64, value scope.Value) error {
+	if cgroupID == 0 {
+		return fmt.Errorf("cgroup ID must be non-zero")
+	}
+	if err := value.Validate(); err != nil {
+		return fmt.Errorf("validate cgroup %d scope value: %w", cgroupID, err)
+	}
 	if err := store.scopes.Update(cgroupID, value, ebpf.UpdateNoExist); err != nil {
 		return fmt.Errorf("update cgroup %d: %w", cgroupID, err)
 	}

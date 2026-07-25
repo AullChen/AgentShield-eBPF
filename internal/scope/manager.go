@@ -24,6 +24,16 @@ type Value struct {
 	Reserved    uint32
 }
 
+func (value Value) Validate() error {
+	if value.InstanceID == 0 || value.ScopeCookie == 0 {
+		return errors.New("instance ID and scope cookie must be non-zero")
+	}
+	if value.Reserved != 0 {
+		return errors.New("reserved scope value field must be zero")
+	}
+	return nil
+}
+
 type Map interface {
 	Put(cgroupID uint64, value Value) error
 	Delete(cgroupID uint64) error
@@ -95,8 +105,8 @@ func (manager *Manager) Register(ctx context.Context, target Target, value Value
 	if (target.Path == "") == (target.PID == 0) {
 		return Registration{}, ErrInvalidTarget
 	}
-	if value.InstanceID == 0 || value.ScopeCookie == 0 {
-		return Registration{}, errors.New("instance ID and scope cookie must be non-zero")
+	if err := value.Validate(); err != nil {
+		return Registration{}, err
 	}
 
 	var (
