@@ -44,6 +44,7 @@ type Handle struct {
 	closer io.Closer
 	fd     int
 	hasFD  bool
+	root   string
 }
 
 func (handle *Handle) Close() error {

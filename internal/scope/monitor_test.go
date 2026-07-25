@@ -66,3 +66,9 @@ func TestCheckAcceptsUnchangedExactLeaf(t *testing.T) {
 		t.Fatal("unregistered host cgroup was considered captured")
 	}
 }
+
+func TestMembershipPathUsesResolverMountRoot(t *testing.T) {
+	if got, want := membershipPath("/mnt/private-cgroup2", "/agent/leaf"), "/mnt/private-cgroup2/agent/leaf"; got != want {
+		t.Fatalf("membershipPath() = %q, want %q", got, want)
+	}
+}

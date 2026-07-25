@@ -33,7 +33,10 @@ func (LinuxInspector) Inspect(handle *Handle, rootPID int) (State, error) {
 		if err != nil {
 			return State{}, err
 		}
-		state.RootPIDPath = filepath.Join(defaultCgroupRoot, strings.TrimPrefix(membership, "/"))
+		if handle.root == "" {
+			return State{}, fmt.Errorf("held cgroup has no trusted mount root")
+		}
+		state.RootPIDPath = membershipPath(handle.root, strings.TrimPrefix(membership, "/"))
 	}
 	return state, nil
 }

@@ -63,3 +63,7 @@ func (manager *Manager) Check(cgroupID uint64, inspector Inspector) ([]Violation
 	}
 	return violations, nil
 }
+
+func membershipPath(root, membership string) string {
+	return path.Join(path.Clean(root), path.Clean("/"+membership))
+}
