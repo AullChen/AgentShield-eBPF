@@ -11,7 +11,8 @@ program or that any hook was attached; those are separate runtime gates.
 - clang/llvm 18.x; other major versions are rejected to avoid silently changing
   the object toolchain.
 - `bpftool` and `/sys/kernel/btf/vmlinux` from the target Linux host.
-- Go 1.25 or newer for the object inspector.
+- Go 1.25.12+, Go 1.26.5+, or a newer supported release for the object
+  inspector.
 
 Install the Ubuntu packages once:
 

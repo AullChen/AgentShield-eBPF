@@ -59,7 +59,7 @@ Local planning documents and proposal drafts are intentionally kept outside Git 
 
 For current development:
 
-- Go 1.25 or newer (use a currently supported Go 1.25/1.26 toolchain)
+- Go 1.25.12+, Go 1.26.5+, or a newer supported release
 - Node.js 24 LTS recommended; Node.js 22 LTS is also supported
 - npm 10 or newer
 - GNU Make
