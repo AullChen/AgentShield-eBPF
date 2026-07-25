@@ -24,6 +24,7 @@ const (
 	RegisterPath    = "/api/v1/agents/register"
 	defaultTokenTTL = 15 * time.Minute
 	maxRequestBytes = 64 << 10
+	maxTokenBytes   = 512
 )
 
 type Registrar interface {
@@ -317,6 +318,9 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 }
 
 func (handler *RegistrationHandler) VerifyIngestToken(token string) (AgentRun, error) {
+	if len(token) == 0 || len(token) > maxTokenBytes {
+		return AgentRun{}, errors.New("invalid ingest token")
+	}
 	encodedPayload, encodedSignature, ok := strings.Cut(token, ".")
 	if !ok {
 		return AgentRun{}, errors.New("invalid ingest token")

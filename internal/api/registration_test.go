@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -182,6 +183,9 @@ func TestVerifyIngestTokenRejectsTamperingAndExpiry(t *testing.T) {
 
 	if _, err := handler.VerifyIngestToken(output.IngestToken + "x"); err == nil {
 		t.Fatal("tampered token was accepted")
+	}
+	if _, err := handler.VerifyIngestToken(strings.Repeat("A", maxTokenBytes+1)); err == nil {
+		t.Fatal("oversized token was accepted")
 	}
 	handler.now = func() time.Time { return now.Add(2 * time.Minute) }
 	if _, err := handler.VerifyIngestToken(output.IngestToken); err == nil {
