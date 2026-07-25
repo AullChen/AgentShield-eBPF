@@ -185,7 +185,11 @@ func monitorDropCounters(ctx context.Context, interval time.Duration, reader dro
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			current, err := reader.Snapshot()
+			if err != nil {
+				return fmt.Errorf("read final drop counters: %w", err)
+			}
+			return emitDeltas(current)
 		case <-ticker.C:
 			current, err := reader.Snapshot()
 			if err != nil {

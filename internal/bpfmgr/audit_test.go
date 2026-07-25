@@ -375,6 +375,45 @@ func TestMonitorDropCountersEmitsInitialNonzeroCounts(t *testing.T) {
 	}
 }
 
+func TestMonitorDropCountersEmitsFinalDeltaOnCancellation(t *testing.T) {
+	reader := &shutdownDropReader{initialized: make(chan struct{})}
+	writes := make(chan []byte, 1)
+	emitter := newAuditEventEmitter(channelWriter{writes: writes})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- monitorDropCounters(ctx, time.Hour, reader, nil, emitter)
+	}()
+
+	select {
+	case <-reader.initialized:
+	case <-time.After(time.Second):
+		t.Fatal("initial drop-counter snapshot did not complete")
+	}
+	cancel()
+
+	select {
+	case payload := <-writes:
+		var event AuditEvent
+		if err := json.Unmarshal(payload, &event); err != nil {
+			t.Fatalf("decode final drop notice: %v", err)
+		}
+		if event.DroppedEventType != events.EventTypeFileOpen || event.DroppedCount != 4 {
+			t.Fatalf("final drop notice = %+v, want file_open delta 4", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("final drop-counter delta was not emitted on cancellation")
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("monitorDropCounters returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("monitorDropCounters did not stop after final snapshot")
+	}
+}
+
 func TestInterruptOnContextDoneStopsWithoutInterrupting(t *testing.T) {
 	interrupted := false
 	stop := interruptOnContextDone(context.Background(), func() {
@@ -421,6 +460,23 @@ type sequenceDropReader struct {
 	mu        sync.Mutex
 	snapshots []map[uint16]uint64
 	next      int
+}
+
+type shutdownDropReader struct {
+	mu          sync.Mutex
+	initialized chan struct{}
+	calls       int
+}
+
+func (reader *shutdownDropReader) Snapshot() (map[uint16]uint64, error) {
+	reader.mu.Lock()
+	defer reader.mu.Unlock()
+	reader.calls++
+	if reader.calls == 1 {
+		close(reader.initialized)
+		return map[uint16]uint64{events.EventTypeFileOpen: 0}, nil
+	}
+	return map[uint16]uint64{events.EventTypeFileOpen: 4}, nil
 }
 
 func (reader *sequenceDropReader) Snapshot() (map[uint16]uint64, error) {
