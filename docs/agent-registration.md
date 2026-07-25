@@ -43,5 +43,6 @@ A successful response uses decimal strings for all 64-bit identities:
 
 Core generates the run and scope identities. The ingest token is HMAC-signed,
 expires after 15 minutes by default, and is stored only as a SHA-256 hash.
+Successful credential responses set `Cache-Control: no-store`.
 Duplicate cgroup IDs and parent/child overlaps with an active binding return
 HTTP 409.

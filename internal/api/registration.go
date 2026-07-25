@@ -311,6 +311,7 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 		TokenExpiry: expiry.Format(time.RFC3339Nano),
 	}
 	response.Header().Set("Content-Type", "application/json")
+	response.Header().Set("Cache-Control", "no-store")
 	response.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(response).Encode(output)
 }

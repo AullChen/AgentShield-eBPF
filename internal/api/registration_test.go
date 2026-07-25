@@ -76,6 +76,9 @@ func TestRegisterCreatesRunAndScopeMapEntry(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
+	if got := response.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
 	var output RegisterResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &output); err != nil {
 		t.Fatalf("decode response: %v", err)
