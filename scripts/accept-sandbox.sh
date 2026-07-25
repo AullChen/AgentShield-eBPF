@@ -45,7 +45,17 @@ metadata="$evidence_dir/host-fixture.txt"
 } >"$metadata"
 
 export AGENTSHIELD_FIXTURE_SHA256=$fixture_hash
-docker compose -f "$compose_file" build
+docker compose -f "$compose_file" build --pull
+image_ref=$(docker compose -f "$compose_file" config --images)
+image_id=$(docker image inspect --format '{{.Id}}' "$image_ref")
+if [ -z "$image_id" ]; then
+  echo "could not determine the built sandbox image ID" >&2
+  exit 1
+fi
+{
+  echo "sandbox_image_ref=$image_ref"
+  echo "sandbox_image_id=$image_id"
+} >>"$metadata"
 docker compose -f "$compose_file" run --rm --no-deps -T agent >"$output"
 
 grep -Fx "AGENTSHIELD_EVIDENCE fixture_origin=repository_read_only_bind" "$output" >/dev/null
