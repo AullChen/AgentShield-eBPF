@@ -255,9 +255,12 @@ func TestFailScopeTargetsActiveRunWhenCgroupIsReused(t *testing.T) {
 		t.Fatalf("add old Run: %v", err)
 	}
 	if err := store.Add(AgentRun{
-		RunID:    "active-run",
-		CgroupID: 42,
-		Status:   "active",
+		RunID:        "active-run",
+		CgroupID:     42,
+		InstanceID:   1,
+		ScopeCookie:  2,
+		Status:       "active",
+		RegisteredAt: time.Now(),
 	}); err != nil {
 		t.Fatalf("add active Run: %v", err)
 	}
@@ -278,9 +281,12 @@ func TestFailScopeTargetsActiveRunWhenCgroupIsReused(t *testing.T) {
 func TestRunStoreZeroValueCanAdd(t *testing.T) {
 	var store RunStore
 	if err := store.Add(AgentRun{
-		RunID:    "run-1",
-		CgroupID: 42,
-		Status:   "active",
+		RunID:        "run-1",
+		CgroupID:     42,
+		InstanceID:   1,
+		ScopeCookie:  2,
+		Status:       "active",
+		RegisteredAt: time.Now(),
 	}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}

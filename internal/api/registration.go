@@ -68,6 +68,7 @@ type AgentRun struct {
 	Status       string
 	StatusReason string
 	RegisteredAt time.Time
+	EndedAt      time.Time
 	TokenHash    [sha256.Size]byte
 	TokenExpiry  time.Time
 }
@@ -77,6 +78,10 @@ type RunStore struct {
 	runs           map[string]AgentRun
 	activeByCgroup map[uint64]string
 	latestByCgroup map[uint64]string
+	liveByIdentity map[ScopeIdentity]string
+	terminating    map[string]struct{}
+	tombstones     map[ScopeIdentity]runTombstone
+	tombstoneSeq   uint64
 }
 
 func NewRunStore() *RunStore {
@@ -84,6 +89,9 @@ func NewRunStore() *RunStore {
 		runs:           make(map[string]AgentRun),
 		activeByCgroup: make(map[uint64]string),
 		latestByCgroup: make(map[uint64]string),
+		liveByIdentity: make(map[ScopeIdentity]string),
+		terminating:    make(map[string]struct{}),
+		tombstones:     make(map[ScopeIdentity]runTombstone),
 	}
 }
 
@@ -94,15 +102,30 @@ func (store *RunStore) Add(run AgentRun) error {
 		store.runs = make(map[string]AgentRun)
 		store.activeByCgroup = make(map[uint64]string)
 		store.latestByCgroup = make(map[uint64]string)
+		store.liveByIdentity = make(map[ScopeIdentity]string)
+		store.terminating = make(map[string]struct{})
+		store.tombstones = make(map[ScopeIdentity]runTombstone)
 	}
 	if _, exists := store.runs[run.RunID]; exists {
 		return errors.New("run ID already exists")
 	}
 	if run.Status == "active" {
+		identity := run.scopeIdentity()
+		if err := identity.Validate(); err != nil {
+			return err
+		}
+		store.pruneTombstonesLocked(run.RegisteredAt)
+		if _, exists := store.liveByIdentity[identity]; exists {
+			return ErrScopeIdentityCollision
+		}
+		if _, exists := store.tombstones[identity]; exists {
+			return ErrScopeIdentityCollision
+		}
 		if _, exists := store.activeByCgroup[run.CgroupID]; exists {
 			return errors.New("active run already exists for cgroup")
 		}
 		store.activeByCgroup[run.CgroupID] = run.RunID
+		store.liveByIdentity[identity] = run.RunID
 	}
 	store.latestByCgroup[run.CgroupID] = run.RunID
 	run.Labels = cloneLabels(run.Labels)
@@ -147,19 +170,23 @@ func (store *RunStore) FailScope(cgroupID uint64, reason string) (AgentRun, bool
 }
 
 type RegistrationHandler struct {
-	registrar  Registrar
-	store      *RunStore
-	random     io.Reader
-	now        func() time.Time
-	tokenTTL   time.Duration
-	instanceID uint64
-	signingKey [sha256.Size]byte
+	registrar           Registrar
+	store               *RunStore
+	random              io.Reader
+	now                 func() time.Time
+	tokenTTL            time.Duration
+	tombstoneTTL        time.Duration
+	tombstoneMaxEntries int
+	instanceID          uint64
+	signingKey          [sha256.Size]byte
 }
 
 type RegistrationOptions struct {
-	Random   io.Reader
-	Now      func() time.Time
-	TokenTTL time.Duration
+	Random              io.Reader
+	Now                 func() time.Time
+	TokenTTL            time.Duration
+	TombstoneTTL        time.Duration
+	TombstoneMaxEntries int
 }
 
 func NewRegistrationHandler(registrar Registrar, store *RunStore, options RegistrationOptions) (*RegistrationHandler, error) {
@@ -181,18 +208,32 @@ func NewRegistrationHandler(registrar Registrar, store *RunStore, options Regist
 	if options.TokenTTL < time.Second || options.TokenTTL > time.Hour {
 		return nil, errors.New("token TTL must be between one second and one hour")
 	}
+	if options.TombstoneTTL == 0 {
+		options.TombstoneTTL = defaultTombstoneTTL
+	}
+	if options.TombstoneTTL < time.Second || options.TombstoneTTL > defaultTombstoneTTL {
+		return nil, fmt.Errorf("tombstone TTL must be between one second and %s", defaultTombstoneTTL)
+	}
+	if options.TombstoneMaxEntries == 0 {
+		options.TombstoneMaxEntries = defaultTombstoneMaxEntries
+	}
+	if options.TombstoneMaxEntries < 1 || options.TombstoneMaxEntries > defaultTombstoneMaxEntries {
+		return nil, fmt.Errorf("tombstone maximum must be between one and %d entries", defaultTombstoneMaxEntries)
+	}
 
 	instanceID, err := randomNonZeroUint64(options.Random)
 	if err != nil {
 		return nil, fmt.Errorf("generate Core instance ID: %w", err)
 	}
 	handler := &RegistrationHandler{
-		registrar:  registrar,
-		store:      store,
-		random:     options.Random,
-		now:        options.Now,
-		tokenTTL:   options.TokenTTL,
-		instanceID: instanceID,
+		registrar:           registrar,
+		store:               store,
+		random:              options.Random,
+		now:                 options.Now,
+		tokenTTL:            options.TokenTTL,
+		tombstoneTTL:        options.TombstoneTTL,
+		tombstoneMaxEntries: options.TombstoneMaxEntries,
+		instanceID:          instanceID,
 	}
 	if _, err := io.ReadFull(options.Random, handler.signingKey[:]); err != nil {
 		return nil, fmt.Errorf("generate ingest signing key: %w", err)
@@ -203,6 +244,7 @@ func NewRegistrationHandler(registrar Registrar, store *RunStore, options Regist
 func (handler *RegistrationHandler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle(RegisterPath, handler)
+	mux.HandleFunc("POST /api/v1/agents/{run_id}/finish", handler.serveFinish)
 	return mux
 }
 

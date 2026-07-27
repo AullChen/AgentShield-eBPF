@@ -46,3 +46,31 @@ expires after 15 minutes by default, and is stored only as a SHA-256 hash.
 Successful credential responses set `Cache-Control: no-store`.
 Duplicate cgroup IDs and parent/child overlaps with an active binding return
 HTTP 409.
+
+## Finishing and delayed events
+
+After the trusted supervisor has confirmed that the task or container exited,
+it calls:
+
+```text
+POST /api/v1/agents/{run_id}/finish
+```
+
+Core deletes the cgroup entry from `scope_map` before changing the Run to
+`finished`, so no later operation in that cgroup is captured under the old
+Run. The operation is idempotent for an already-ended Run. Agent ingest tokens
+cannot call this management endpoint and become invalid as soon as the Run is
+no longer active.
+
+Events already reserved in the ring buffer retain the capture-time
+`{instance_id, scope_cookie}`. Core keeps an exact attribution tombstone for
+10 minutes by default, with a hard default capacity of 10,000 entries; both
+limits may only be configured downward. A matching delayed event remains
+attributed to its ended Run. After expiration or capacity eviction, an
+unmatched identity from the current Core instance is `stale`; identities from
+another Core instance are `unknown`. Neither case falls back to the current
+cgroup owner.
+
+`CleanupExpiredRuns` applies the same map-first cleanup and tombstone behavior
+to active Runs whose server-issued lifetime has expired. The caller should run
+it from the trusted lifecycle scheduler.
