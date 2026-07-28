@@ -37,6 +37,7 @@ type RegisterRequest struct {
 	ContainerID string            `json:"container_id,omitempty"`
 	CgroupPath  string            `json:"cgroup_path,omitempty"`
 	PID         int               `json:"pid,omitempty"`
+	RootPID     int               `json:"root_pid,omitempty"`
 	ProfileID   uint32            `json:"profile_id,omitempty"`
 	ScopeMode   string            `json:"scope_mode,omitempty"`
 	Labels      map[string]string `json:"labels,omitempty"`
@@ -271,8 +272,8 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 		http.Error(response, "agent_name is required and must not exceed 128 bytes", http.StatusBadRequest)
 		return
 	}
-	if (input.CgroupPath == "") == (input.PID == 0) {
-		http.Error(response, "select exactly one trusted cgroup_path or pid", http.StatusBadRequest)
+	if input.CgroupPath == "" || input.PID != 0 || input.RootPID < 0 {
+		http.Error(response, "a trusted cgroup_path is required; pid scope selection is unsupported", http.StatusBadRequest)
 		return
 	}
 	if input.ScopeMode == "" {
@@ -302,8 +303,8 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 	}
 
 	registration, err := handler.registrar.Register(request.Context(), scope.Target{
-		Path: input.CgroupPath,
-		PID:  input.PID,
+		Path:    input.CgroupPath,
+		RootPID: input.RootPID,
 	}, scope.Value{
 		InstanceID:  handler.instanceID,
 		ScopeCookie: cookie,
@@ -311,7 +312,9 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 	})
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, scope.ErrInvalidTarget) {
+		if errors.Is(err, scope.ErrInvalidTarget) ||
+			errors.Is(err, scope.ErrNotLeaf) ||
+			errors.Is(err, scope.ErrProtectedScope) {
 			status = http.StatusBadRequest
 		} else if errors.Is(err, scope.ErrAlreadyActive) || errors.Is(err, scope.ErrOverlap) {
 			status = http.StatusConflict
@@ -329,7 +332,7 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 		ScopeCookie:  cookie,
 		CgroupPath:   registration.Path,
 		ScopeMode:    input.ScopeMode,
-		RootPID:      input.PID,
+		RootPID:      input.RootPID,
 		ProfileID:    input.ProfileID,
 		Labels:       input.Labels,
 		Status:       "active",

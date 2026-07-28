@@ -113,6 +113,48 @@ func TestTombstoneCapacityEvictsOldestIdentity(t *testing.T) {
 	}
 }
 
+func TestSequentialCgroupReuseKeepsRunIdentitiesSeparate(t *testing.T) {
+	scopeMap := &testScopeMap{}
+	manager, err := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{
+		"/agent/reused": 42,
+	}}, testProbe{})
+	if err != nil {
+		t.Fatalf("scope.NewManager: %v", err)
+	}
+	now := time.Date(2026, 7, 28, 10, 0, 0, 0, time.UTC)
+	handler, err := NewRegistrationHandler(manager, NewRunStore(), RegistrationOptions{
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("NewRegistrationHandler: %v", err)
+	}
+
+	first := registerForLifecycleTest(t, handler, "/agent/reused")
+	if response := finishForLifecycleTest(t, handler, first.RunID); response.Code != http.StatusOK {
+		t.Fatalf("finish first status = %d, body = %s", response.Code, response.Body.String())
+	}
+	now = now.Add(time.Second)
+	second := registerForLifecycleTest(t, handler, "/agent/reused")
+	if first.ScopeCookie == second.ScopeCookie {
+		t.Fatal("sequential registrations reused a scope cookie")
+	}
+
+	instanceID, _ := strconv.ParseUint(first.InstanceID, 10, 64)
+	firstCookie, _ := strconv.ParseUint(first.ScopeCookie, 10, 64)
+	secondCookie, _ := strconv.ParseUint(second.ScopeCookie, 10, 64)
+	if got := handler.AttributeEvent(instanceID, firstCookie); got.Status != AttributionExact ||
+		got.RunID != first.RunID || got.RunStatus != "finished" {
+		t.Fatalf("old event attribution = %+v", got)
+	}
+	if got := handler.AttributeEvent(instanceID, secondCookie); got.Status != AttributionExact ||
+		got.RunID != second.RunID || got.RunStatus != "active" {
+		t.Fatalf("new event attribution = %+v", got)
+	}
+	if got := scopeMap.values[42]; got.ScopeCookie != secondCookie {
+		t.Fatalf("reused cgroup map value = %+v, want second cookie %d", got, secondCookie)
+	}
+}
+
 func TestCleanupExpiredRunsRemovesScope(t *testing.T) {
 	scopeMap := &testScopeMap{}
 	manager, err := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{

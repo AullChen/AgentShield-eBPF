@@ -19,7 +19,10 @@ func TestCheckReportsChildCgroupAndMemberEscape(t *testing.T) {
 	manager := newTestManager(t, store, fakeResolver{
 		handle: &Handle{ID: 42, Path: "/sys/fs/cgroup/agent/leaf"},
 	}, fakeProbe{id: 42})
-	if _, err := manager.Register(context.Background(), Target{PID: 100}, Value{
+	if _, err := manager.Register(context.Background(), Target{
+		Path:    "/sys/fs/cgroup/agent/leaf",
+		RootPID: 100,
+	}, Value{
 		InstanceID: 1, ScopeCookie: 2,
 	}); err != nil {
 		t.Fatalf("Register: %v", err)
@@ -48,7 +51,10 @@ func TestCheckAcceptsUnchangedExactLeaf(t *testing.T) {
 	manager := newTestManager(t, store, fakeResolver{
 		handle: &Handle{ID: 42, Path: "/sys/fs/cgroup/agent/leaf"},
 	}, fakeProbe{id: 42})
-	if _, err := manager.Register(context.Background(), Target{PID: 100}, Value{
+	if _, err := manager.Register(context.Background(), Target{
+		Path:    "/sys/fs/cgroup/agent/leaf",
+		RootPID: 100,
+	}, Value{
 		InstanceID: 1, ScopeCookie: 2,
 	}); err != nil {
 		t.Fatalf("Register: %v", err)

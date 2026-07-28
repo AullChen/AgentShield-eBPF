@@ -10,9 +10,13 @@ Automated source and Go tests verify:
 - map misses are not treated as captured host cgroups;
 - every captured event carries one consistent non-zero cgroup/instance/cookie tuple;
 - registration rejects duplicate and overlapping bindings;
+- registration rejects Core's own cgroup, its ancestors, non-leaf targets, and
+  PID/subtree scope selection;
 - a new child cgroup and root-PID migration produce `scope_violation`;
 - an inspection error fails the run closed with `inspection_failed`;
 - a violation changes the associated Agent Run status to `failed`.
+- sequential reuse of the same cgroup path and ID receives a new scope cookie,
+  while delayed events keep their original Run attribution.
 
 On a supported isolated Ubuntu 24.04 Linux host, run:
 

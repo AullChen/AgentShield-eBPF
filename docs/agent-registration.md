@@ -20,9 +20,12 @@ The request selects exactly one trusted lookup input:
 }
 ```
 
-`pid` may replace `cgroup_path`. The API rejects unknown fields, so a client
-cannot provide its own `run_id`, `cgroup_id`, `instance_id`, or `scope_cookie`.
-The trusted scope manager resolves and opens the leaf, compares its filesystem
+The management API requires `cgroup_path`; PID-based scope selection remains a
+diagnostic/Roadmap capability and is rejected by registration. A trusted
+supervisor may add `root_pid` for migration monitoring, but it does not select
+or redefine the cgroup. The API rejects unknown fields, so a client cannot
+provide its own `run_id`, `cgroup_id`, `instance_id`, or `scope_cookie`. The
+trusted scope manager resolves and opens the leaf, compares its filesystem
 identity with an independent `bpf_get_current_cgroup_id()` observation, and
 only then writes the scope map.
 
@@ -45,7 +48,9 @@ Core generates the run and scope identities. The ingest token is HMAC-signed,
 expires after 15 minutes by default, and is stored only as a SHA-256 hash.
 Successful credential responses set `Cache-Control: no-store`.
 Duplicate cgroup IDs and parent/child overlaps with an active binding return
-HTTP 409.
+HTTP 409. Core resolves its own cgroup when the manager starts and refuses to
+register that cgroup or any ancestor. Non-leaf paths and all subtree requests
+are also rejected.
 
 ## Finishing and delayed events
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"testing"
 )
 
@@ -27,15 +28,23 @@ func (store *memoryMap) Delete(id uint64) error {
 }
 
 type fakeResolver struct {
-	handle *Handle
-	err    error
+	handle    *Handle
+	err       error
+	core      *Handle
+	coreError error
 }
 
 func (resolver fakeResolver) ResolvePath(string) (*Handle, error) {
 	return resolver.handle, resolver.err
 }
 
-func (resolver fakeResolver) ResolvePID(int) (*Handle, error) {
+func (resolver fakeResolver) ResolvePID(pid int) (*Handle, error) {
+	if pid == os.Getpid() {
+		if resolver.core != nil || resolver.coreError != nil {
+			return resolver.core, resolver.coreError
+		}
+		return &Handle{ID: 999, Path: "/core/control"}, nil
+	}
 	return resolver.handle, resolver.err
 }
 
@@ -65,7 +74,10 @@ func TestManagerRegistersOnlyCrossValidatedScope(t *testing.T) {
 	}, fakeProbe{id: 42})
 	value := Value{InstanceID: 11, ScopeCookie: 12, ProfileID: 13}
 
-	registration, err := manager.Register(context.Background(), Target{PID: 123}, value)
+	registration, err := manager.Register(context.Background(), Target{
+		Path:    "/sys/fs/cgroup/agent",
+		RootPID: 123,
+	}, value)
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -114,7 +126,7 @@ func TestManagerRejectsBPFIdentityMismatchWithoutWritingMap(t *testing.T) {
 func TestManagerRejectsAmbiguousOrIncompleteTargets(t *testing.T) {
 	manager := newTestManager(t, &memoryMap{}, fakeResolver{}, fakeProbe{})
 	value := Value{InstanceID: 1, ScopeCookie: 2}
-	for _, target := range []Target{{}, {Path: "/scope", PID: 3}, {PID: -1}} {
+	for _, target := range []Target{{}, {Path: "/scope", RootPID: -1}} {
 		if _, err := manager.Register(context.Background(), target, value); !errors.Is(err, ErrInvalidTarget) {
 			t.Fatalf("Register(%+v) error = %v, want ErrInvalidTarget", target, err)
 		}
@@ -175,6 +187,70 @@ func TestManagerRejectsOverlappingCgroupPaths(t *testing.T) {
 	}
 	if len(store.values) != 1 {
 		t.Fatalf("scope map contains %d entries, want only original binding", len(store.values))
+	}
+}
+
+func TestManagerRejectsCoreCgroupAndAncestors(t *testing.T) {
+	store := &memoryMap{}
+	coreCloser := &closeRecorder{}
+	resolver := fakeResolver{
+		core:   &Handle{ID: 90, Path: "/system/core", closer: coreCloser},
+		handle: &Handle{ID: 42, Path: "/system/core"},
+	}
+	manager := newTestManager(t, store, resolver, fakeProbe{id: 42})
+	if !coreCloser.closed {
+		t.Fatal("Core cgroup handle remained open after its path was recorded")
+	}
+	value := Value{InstanceID: 1, ScopeCookie: 2}
+
+	for _, candidate := range []struct {
+		id   uint64
+		path string
+	}{
+		{id: 42, path: "/system/core"},
+		{id: 43, path: "/system"},
+		{id: 44, path: "/"},
+	} {
+		closer := &closeRecorder{}
+		manager.resolver = fakeResolver{
+			core:   &Handle{ID: 90, Path: "/system/core"},
+			handle: &Handle{ID: candidate.id, Path: candidate.path, closer: closer},
+		}
+		manager.probe = fakeProbe{id: candidate.id}
+		if _, err := manager.Register(context.Background(), Target{Path: candidate.path}, value); !errors.Is(err, ErrProtectedScope) {
+			t.Fatalf("Register(%q) error = %v, want ErrProtectedScope", candidate.path, err)
+		}
+		if !closer.closed {
+			t.Fatalf("rejected handle %q was not closed", candidate.path)
+		}
+	}
+	if len(store.values) != 0 {
+		t.Fatalf("scope map changed after protected registrations: %v", store.values)
+	}
+}
+
+func TestManagerRequiresResolvableCoreCgroup(t *testing.T) {
+	_, err := NewManager(&memoryMap{}, fakeResolver{
+		coreError: errors.New("no self membership"),
+	}, fakeProbe{})
+	if err == nil {
+		t.Fatal("NewManager accepted an unresolved Core cgroup")
+	}
+}
+
+func TestManagerPreservesRootPIDForMigrationChecks(t *testing.T) {
+	manager := newTestManager(t, &memoryMap{}, fakeResolver{
+		handle: &Handle{ID: 42, Path: "/agent/leaf"},
+	}, fakeProbe{id: 42})
+	registration, err := manager.Register(context.Background(), Target{
+		Path:    "/agent/leaf",
+		RootPID: 123,
+	}, Value{InstanceID: 1, ScopeCookie: 2})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if registration.RootPID != 123 {
+		t.Fatalf("RootPID = %d, want 123", registration.RootPID)
 	}
 }
 

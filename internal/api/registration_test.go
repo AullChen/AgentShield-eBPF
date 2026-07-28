@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -41,6 +42,9 @@ func (resolver testResolver) ResolvePath(path string) (*scope.Handle, error) {
 }
 
 func (resolver testResolver) ResolvePID(pid int) (*scope.Handle, error) {
+	if pid == os.Getpid() {
+		return &scope.Handle{ID: 999, Path: "/core/control"}, nil
+	}
 	return &scope.Handle{ID: uint64(pid), Path: "/agent/pid-" + strconv.Itoa(pid)}, nil
 }
 
@@ -71,6 +75,7 @@ func TestRegisterCreatesRunAndScopeMapEntry(t *testing.T) {
 		"agent_name":   "demo-agent",
 		"container_id": "container-1",
 		"cgroup_path":  "/sys/fs/cgroup/agent/leaf",
+		"root_pid":     321,
 		"profile_id":   7,
 		"scope_mode":   "leaf_exact",
 	})
@@ -104,6 +109,9 @@ func TestRegisterCreatesRunAndScopeMapEntry(t *testing.T) {
 	}
 	if got := sha256.Sum256([]byte(output.IngestToken)); got != run.TokenHash {
 		t.Fatal("stored token hash does not match returned token")
+	}
+	if run.RootPID != 321 {
+		t.Fatalf("stored root PID = %d, want 321", run.RootPID)
 	}
 	if output.IngestToken == "" || string(run.TokenHash[:]) == output.IngestToken {
 		t.Fatal("plaintext token was not returned once and stored only as a hash")
@@ -163,6 +171,42 @@ func TestRegisterRejectsOverlappingActiveBinding(t *testing.T) {
 	}
 	if len(scopeMap.values) != 1 {
 		t.Fatalf("scope map entries = %d, want 1", len(scopeMap.values))
+	}
+}
+
+func TestRegisterRejectsSubtreeAndPIDScopeSelection(t *testing.T) {
+	scopeMap := &testScopeMap{}
+	manager, err := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{
+		"/agent/leaf": 42,
+	}}, testProbe{})
+	if err != nil {
+		t.Fatalf("scope.NewManager: %v", err)
+	}
+	handler, err := NewRegistrationHandler(manager, NewRunStore(), RegistrationOptions{})
+	if err != nil {
+		t.Fatalf("NewRegistrationHandler: %v", err)
+	}
+
+	for name, input := range map[string]map[string]any{
+		"subtree": {
+			"agent_name":  "agent",
+			"cgroup_path": "/agent/leaf",
+			"scope_mode":  "subtree",
+		},
+		"pid": {
+			"agent_name": "agent",
+			"pid":        42,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := postJSON(t, handler, input)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+		})
+	}
+	if len(scopeMap.values) != 0 {
+		t.Fatalf("scope map changed after rejected request: %v", scopeMap.values)
 	}
 }
 

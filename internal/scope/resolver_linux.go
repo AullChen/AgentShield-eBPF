@@ -64,7 +64,7 @@ func (resolver *LinuxResolver) ResolvePath(path string) (*Handle, error) {
 	}
 	for _, entry := range entries {
 		if entry.IsDir() {
-			return nil, fmt.Errorf("cgroup %q is not an exact leaf: child %q exists", resolved, entry.Name())
+			return nil, fmt.Errorf("%w: cgroup %q has child %q", ErrNotLeaf, resolved, entry.Name())
 		}
 	}
 

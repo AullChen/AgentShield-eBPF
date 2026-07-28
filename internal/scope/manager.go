@@ -5,16 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"sync"
 )
 
 var (
-	ErrInvalidTarget    = errors.New("scope target must select exactly one trusted cgroup path or PID")
+	ErrInvalidTarget    = errors.New("scope target requires one trusted exact cgroup path")
 	ErrIdentityMismatch = errors.New("resolved cgroup ID does not match BPF observation")
 	ErrAlreadyActive    = errors.New("cgroup scope is already active")
 	ErrOverlap          = errors.New("cgroup scope overlaps an active binding")
 	ErrNotActive        = errors.New("cgroup scope is not active")
+	ErrProtectedScope   = errors.New("cgroup scope contains AgentShield-Core")
+	ErrNotLeaf          = errors.New("cgroup scope is not an exact leaf")
 )
 
 type Value struct {
@@ -65,8 +68,8 @@ func (handle *Handle) Close() error {
 }
 
 type Target struct {
-	Path string
-	PID  int
+	Path    string
+	RootPID int
 }
 
 type Registration struct {
@@ -82,6 +85,7 @@ type Manager struct {
 	resolver Resolver
 	probe    Probe
 	active   map[uint64]activeScope
+	corePath string
 }
 
 type activeScope struct {
@@ -93,34 +97,41 @@ func NewManager(scopes Map, resolver Resolver, probe Probe) (*Manager, error) {
 	if scopes == nil || resolver == nil || probe == nil {
 		return nil, errors.New("scope map, resolver, and BPF identity probe are required")
 	}
+	core, err := resolver.ResolvePID(os.Getpid())
+	if err != nil {
+		return nil, fmt.Errorf("resolve AgentShield-Core cgroup: %w", err)
+	}
+	if core == nil || core.ID == 0 || core.Path == "" {
+		if core != nil {
+			_ = core.Close()
+		}
+		return nil, errors.New("resolver returned an incomplete AgentShield-Core cgroup handle")
+	}
+	corePath := path.Clean(core.Path)
+	if err := core.Close(); err != nil {
+		return nil, fmt.Errorf("close AgentShield-Core cgroup handle: %w", err)
+	}
 	return &Manager{
 		scopes:   scopes,
 		resolver: resolver,
 		probe:    probe,
 		active:   make(map[uint64]activeScope),
+		corePath: corePath,
 	}, nil
 }
 
 func (manager *Manager) Register(ctx context.Context, target Target, value Value) (Registration, error) {
-	if (target.Path == "") == (target.PID == 0) {
+	if target.Path == "" {
+		return Registration{}, ErrInvalidTarget
+	}
+	if target.RootPID < 0 {
 		return Registration{}, ErrInvalidTarget
 	}
 	if err := value.Validate(); err != nil {
 		return Registration{}, err
 	}
 
-	var (
-		handle *Handle
-		err    error
-	)
-	if target.Path != "" {
-		handle, err = manager.resolver.ResolvePath(target.Path)
-	} else {
-		if target.PID < 1 {
-			return Registration{}, ErrInvalidTarget
-		}
-		handle, err = manager.resolver.ResolvePID(target.PID)
-	}
+	handle, err := manager.resolver.ResolvePath(target.Path)
 	if err != nil {
 		return Registration{}, fmt.Errorf("resolve exact leaf cgroup: %w", err)
 	}
@@ -129,6 +140,10 @@ func (manager *Manager) Register(ctx context.Context, target Target, value Value
 			_ = handle.Close()
 		}
 		return Registration{}, errors.New("resolver returned an incomplete cgroup handle")
+	}
+	if pathIsEqualOrAncestor(handle.Path, manager.corePath) {
+		_ = handle.Close()
+		return Registration{}, fmt.Errorf("%w: target=%q core=%q", ErrProtectedScope, handle.Path, manager.corePath)
 	}
 
 	observedID, err := manager.probe.CurrentCgroupID(ctx, handle)
@@ -158,7 +173,7 @@ func (manager *Manager) Register(ctx context.Context, target Target, value Value
 		return Registration{}, fmt.Errorf("write scope map: %w", err)
 	}
 
-	registration := Registration{CgroupID: handle.ID, Path: handle.Path, RootPID: target.PID, Value: value}
+	registration := Registration{CgroupID: handle.ID, Path: handle.Path, RootPID: target.RootPID, Value: value}
 	manager.active[handle.ID] = activeScope{registration: registration, handle: handle}
 	return registration, nil
 }
@@ -182,13 +197,17 @@ func (manager *Manager) Unregister(cgroupID uint64) error {
 }
 
 func pathsOverlap(first, second string) bool {
-	first = path.Clean(first)
-	second = path.Clean(second)
-	return first == second ||
-		first == "/" ||
-		second == "/" ||
-		len(first) < len(second) && second[:len(first)] == first && second[len(first)] == '/' ||
-		len(second) < len(first) && first[:len(second)] == second && first[len(second)] == '/'
+	return pathIsEqualOrAncestor(first, second) || pathIsEqualOrAncestor(second, first)
+}
+
+func pathIsEqualOrAncestor(candidate, descendant string) bool {
+	candidate = path.Clean(candidate)
+	descendant = path.Clean(descendant)
+	return candidate == descendant ||
+		candidate == "/" ||
+		len(candidate) < len(descendant) &&
+			descendant[:len(candidate)] == candidate &&
+			descendant[len(candidate)] == '/'
 }
 
 func (manager *Manager) Lookup(cgroupID uint64) (Registration, bool) {

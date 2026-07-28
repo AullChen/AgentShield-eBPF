@@ -21,11 +21,16 @@ func (inspector monitorInspector) Inspect(*scope.Handle, int) (scope.State, erro
 
 func TestMonitorScopesEmitsViolationAndFailsRun(t *testing.T) {
 	scopeMap := &testScopeMap{}
-	manager, err := scope.NewManager(scopeMap, testResolver{}, testProbe{})
+	manager, err := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{
+		"/agent/leaf": 42,
+	}}, testProbe{})
 	if err != nil {
 		t.Fatalf("scope.NewManager: %v", err)
 	}
-	registration, err := manager.Register(context.Background(), scope.Target{PID: 42}, scope.Value{
+	registration, err := manager.Register(context.Background(), scope.Target{
+		Path:    "/agent/leaf",
+		RootPID: 42,
+	}, scope.Value{
 		InstanceID:  9007199254740993,
 		ScopeCookie: 9007199254740994,
 	})
@@ -90,11 +95,16 @@ func TestMonitorScopesEmitsViolationAndFailsRun(t *testing.T) {
 
 func TestMonitorScopesFailsClosedWhenInspectionErrors(t *testing.T) {
 	scopeMap := &testScopeMap{}
-	manager, err := scope.NewManager(scopeMap, testResolver{}, testProbe{})
+	manager, err := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{
+		"/agent/leaf": 42,
+	}}, testProbe{})
 	if err != nil {
 		t.Fatalf("scope.NewManager: %v", err)
 	}
-	registration, err := manager.Register(context.Background(), scope.Target{PID: 42}, scope.Value{
+	registration, err := manager.Register(context.Background(), scope.Target{
+		Path:    "/agent/leaf",
+		RootPID: 42,
+	}, scope.Value{
 		InstanceID:  1,
 		ScopeCookie: 2,
 	})
