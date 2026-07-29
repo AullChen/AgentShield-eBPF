@@ -59,11 +59,12 @@ func (probe fakeProbe) CurrentCgroupID(context.Context, *Handle) (uint64, error)
 
 type closeRecorder struct {
 	closed bool
+	err    error
 }
 
 func (recorder *closeRecorder) Close() error {
 	recorder.closed = true
-	return nil
+	return recorder.err
 }
 
 func TestManagerRegistersOnlyCrossValidatedScope(t *testing.T) {
@@ -120,6 +121,33 @@ func TestManagerRejectsBPFIdentityMismatchWithoutWritingMap(t *testing.T) {
 	}
 	if !closer.closed {
 		t.Fatal("rejected cgroup handle was not closed")
+	}
+}
+
+func TestManagerCompletesUnregisterAfterHandleCloseError(t *testing.T) {
+	store := &memoryMap{}
+	closer := &closeRecorder{err: errors.New("late close error")}
+	manager := newTestManager(t, store, fakeResolver{
+		handle: &Handle{ID: 42, Path: "/agent/leaf", closer: closer},
+	}, fakeProbe{id: 42})
+	if _, err := manager.Register(context.Background(), Target{Path: "/agent/leaf"}, Value{
+		InstanceID:  1,
+		ScopeCookie: 2,
+	}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	if err := manager.Unregister(42); err != nil {
+		t.Fatalf("Unregister returned a close-only error: %v", err)
+	}
+	if !closer.closed {
+		t.Fatal("cgroup handle close was not attempted")
+	}
+	if _, exists := store.values[42]; exists {
+		t.Fatal("scope map entry remained after unregister")
+	}
+	if _, exists := manager.Lookup(42); exists {
+		t.Fatal("manager retained a scope after successful map deletion")
 	}
 }
 

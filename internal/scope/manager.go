@@ -190,9 +190,10 @@ func (manager *Manager) Unregister(cgroupID uint64) error {
 		return fmt.Errorf("delete scope map entry: %w", err)
 	}
 	delete(manager.active, cgroupID)
-	if err := active.handle.Close(); err != nil {
-		return fmt.Errorf("close cgroup handle: %w", err)
-	}
+	// The scope is detached once the map entry is gone. On Linux, close errors
+	// do not make the descriptor safe to retry and must not roll back the Run
+	// while its kernel scope is already absent.
+	_ = active.handle.Close()
 	return nil
 }
 
