@@ -1,0 +1,60 @@
+# AgentShield policy bundle schema v1.
+# Day 26 defines and validates this shape; runtime YAML loading starts on Day 27.
+schema_version: 1
+
+policies:
+  - id: builtin.file.demo-secret
+    name: Demo secret access
+    description: Alert when the repository-owned demo secret fixture is opened.
+    enabled: true
+    scope:
+      type: global
+    policy_decision: observe
+    requested_action: alert
+    priority: 300
+    severity: high
+    conditions:
+      file:
+        exact_paths:
+          - /demo-secrets/example-token
+        access:
+          - read
+
+  - id: builtin.exec.shell-heuristic
+    name: Shell execution heuristic
+    description: Alert on bounded shell executable or destructive argument evidence.
+    enabled: true
+    scope:
+      type: global
+    policy_decision: observe
+    requested_action: alert
+    priority: 200
+    severity: medium
+    conditions:
+      exec:
+        executables:
+          - sh
+          - bash
+        arg_contains:
+          - rm -rf
+          - "| sh"
+
+  - id: builtin.net.outbound-observe
+    name: Outbound network observation
+    description: Observe IPv4 and IPv6 TCP destinations without claiming enforcement.
+    enabled: true
+    scope:
+      type: global
+    policy_decision: observe
+    requested_action: audit
+    priority: 100
+    severity: info
+    conditions:
+      network:
+        default: default_observe
+        cidrs:
+          - 0.0.0.0/0
+          - "::/0"
+        families:
+          - ipv4
+          - ipv6

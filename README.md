@@ -21,7 +21,7 @@ The project is currently in early MVP development. The repository contains the G
 | Audit reliability | Source complete, Linux saturation pending | Per-type per-CPU reserve failures become Go-synthesized `drop_notice` records; SIGINT/SIGTERM close and join the reader/monitor path. |
 | Kernel Event v3 | Started | Go-side decoding validates schema/size, preserves all 64-bit scope/time identities as JSON strings, adds receipt calibration, and rejects incompatible wire schemas. |
 | cgroup scoping | P2 source gate complete, Linux evidence pending | Exact-leaf registration, finish/TTL tombstones, ID reuse isolation, Core self-protection, and host-negative filtering have automated coverage. |
-| Policy engine | Not implemented | Planned after cgroup-scoped event capture. |
+| Policy engine | Schema defined | Policy bundle v1, decision/action validation, deterministic precedence, and default audit/alert policies exist; loading and compilation are pending. |
 
 ## MVP Direction
 
