@@ -20,5 +20,7 @@ Current notes:
 - `p0-integration-check.md`: historical Day 1-6 integration snapshot.
 - `p1-coverage.md`: Day 17 pre-M1 source/runtime coverage matrix, reproducible
   Linux evidence command, and current pending acceptance status.
+- `p2-acceptance.md`: Day 25 register/capture/finish/TTL/reuse/host-negative
+  lifecycle gate and supported-Linux evidence procedure.
 
 Local planning documents, drafts, and proposal materials are kept in `.local-docs/` and ignored by Git.

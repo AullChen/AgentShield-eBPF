@@ -20,7 +20,7 @@ The project is currently in early MVP development. The repository contains the G
 | Ring buffer consumption | Started | `audit` decodes file, process, and network ring-buffer events and emits Go-synthesized loss notices as JSON schema v2 Lines. |
 | Audit reliability | Source complete, Linux saturation pending | Per-type per-CPU reserve failures become Go-synthesized `drop_notice` records; SIGINT/SIGTERM close and join the reader/monitor path. |
 | Kernel Event v3 | Started | Go-side decoding validates schema/size, preserves all 64-bit scope/time identities as JSON strings, adds receipt calibration, and rejects incompatible wire schemas. |
-| cgroup scoping | Source complete, Linux evidence pending | Scope-map lookup precedes ring-buffer reserve; trusted registration rejects duplicate/subtree bindings and monitors child cgroups and member escape. |
+| cgroup scoping | P2 source gate complete, Linux evidence pending | Exact-leaf registration, finish/TTL tombstones, ID reuse isolation, Core self-protection, and host-negative filtering have automated coverage. |
 | Policy engine | Not implemented | Planned after cgroup-scoped event capture. |
 
 ## MVP Direction
@@ -140,6 +140,7 @@ make verify-generated
 make check-bpf-syntax
 make check-linux-bpfmgr
 make test
+make test-p2
 go vet ./...
 make build
 ```

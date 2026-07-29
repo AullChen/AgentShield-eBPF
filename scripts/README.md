@@ -11,6 +11,9 @@ Current files:
 - `accept-p1.sh`: performs the Day 17 single-run file/exec/connect pre-M1 gate
   plus the Day 22 exact-scope positive/host-negative gate, and produces
   owner-only evidence plus a sanitized coverage matrix.
+- `accept-p2.sh`: combines the Day 25 lifecycle integration test, exact-scope
+  kernel/host-negative gate, and sandbox fixture gate into one owner-only
+  evidence directory on the supported Linux host.
 - `accept-sandbox.sh`: builds the minimal demo Agent, verifies its repository
   fixture origin/read-only mount metadata, and triggers all three event classes.
 - `test-audit.sh`: triggers one file-open action and one process execution for
