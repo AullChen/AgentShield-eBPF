@@ -1,5 +1,5 @@
 # AgentShield policy bundle schema v1.
-# Day 26 defines and validates this shape; runtime YAML loading starts on Day 27.
+# Loaded strictly by internal/policy; unknown fields and extra documents are rejected.
 schema_version: 1
 
 policies:

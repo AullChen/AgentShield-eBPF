@@ -22,7 +22,7 @@ Current notes:
   Linux evidence command, and current pending acceptance status.
 - `p2-acceptance.md`: Day 25 register/capture/finish/TTL/reuse/host-negative
   lifecycle gate and supported-Linux evidence procedure.
-- `policy-schema.md`: Day 26 policy bundle schema, decision/action matrix,
-  deterministic scope precedence, and enforcement semantics.
+- `policy-schema.md`: policy bundle schema, strict loader limits, compile
+  preview classes, deterministic scope precedence, and enforcement semantics.
 
 Local planning documents, drafts, and proposal materials are kept in `.local-docs/` and ignored by Git.

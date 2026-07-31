@@ -7,6 +7,7 @@ Runtime and policy configuration files live here.
 never silently accepted and ignored.
 
 `policy.schema.json` defines policy bundle schema v1 for JSON and
-YAML-converted data. `default-policies.yaml` is the Day 26 default audit/alert
-draft. The policy package validates the equivalent Go model, but the CLI does
-not load either file until the planned Day 27 loader is implemented.
+YAML-converted data. `default-policies.yaml` is the default audit/alert bundle.
+`internal/policy` loads `.json`, `.yaml`, and `.yml` files with strict field,
+size, and capacity checks and returns a kernel/user-space compile preview. The
+current CLI configuration path does not yet select or activate a policy file.

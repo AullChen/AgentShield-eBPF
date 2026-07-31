@@ -1,12 +1,54 @@
 # Policy bundle schema v1
 
-Day 26 defines the policy data contract and schema-level validation. Runtime
-YAML/JSON loading, size limits, compile previews, and BPF map capacity checks
-belong to Day 27 and are not implied by the presence of the default YAML file.
+The policy package defines the data contract, strict YAML/JSON loading, and a
+bounded compile preview. The preview estimates map entries and identifies
+conditions that require post-event user-space evaluation; it does not attach
+eBPF programs or activate maps.
 
 The canonical machine-readable shape is
-`configs/policy.schema.json`. YAML uses the same keys after ordinary YAML to
-JSON conversion. Go code uses `internal/policy`.
+`configs/policy.schema.json`. YAML uses the same keys. Go code uses
+`internal/policy`; `LoadFile` accepts only `.json`, `.yaml`, and `.yml` files.
+
+## Loader and resource limits
+
+The loader rejects unknown keys, duplicate JSON keys, additional YAML
+documents or JSON values, and omitted `enabled` or `priority` fields. It
+normalizes deprecated `kill` before producing a compile preview.
+
+The default limits are:
+
+| Resource | Limit |
+| --- | ---: |
+| Input file | 1 MiB |
+| Policies per bundle | 256 |
+| UTF-8 bytes per string | 256 |
+| Values per condition or label selector | 64 |
+| Glob metacharacters per value | 4 |
+| Estimated kernel map entries | 1024 |
+| User-space match entries | 1024 |
+
+Callers may supply different positive limits. A zero-valued limit selects the
+documented default. Glob syntax is validated even though glob matching remains
+a user-space capability.
+
+## Compile preview
+
+Each enabled policy receives one execution class:
+
+| Class | Meaning |
+| --- | --- |
+| `kernel_eligible` | Every condition has an exact kernel-map representation. |
+| `user_space_only` | Every condition needs post-event evaluation. |
+| `mixed` | Exact candidates and user-space evidence are both present. |
+| `disabled` | The policy emits no entries. |
+
+Absolute exact file paths, exact executable names, CIDRs, port ranges, and
+network-family defaults are kernel eligible. File prefixes, suffixes,
+basenames, relative paths, glob patterns, and executable argument fragments
+return stable reason codes explaining the required fallback. A `block` action
+that depends on any user-space match is rejected instead of claiming a
+synchronous denial that cannot be delivered. Audit, alert, and contain flows
+may retain those rules for post-event handling.
 
 ## Decision and action matrix
 

@@ -2,7 +2,7 @@
 
 AgentShield-eBPF is a Linux eBPF based runtime security and audit system for AI Agent sandboxes.
 
-The project is currently in early MVP development. The repository contains the Go control-plane skeleton, exact-leaf cgroup filtering and registration, file/process/network audit probes, a minimal demo sandbox, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard scaffold. Kernel load/attach evidence, policy enforcement, event correlation, and live dashboard streaming are still under development.
+The project is currently in early MVP development. The repository contains the Go control-plane skeleton, exact-leaf cgroup filtering and registration, file/process/network audit probes, a strict policy loader and compile preview, a minimal demo sandbox, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard scaffold. Kernel load/attach evidence, policy enforcement, event correlation, and live dashboard streaming are still under development.
 
 ## Current Status
 
@@ -21,7 +21,7 @@ The project is currently in early MVP development. The repository contains the G
 | Audit reliability | Source complete, Linux saturation pending | Per-type per-CPU reserve failures become Go-synthesized `drop_notice` records; SIGINT/SIGTERM close and join the reader/monitor path. |
 | Kernel Event v3 | Started | Go-side decoding validates schema/size, preserves all 64-bit scope/time identities as JSON strings, adds receipt calibration, and rejects incompatible wire schemas. |
 | cgroup scoping | P2 source gate complete, Linux evidence pending | Exact-leaf registration, finish/TTL tombstones, ID reuse isolation, Core self-protection, and host-negative filtering have automated coverage. |
-| Policy engine | Schema defined | Policy bundle v1, decision/action validation, deterministic precedence, and default audit/alert policies exist; loading and compilation are pending. |
+| Policy engine | Loader/preview implemented | Policy bundle v1 loads strict YAML/JSON with bounded inputs and explains kernel-eligible, user-space-only, mixed, or disabled rules; live map activation is pending. |
 
 ## MVP Direction
 
