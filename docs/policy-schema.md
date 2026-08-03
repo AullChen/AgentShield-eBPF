@@ -50,6 +50,15 @@ that depends on any user-space match is rejected instead of claiming a
 synchronous denial that cannot be delivered. Audit, alert, and contain flows
 may retain those rules for post-event handling.
 
+## Atomic generation updates
+
+Rule and profile maps use two logical banks. An update resets and fully writes
+the inactive bank, reads every entry back, and compares it with the immutable
+requested image before changing the active selector. A reset, write, readback,
+verification, cancellation, or selector failure leaves the previous generation
+active. The selector store must provide one atomic guarantee: when activation
+returns an error, the visible generation has not changed.
+
 ## Decision and action matrix
 
 Combinations outside this table are rejected:
