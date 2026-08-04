@@ -59,6 +59,17 @@ verification, cancellation, or selector failure leaves the previous generation
 active. The selector store must provide one atomic guarantee: when activation
 returns an error, the visible generation has not changed.
 
+## File match evidence
+
+File matching produces post-event audit or alert evidence only. A pathname
+captured from syscall arguments is labelled `user_path`, never file identity.
+Callers may provide a resolved path together with device/inode/mount evidence;
+such a match is labelled `file_identity`. Relative user paths remain heuristic,
+symlink-resolved hits retain both path semantics, and truncated paths can only
+satisfy an already-complete prefix rule. Exact, suffix, basename, and glob
+matches are suppressed when their input is truncated. File string matching
+rejects `block` and `contain` rather than overstating enforcement.
+
 ## Decision and action matrix
 
 Combinations outside this table are rejected:
