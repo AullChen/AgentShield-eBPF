@@ -32,6 +32,7 @@ type PolicyHit struct {
 	EvidenceSource  EvidenceSource  `json:"evidence_source"`
 	Confidence      MatchConfidence `json:"confidence"`
 	PostEventOnly   bool            `json:"post_event_only"`
+	ContainmentHint bool            `json:"containment_hint,omitempty"`
 	Reasons         []string        `json:"reasons,omitempty"`
 }
 

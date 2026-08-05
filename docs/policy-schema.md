@@ -70,6 +70,17 @@ satisfy an already-complete prefix rule. Exact, suffix, basename, and glob
 matches are suppressed when their input is truncated. File string matching
 rejects `block` and `contain` rather than overstating enforcement.
 
+## Exec heuristic evidence
+
+Executable and bounded-argument matches describe an exec syscall attempt, not
+a successful execution. Missing arguments and a legitimate empty argument list
+are distinct states. Positive matches from a truncated argv remain incomplete;
+absence of a match is not evidence of safety. Truncated executable names do not
+match. Relative `execveat` paths retain an explicit resolution gap because the
+capture does not reconstruct dirfd/flag semantics. An exec `contain` request is
+emitted as an alert plus `containment_hint`; no process action occurs here, and
+`block` is rejected.
+
 ## Decision and action matrix
 
 Combinations outside this table are rejected:
