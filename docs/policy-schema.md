@@ -59,6 +59,10 @@ verification, cancellation, or selector failure leaves the previous generation
 active. The selector store must provide one atomic guarantee: when activation
 returns an error, the visible generation has not changed.
 
+The current package implements and fault-tests this transaction contract. A
+concrete store backed by the live eBPF rule/profile maps is not connected yet;
+an in-memory test store is not runtime activation evidence.
+
 ## File match evidence
 
 File matching produces post-event audit or alert evidence only. A pathname
@@ -96,6 +100,12 @@ Observed hostnames are experimental evidence only. They never grant access,
 because DNS answers and names are mutable and are not a stable kernel security
 boundary. The strict example permits only a controlled proxy's fixed IP and
 port; its documentation address must be replaced before deployment.
+
+These matchers are currently library entry points and are not called by the
+live audit reader. The tracked kernel network path captures TCP only; UDP DNS
+and QUIC reason-code tests exercise control-plane decisions until UDP capture
+and enforcement hooks exist. No matcher result in this section is runtime
+blocking evidence.
 
 ## Decision and action matrix
 
