@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -302,8 +303,16 @@ func (condition NetworkCondition) Validate() error {
 		return fmt.Errorf("IP family %q is duplicated", duplicate)
 	}
 	for _, cidr := range condition.CIDRs {
-		if _, err := netip.ParsePrefix(cidr); err != nil {
+		prefix, err := netip.ParsePrefix(cidr)
+		if err != nil {
 			return fmt.Errorf("CIDR %q is invalid: %w", cidr, err)
+		}
+		family := FamilyIPv6
+		if prefix.Addr().Is4() {
+			family = FamilyIPv4
+		}
+		if !slices.Contains(condition.Families, family) {
+			return fmt.Errorf("CIDR %q requires family %q", cidr, family)
 		}
 	}
 	for _, portRange := range condition.Ports {

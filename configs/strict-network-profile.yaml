@@ -1,0 +1,25 @@
+# Illustrative strict profile. 192.0.2.10 is TEST-NET-1, not a deployable proxy.
+# Replace it with a controlled proxy address before activation.
+schema_version: 1
+
+policies:
+  - id: demo.net.strict-proxy
+    name: Strict controlled proxy egress
+    description: Deny intent for every tuple except the fixed demo proxy.
+    enabled: true
+    scope:
+      type: global
+    policy_decision: deny
+    requested_action: block
+    priority: 500
+    severity: critical
+    conditions:
+      network:
+        default: default_deny
+        cidrs:
+          - 192.0.2.10/32
+        ports:
+          - from: 3128
+            to: 3128
+        families:
+          - ipv4

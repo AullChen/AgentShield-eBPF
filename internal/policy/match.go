@@ -33,6 +33,7 @@ type PolicyHit struct {
 	Confidence      MatchConfidence `json:"confidence"`
 	PostEventOnly   bool            `json:"post_event_only"`
 	ContainmentHint bool            `json:"containment_hint,omitempty"`
+	Enforced        bool            `json:"enforced"`
 	Reasons         []string        `json:"reasons,omitempty"`
 }
 

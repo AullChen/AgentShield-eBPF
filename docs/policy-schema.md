@@ -81,6 +81,22 @@ capture does not reconstruct dirfd/flag semantics. An exec `contain` request is
 emitted as an alert plus `containment_hint`; no process action occurs here, and
 `block` is rejected.
 
+## Network profile decisions
+
+Network evaluation uses the captured destination address, port, protocol, and
+family. `default_observe` emits a hit only for a selected static tuple.
+`default_deny` treats CIDR and port entries as an allowlist and returns a deny
+hit for everything else, including direct DNS, QUIC, HTTPS/DoH, and proxy
+bypass attempts. An empty allowlist denies every tuple, and the current static
+profile permits TCP only. Until the planned cgroup enforcement hook consumes this
+decision, a requested block is reported with `enforced=false`, effective audit,
+and `enforcement_not_connected`; it is not a blocked connection.
+
+Observed hostnames are experimental evidence only. They never grant access,
+because DNS answers and names are mutable and are not a stable kernel security
+boundary. The strict example permits only a controlled proxy's fixed IP and
+port; its documentation address must be replaced before deployment.
+
 ## Decision and action matrix
 
 Combinations outside this table are rejected:
