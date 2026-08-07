@@ -18,6 +18,7 @@ import (
 	"github.com/agentshield/agentshield-ebpf/internal/config"
 	"github.com/agentshield/agentshield-ebpf/internal/envcheck"
 	"github.com/agentshield/agentshield-ebpf/internal/logging"
+	"github.com/agentshield/agentshield-ebpf/internal/policy"
 	"github.com/agentshield/agentshield-ebpf/internal/scope"
 	"github.com/agentshield/agentshield-ebpf/internal/version"
 )
@@ -40,10 +41,11 @@ func run(args []string) int {
 		bpfObject := flags.String("bpf-object", "bpf/agentshield.bpf.o", "path to the compiled AgentShield BPF object")
 		cgroupPath := flags.String("cgroup", "", "cgroup v2 path for connect4/connect6 audit hooks")
 		scopeCgroupPath := flags.String("scope-cgroup", "", "trusted exact leaf cgroup v2 path to register for audit")
+		policyFile := flags.String("policy-file", "", "YAML or JSON policy bundle evaluated after each audit event")
 		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
 			return exitCode
 		}
-		return runAudit(cfg, *bpfObject, *cgroupPath, *scopeCgroupPath)
+		return runAudit(cfg, *bpfObject, *cgroupPath, *scopeCgroupPath, *policyFile)
 	case "diagnose":
 		flags := newFlagSet(command, &cfg)
 		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
@@ -127,7 +129,7 @@ func runHealth(ctx context.Context, cfg config.Config) int {
 	return 0
 }
 
-func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath string) int {
+func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policyFile string) int {
 	logger, err := logging.New(cfg.LogLevel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "invalid logger configuration: %v\n", err)
@@ -141,6 +143,23 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath string)
 	if cgroupPath != "" && cgroupPath != scopeCgroupPath {
 		fmt.Fprintln(os.Stderr, "--cgroup and --scope-cgroup must identify the same exact leaf")
 		return 2
+	}
+	var policyEngine *policy.Engine
+	if policyFile != "" {
+		loaded, err := policy.LoadFile(policyFile, policy.Limits{})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "load audit policy: %v\n", err)
+			return 1
+		}
+		policyEngine, _, err = policy.NewEngine(
+			loaded.Bundle,
+			policy.Generation{Revision: 1, Bank: policy.BankA},
+			policy.Limits{},
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "initialize audit policy engine: %v\n", err)
+			return 1
+		}
 	}
 	resolver, err := scope.NewLinuxResolver("")
 	if err != nil {
@@ -169,7 +188,7 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath string)
 	defer stop()
 
 	logger.InfoContext(ctx, "starting kernel audit", slog.String("bpf_object", objectPath), slog.String("network_cgroup", cgroupPath))
-	err = bpfmgr.RunAudit(ctx, bpfmgr.AuditOptions{
+	options := bpfmgr.AuditOptions{
 		ObjectPath: objectPath,
 		CgroupPath: cgroupPath,
 		OnScopeMapReady: func(scopes bpfmgr.ScopeMap) error {
@@ -184,7 +203,11 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath string)
 		OnMalformedEvent: func(err error) {
 			logger.WarnContext(ctx, "discarding malformed kernel event", slog.Any("error", err))
 		},
-	}, os.Stdout)
+	}
+	if policyEngine != nil {
+		options.DeriveRecords = policyEngine.EvaluateAuditEvent
+	}
+	err = bpfmgr.RunAudit(ctx, options, os.Stdout)
 	if err == nil {
 		return 0
 	}
@@ -257,4 +280,5 @@ func printUsage(out *os.File) {
 	fmt.Fprintln(out, "  audit --bpf-object string   path to compiled AgentShield BPF object")
 	fmt.Fprintln(out, "        --cgroup string      cgroup v2 path for connect4/connect6 audit hooks")
 	fmt.Fprintln(out, "        --scope-cgroup string trusted exact leaf cgroup v2 path to audit")
+	fmt.Fprintln(out, "        --policy-file string  YAML or JSON bundle for post-event policy decisions")
 }

@@ -101,11 +101,19 @@ because DNS answers and names are mutable and are not a stable kernel security
 boundary. The strict example permits only a controlled proxy's fixed IP and
 port; its documentation address must be replaced before deployment.
 
-These matchers are currently library entry points and are not called by the
-live audit reader. The tracked kernel network path captures TCP only; UDP DNS
-and QUIC reason-code tests exercise control-plane decisions until UDP capture
-and enforcement hooks exist. No matcher result in this section is runtime
-blocking evidence.
+`agentshield audit --policy-file <bundle.yaml>` calls these matchers after each
+decoded file, exec, or network event. The raw event is emitted first and its
+`policy_decision` record follows immediately. The decision record identifies
+one immutable generation, retains all matching rules, and exposes one final
+decision using the precedence below. The standalone audit command supplies a
+trusted cgroup ID; run and label scopes require a future registration-context
+integration and therefore do not match in that command yet.
+
+The tracked kernel network path captures TCP only; UDP DNS and QUIC
+reason-code tests exercise control-plane decisions until UDP capture and
+enforcement hooks exist. All current matcher results are post-event evidence,
+not runtime blocking evidence. The in-process A/B snapshot switch also does
+not claim that live eBPF rule/profile maps have been activated.
 
 ## Decision and action matrix
 

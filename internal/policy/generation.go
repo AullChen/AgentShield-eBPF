@@ -19,8 +19,8 @@ const (
 )
 
 type Generation struct {
-	Revision uint64
-	Bank     Bank
+	Revision uint64 `json:"revision"`
+	Bank     Bank   `json:"bank"`
 }
 
 type MapEntry struct {

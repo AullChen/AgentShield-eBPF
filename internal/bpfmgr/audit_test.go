@@ -135,6 +135,73 @@ func TestStreamAuditEventsSkipsMalformedSample(t *testing.T) {
 	}
 }
 
+func TestStreamAuditEventsEmitsDerivedRecordsImmediatelyAfterRawEvent(t *testing.T) {
+	sample := encodeAuditSample(t, rawAuditEventV2{
+		SchemaVersion: events.SchemaVersion,
+		EventType:     events.EventTypeFileOpen,
+		PID:           42,
+	})
+	read := false
+	var out bytes.Buffer
+	err := streamAuditEvents(auditSampleReaderFunc(func() ([]byte, error) {
+		if read {
+			return nil, io.EOF
+		}
+		read = true
+		return sample, nil
+	}), AuditOptions{
+		ReceiptClock: func() (ReceiptTime, error) {
+			return ReceiptTime{MonotonicNS: 99}, nil
+		},
+		DeriveRecords: func(event AuditEvent) ([]any, error) {
+			if event.ServerReceivedMonotonicNS != 99 {
+				t.Fatalf("derived event receipt time = %d, want 99", event.ServerReceivedMonotonicNS)
+			}
+			return []any{map[string]any{"record_type": "policy_decision", "pid": event.PID}}, nil
+		},
+	}, &out)
+	if err != nil {
+		t.Fatalf("streamAuditEvents() error = %v", err)
+	}
+
+	decoder := json.NewDecoder(&out)
+	var rawRecord map[string]any
+	var derivedRecord map[string]any
+	if err := decoder.Decode(&rawRecord); err != nil {
+		t.Fatalf("decode raw record: %v", err)
+	}
+	if err := decoder.Decode(&derivedRecord); err != nil {
+		t.Fatalf("decode derived record: %v", err)
+	}
+	if rawRecord["event_type_name"] != "file_open" {
+		t.Fatalf("first record = %+v, want raw file event", rawRecord)
+	}
+	if derivedRecord["record_type"] != "policy_decision" {
+		t.Fatalf("second record = %+v, want policy decision", derivedRecord)
+	}
+}
+
+func TestStreamAuditEventsReportsDerivedRecordFailure(t *testing.T) {
+	sample := encodeAuditSample(t, rawAuditEventV2{
+		SchemaVersion: events.SchemaVersion,
+		EventType:     events.EventTypeFileOpen,
+	})
+	called := false
+	want := errors.New("evaluate policy")
+	err := streamAuditEvents(auditSampleReaderFunc(func() ([]byte, error) {
+		if called {
+			return nil, io.EOF
+		}
+		called = true
+		return sample, nil
+	}), AuditOptions{DeriveRecords: func(AuditEvent) ([]any, error) {
+		return nil, want
+	}}, io.Discard)
+	if !errors.Is(err, want) {
+		t.Fatalf("streamAuditEvents() error = %v, want derived failure", err)
+	}
+}
+
 func TestStreamAuditEventsStopsAfterConsecutiveMalformedSamples(t *testing.T) {
 	reads := 0
 	callbacks := 0

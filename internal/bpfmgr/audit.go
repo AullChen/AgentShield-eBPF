@@ -34,6 +34,7 @@ type AuditOptions struct {
 	OnMalformedEvent func(error)
 	OnReady          func()
 	OnScopeMapReady  func(ScopeMap) error
+	DeriveRecords    func(AuditEvent) ([]any, error)
 	ReceiptClock     ReceiptClock
 	StatsInterval    time.Duration
 }
@@ -76,9 +77,18 @@ func newAuditEventEmitter(out io.Writer) *auditEventEmitter {
 }
 
 func (emitter *auditEventEmitter) Emit(event AuditEvent) error {
+	return emitter.EmitBatch(event)
+}
+
+func (emitter *auditEventEmitter) EmitBatch(records ...any) error {
 	emitter.mu.Lock()
 	defer emitter.mu.Unlock()
-	return emitter.encoder.Encode(event)
+	for _, record := range records {
+		if err := emitter.encoder.Encode(record); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func streamAuditEvents(reader auditSampleReader, opts AuditOptions, out io.Writer) error {
@@ -116,7 +126,15 @@ func streamAuditEventsTo(reader auditSampleReader, opts AuditOptions, emitter *a
 		if err := stampReceiptTime(&event, opts.ReceiptClock); err != nil {
 			return fmt.Errorf("sample receipt clocks: %w", err)
 		}
-		if err := emitter.Emit(event); err != nil {
+		records := []any{event}
+		if opts.DeriveRecords != nil {
+			derived, err := opts.DeriveRecords(event)
+			if err != nil {
+				return fmt.Errorf("derive audit records: %w", err)
+			}
+			records = append(records, derived...)
+		}
+		if err := emitter.EmitBatch(records...); err != nil {
 			return fmt.Errorf("write audit event: %w", err)
 		}
 	}

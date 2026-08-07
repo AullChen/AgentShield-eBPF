@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestRunRejectsConfigFileFlag(t *testing.T) {
 	t.Setenv("AGENTSHIELD_CONFIG", "")
@@ -51,5 +54,18 @@ func TestAuditRequiresExactScope(t *testing.T) {
 		"--scope-cgroup", "/sys/fs/cgroup/two",
 	}); exitCode != 2 {
 		t.Fatalf("run(audit with mismatched cgroups) = %d, want usage error 2", exitCode)
+	}
+}
+
+func TestAuditLoadsPolicyBeforeInitializingKernelScope(t *testing.T) {
+	t.Setenv("AGENTSHIELD_CONFIG", "")
+
+	missing := filepath.Join(t.TempDir(), "missing.yaml")
+	if exitCode := run([]string{
+		"audit",
+		"--scope-cgroup", "/not-resolved-before-policy-load",
+		"--policy-file", missing,
+	}); exitCode != 1 {
+		t.Fatalf("run(audit with missing policy) = %d, want runtime error 1", exitCode)
 	}
 }
