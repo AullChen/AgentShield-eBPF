@@ -18,15 +18,35 @@ import (
 )
 
 const (
-	openATProgramName   = "agentshield_trace_openat"
-	execVEProgramName   = "agentshield_trace_execve"
-	connect4ProgramName = "agentshield_connect4"
-	connect6ProgramName = "agentshield_connect6"
-	eventsMapName       = "agentshield_events"
-	statsMapName        = "agentshield_stats_map"
-	scopeMapName        = "agentshield_scope_map"
-	droppedStatsBase    = uint32(16)
+	openATProgramName     = "agentshield_trace_openat"
+	execVEProgramName     = "agentshield_trace_execve"
+	connect4ProgramName   = "agentshield_connect4"
+	connect6ProgramName   = "agentshield_connect6"
+	eventsMapName         = "agentshield_events"
+	statsMapName          = "agentshield_stats_map"
+	scopeMapName          = "agentshield_scope_map"
+	networkProfileMapName = "agentshield_network_profile_map"
+	networkAllowMapName   = "agentshield_network_allow_map"
+	droppedStatsBase      = uint32(16)
 )
+
+const networkDefaultDeny = uint32(1)
+
+type ebpfNetworkProfile struct {
+	Generation uint32
+	PolicyID   uint32
+	RuleID     uint32
+	Flags      uint32
+}
+
+type ebpfNetworkAllowKey struct {
+	ProfileID          uint32
+	Generation         uint32
+	AddressFamily      uint16
+	DestinationPort    uint16
+	DestinationAddress [16]byte
+	MatchFlags         uint32
+}
 
 type ebpfScopeMap struct {
 	scopes *ebpf.Map
@@ -76,6 +96,11 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 	if opts.ObjectPath == "" {
 		return fmt.Errorf("bpf object path is required")
 	}
+	if opts.NetworkEnforcement != nil {
+		if err := opts.NetworkEnforcement.Validate(); err != nil {
+			return fmt.Errorf("validate network enforcement: %w", err)
+		}
+	}
 	if err := rlimit.RemoveMemlock(); err != nil {
 		return fmt.Errorf("remove memlock limit: %w", err)
 	}
@@ -114,6 +139,19 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 	scopes := collection.Maps[scopeMapName]
 	if scopes == nil {
 		return fmt.Errorf("bpf map %q not found", scopeMapName)
+	}
+	if opts.NetworkEnforcement != nil {
+		profiles := collection.Maps[networkProfileMapName]
+		if profiles == nil {
+			return fmt.Errorf("bpf map %q not found", networkProfileMapName)
+		}
+		allows := collection.Maps[networkAllowMapName]
+		if allows == nil {
+			return fmt.Errorf("bpf map %q not found", networkAllowMapName)
+		}
+		if err := installNetworkEnforcement(profiles, allows, *opts.NetworkEnforcement); err != nil {
+			return err
+		}
 	}
 	if opts.OnScopeMapReady != nil {
 		if err := opts.OnScopeMapReady(ebpfScopeMap{scopes: scopes}); err != nil {
@@ -216,6 +254,33 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 		return streamErr
 	}
 	return statsErr
+}
+
+func installNetworkEnforcement(profiles, allows *ebpf.Map, config NetworkEnforcementConfig) error {
+	for _, tuple := range config.Allows {
+		key := ebpfNetworkAllowKey{
+			ProfileID:          config.ProfileID,
+			Generation:         config.Generation,
+			AddressFamily:      tuple.AddressFamily,
+			DestinationPort:    tuple.Port,
+			DestinationAddress: tuple.Address,
+			MatchFlags:         tuple.MatchFlags,
+		}
+		value := uint8(1)
+		if err := allows.Update(key, value, ebpf.UpdateNoExist); err != nil {
+			return fmt.Errorf("install network allow tuple family=%d port=%d: %w", tuple.AddressFamily, tuple.Port, err)
+		}
+	}
+	profile := ebpfNetworkProfile{
+		Generation: config.Generation,
+		PolicyID:   config.PolicyID,
+		RuleID:     config.RuleID,
+		Flags:      networkDefaultDeny,
+	}
+	if err := profiles.Update(config.ProfileID, profile, ebpf.UpdateNoExist); err != nil {
+		return fmt.Errorf("activate network enforcement profile %d: %w", config.ProfileID, err)
+	}
+	return nil
 }
 
 func captureReceiptTime() (ReceiptTime, error) {

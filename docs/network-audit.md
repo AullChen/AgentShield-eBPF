@@ -5,11 +5,14 @@ Day 15 adds cgroup sock-address audit programs for TCP IPv4 and IPv6:
 - `cgroup/connect4` (`agentshield_connect4`)
 - `cgroup/connect6` (`agentshield_connect6`)
 
-Both programs are audit-only and always return `1` (allow), even if the ring
-buffer is full. They emit `net_connect` attempt events with destination IP,
+Without a compiled block profile, both programs return `1` (allow), even if
+the ring buffer is full. Day 33 added the optional synchronous default-deny
+path documented in `network-enforcement.md`; when enabled, a denied tuple
+returns `0` even if its evidence cannot be emitted. The programs emit
+`net_connect` attempt events with destination IP,
 destination port, address family, protocol, process identity, and cgroup ID.
 The hook cannot see the DNS name. `action_result=none` means the later socket
-connection result was not observed.
+connection result was not observed in audit-only mode.
 
 Network hooks and the scope map use the same exact leaf supplied through
 `audit --scope-cgroup PATH`. There is no subtree or host-wide fallback.

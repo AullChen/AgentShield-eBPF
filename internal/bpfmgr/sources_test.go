@@ -70,6 +70,26 @@ func TestEmbeddedBPFRejectsUnregisteredScopesBeforeRingBufferReserve(t *testing.
 	}
 }
 
+func TestEmbeddedConnectHookReturnsKernelBlockResult(t *testing.T) {
+	var program string
+	for _, source := range EmbeddedSources() {
+		if strings.HasSuffix(source.Path, "agentshield.bpf.c") {
+			program = source.Contents
+			break
+		}
+	}
+	for _, fragment := range []string{
+		"agentshield_network_profile_map",
+		"agentshield_network_allow_map",
+		"AGENTSHIELD_RESULT_BLOCKED",
+		"return blocked ? 0 : 1",
+	} {
+		if !strings.Contains(program, fragment) {
+			t.Fatalf("embedded connect enforcement is missing %q", fragment)
+		}
+	}
+}
+
 func TestEmbeddedSourcesReturnsIndependentSlice(t *testing.T) {
 	sources := EmbeddedSources()
 	if len(sources) == 0 {

@@ -83,6 +83,7 @@ func (engine *Engine) EvaluateAuditEvent(event events.KernelEvent) ([]any, error
 		if err != nil {
 			return nil, err
 		}
+		reconcileNetworkEnforcement(&networkReport, event)
 		report = networkReport.DecisionReport
 		networkDecisions = networkReport.Decisions
 	default:
@@ -103,6 +104,67 @@ func (engine *Engine) EvaluateAuditEvent(event events.KernelEvent) ([]any, error
 		NetworkDecisions:          networkDecisions,
 	}
 	return []any{record}, nil
+}
+
+func reconcileNetworkEnforcement(report *NetworkDecisionReport, event events.KernelEvent) {
+	if event.Action != events.ActionBlock || event.RuleID == 0 {
+		return
+	}
+	resultReason := ""
+	switch event.ActionResult {
+	case events.ActionResultBlocked:
+		resultReason = "cgroup_connect_hook_blocked"
+	case events.ActionResultAllowed:
+		resultReason = "cgroup_connect_hook_allowed"
+	default:
+		return
+	}
+	for index := range report.Decisions {
+		decision := &report.Decisions[index]
+		if decision.RuleID != event.RuleID {
+			continue
+		}
+		decision.Enforced = true
+		decision.Reasons = appendWithout(decision.Reasons, resultReason)
+	}
+	for index := range report.Hits {
+		hit := &report.Hits[index]
+		if hit.RuleID != event.RuleID {
+			continue
+		}
+		hit.Enforced = true
+		hit.PostEventOnly = false
+		hit.Reasons = removeReason(hit.Reasons, "enforcement_not_connected")
+		hit.Reasons = appendWithout(hit.Reasons, resultReason)
+		if event.ActionResult == events.ActionResultBlocked {
+			hit.EffectiveAction = ActionBlock
+		}
+	}
+	if report.Final != nil && report.Final.RuleID == event.RuleID {
+		report.Final.Enforced = true
+		if event.ActionResult == events.ActionResultBlocked {
+			report.Final.EffectiveAction = ActionBlock
+		}
+	}
+}
+
+func removeReason(reasons []string, remove string) []string {
+	filtered := reasons[:0]
+	for _, reason := range reasons {
+		if reason != remove {
+			filtered = append(filtered, reason)
+		}
+	}
+	return filtered
+}
+
+func appendWithout(reasons []string, value string) []string {
+	for _, reason := range reasons {
+		if reason == value {
+			return reasons
+		}
+	}
+	return append(reasons, value)
 }
 
 func (engine *Engine) evaluateFileAuditEvent(context EvaluationContext, event events.KernelEvent) (DecisionReport, error) {

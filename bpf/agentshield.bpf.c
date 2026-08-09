@@ -244,27 +244,91 @@ int agentshield_trace_openat(struct trace_event_raw_sys_enter *ctx)
 	return 0;
 }
 
+static __always_inline void
+agentshield_fill_network_key(struct agentshield_network_allow_key *key,
+			     const struct bpf_sock_addr *ctx,
+			     __u16 address_family, __u32 profile_id,
+			     __u32 generation)
+{
+	key->profile_id = profile_id;
+	key->generation = generation;
+	key->address_family = address_family;
+	key->destination_port = bpf_ntohs((__u16)ctx->user_port);
+	if (address_family == AGENTSHIELD_AF_INET)
+		__builtin_memcpy(key->destination_address, &ctx->user_ip4,
+				 sizeof(ctx->user_ip4));
+	else
+		__builtin_memcpy(key->destination_address, &ctx->user_ip6,
+				 sizeof(ctx->user_ip6));
+}
+
+static __always_inline int
+agentshield_network_tuple_allowed(const struct bpf_sock_addr *ctx,
+				  __u16 address_family,
+				  __u32 profile_id,
+				  __u32 generation)
+{
+	struct agentshield_network_allow_key key = {};
+
+	agentshield_fill_network_key(&key, ctx, address_family, profile_id,
+				     generation);
+	if (bpf_map_lookup_elem(&agentshield_network_allow_map, &key))
+		return 1;
+
+	/* An explicit flag represents any port for one exact address. */
+	key.destination_port = 0;
+	key.match_flags = AGENTSHIELD_NETWORK_ALLOW_ANY_PORT;
+	if (bpf_map_lookup_elem(&agentshield_network_allow_map, &key))
+		return 1;
+
+	/* A separate flag represents any address in one family. */
+	__builtin_memset(key.destination_address, 0,
+			 sizeof(key.destination_address));
+	key.destination_port = bpf_ntohs((__u16)ctx->user_port);
+	key.match_flags = AGENTSHIELD_NETWORK_ALLOW_ANY_ADDRESS;
+	return bpf_map_lookup_elem(&agentshield_network_allow_map, &key) != 0;
+}
+
 static __always_inline int
 agentshield_audit_connect(struct bpf_sock_addr *ctx, __u16 address_family)
 {
+	struct agentshield_network_profile *profile = 0;
+	struct agentshield_network_profile applied_profile = {};
 	struct agentshield_network_payload *payload;
 	struct agentshield_event *event;
 	struct agentshield_scope_value scope = {};
 	__u64 cgroup_id;
+	int blocked = 0;
 
 	if (ctx->protocol != AGENTSHIELD_IPPROTO_TCP)
 		return 1;
 	if (!agentshield_current_scope(&cgroup_id, &scope))
 		return 1;
+	if (scope.profile_id)
+		profile = bpf_map_lookup_elem(&agentshield_network_profile_map,
+					      &scope.profile_id);
+	if (profile)
+		applied_profile = *profile;
+	if (applied_profile.flags & AGENTSHIELD_NETWORK_DEFAULT_DENY)
+		blocked = !agentshield_network_tuple_allowed(
+			ctx, address_family, scope.profile_id,
+			applied_profile.generation);
 
 	event = agentshield_reserve_event(AGENTSHIELD_EVENT_NET_CONNECT);
 	if (!event)
-		return 1;
+		return blocked ? 0 : 1;
 
 	__builtin_memset(event, 0, sizeof(*event));
 	agentshield_fill_common(event, AGENTSHIELD_EVENT_NET_CONNECT, cgroup_id,
 				&scope, 0);
 	event->flags |= AGENTSHIELD_FLAG_FIELD_UNAVAILABLE;
+	if (applied_profile.flags & AGENTSHIELD_NETWORK_DEFAULT_DENY) {
+		event->action = AGENTSHIELD_ACTION_BLOCK;
+		event->action_result = blocked ? AGENTSHIELD_RESULT_BLOCKED :
+						  AGENTSHIELD_RESULT_ALLOWED;
+		event->policy_id = applied_profile.policy_id;
+		event->rule_id = applied_profile.rule_id;
+	}
 
 	payload = (struct agentshield_network_payload *)event->data;
 	payload->destination_port = bpf_ntohs((__u16)ctx->user_port);
@@ -278,7 +342,7 @@ agentshield_audit_connect(struct bpf_sock_addr *ctx, __u16 address_family)
 				 sizeof(ctx->user_ip6));
 
 	bpf_ringbuf_submit(event, 0);
-	return 1;
+	return blocked ? 0 : 1;
 }
 
 SEC("cgroup/connect4")

@@ -29,14 +29,71 @@ type ReceiptTime struct {
 type ReceiptClock func() (ReceiptTime, error)
 
 type AuditOptions struct {
-	ObjectPath       string
-	CgroupPath       string
-	OnMalformedEvent func(error)
-	OnReady          func()
-	OnScopeMapReady  func(ScopeMap) error
-	DeriveRecords    func(AuditEvent) ([]any, error)
-	ReceiptClock     ReceiptClock
-	StatsInterval    time.Duration
+	ObjectPath         string
+	CgroupPath         string
+	OnMalformedEvent   func(error)
+	OnReady            func()
+	OnScopeMapReady    func(ScopeMap) error
+	DeriveRecords      func(AuditEvent) ([]any, error)
+	NetworkEnforcement *NetworkEnforcementConfig
+	ReceiptClock       ReceiptClock
+	StatsInterval      time.Duration
+}
+
+type NetworkAllowTuple struct {
+	AddressFamily uint16
+	Port          uint16
+	Address       [16]byte
+	MatchFlags    uint32
+}
+
+const (
+	NetworkAllowAnyAddress uint32 = 1 << iota
+	NetworkAllowAnyPort
+)
+
+type NetworkEnforcementConfig struct {
+	ProfileID  uint32
+	Generation uint32
+	PolicyID   uint32
+	RuleID     uint32
+	Allows     []NetworkAllowTuple
+}
+
+func (config NetworkEnforcementConfig) Validate() error {
+	if config.ProfileID == 0 || config.Generation == 0 || config.PolicyID == 0 || config.RuleID == 0 {
+		return errors.New("network enforcement profile, generation, policy, and rule IDs must be non-zero")
+	}
+	if len(config.Allows) > 1024 {
+		return fmt.Errorf("network enforcement has %d allow tuples; capacity is 1024", len(config.Allows))
+	}
+	seen := make(map[NetworkAllowTuple]struct{}, len(config.Allows))
+	for _, tuple := range config.Allows {
+		if tuple.AddressFamily != events.AddressFamilyIPv4 && tuple.AddressFamily != events.AddressFamilyIPv6 {
+			return fmt.Errorf("network enforcement address family %d is unsupported", tuple.AddressFamily)
+		}
+		if tuple.MatchFlags & ^(NetworkAllowAnyAddress|NetworkAllowAnyPort) != 0 {
+			return fmt.Errorf("network enforcement match flags %#x are unsupported", tuple.MatchFlags)
+		}
+		if tuple.MatchFlags&(NetworkAllowAnyAddress|NetworkAllowAnyPort) ==
+			NetworkAllowAnyAddress|NetworkAllowAnyPort {
+			return errors.New("network enforcement tuple cannot wildcard both address and port")
+		}
+		if tuple.MatchFlags&NetworkAllowAnyPort != 0 && tuple.Port != 0 {
+			return errors.New("network enforcement any-port tuple must use port zero")
+		}
+		if tuple.MatchFlags&NetworkAllowAnyPort == 0 && tuple.Port == 0 {
+			return errors.New("network enforcement port zero requires the any-port flag")
+		}
+		if tuple.MatchFlags&NetworkAllowAnyAddress != 0 && tuple.Address != ([16]byte{}) {
+			return errors.New("network enforcement any-address tuple must use an all-zero address")
+		}
+		if _, exists := seen[tuple]; exists {
+			return fmt.Errorf("network enforcement allow tuple is duplicated: family=%d port=%d", tuple.AddressFamily, tuple.Port)
+		}
+		seen[tuple] = struct{}{}
+	}
+	return nil
 }
 
 type ScopeMap interface {

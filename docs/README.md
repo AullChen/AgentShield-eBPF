@@ -17,6 +17,8 @@ Current notes:
 - `file-exec-audit.md`: current Day 12 file/exec attempt-event semantics and safety limits.
 - `network-audit.md`: Day 15 cgroup connect4/connect6 semantics, fixture, and
   explicit coverage/fallback matrix.
+- `network-enforcement.md`: Day 33 exact-tuple cgroup connect default-deny
+  compiler, synchronous block semantics, and privileged acceptance gate.
 - `p0-integration-check.md`: historical Day 1-6 integration snapshot.
 - `p1-coverage.md`: Day 17 pre-M1 source/runtime coverage matrix, reproducible
   Linux evidence command, and current pending acceptance status.

@@ -30,9 +30,11 @@ Current probe coverage:
   Executable and argument truncation is reported through the event flags. Wire
   schema v2 carries an explicit captured-argument count so legal empty arguments
   do not hide later arguments; legacy wire v1 objects are rejected.
-- `cgroup/connect4` and `cgroup/connect6` emit audit-only TCP destination
-  address/port records when the loader is given an explicit cgroup v2 path.
-  They have no host-wide fallback and always allow the connection.
+- `cgroup/connect4` and `cgroup/connect6` emit TCP destination address/port
+  records when the loader is given an explicit cgroup v2 path. They have no
+  host-wide fallback. Without a block profile they allow; with the supported
+  exact-tuple default-deny profile they synchronously reject non-allowlisted
+  connects and report the block result.
 
 Both probes run at syscall entry, so `action_result` is `NONE`. They do not
 prove that the file open or process execution succeeded.

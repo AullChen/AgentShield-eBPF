@@ -92,9 +92,12 @@ family. `default_observe` emits a hit only for a selected static tuple.
 `default_deny` treats CIDR and port entries as an allowlist and returns a deny
 hit for everything else, including direct DNS, QUIC, HTTPS/DoH, and proxy
 bypass attempts. An empty allowlist denies every tuple, and the current static
-profile permits TCP only. Until the planned cgroup enforcement hook consumes this
-decision, a requested block is reported with `enforced=false`, effective audit,
-and `enforcement_not_connected`; it is not a blocked connection.
+profile permits TCP only. One applicable default-deny block policy made only
+of exact host prefixes and exact ports can be compiled into the cgroup connect
+enforcement maps. Its blocked raw event is reconciled to `enforced=true` and
+effective block. Policy shapes outside that first kernel representation return
+explicit unsupported; post-event-only decisions retain `enforced=false`,
+effective audit, and `enforcement_not_connected`.
 
 Observed hostnames are experimental evidence only. They never grant access,
 because DNS answers and names are mutable and are not a stable kernel security

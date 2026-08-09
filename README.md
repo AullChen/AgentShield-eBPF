@@ -13,7 +13,7 @@ The project is currently in early MVP development. The repository contains the G
 | eBPF source layout | Started | `bpf/agentshield.bpf.c`, `events.h`, and `maps.h` exist. |
 | File audit probe | Started | `tracepoint/syscalls/sys_enter_openat` emits a file-open event shape. |
 | Process audit probe | Started | `tracepoint/syscalls/sys_enter_execve` captures executable and bounded argv summaries. |
-| Network audit probe | Source complete, Linux evidence pending | Explicit-cgroup `connect4/connect6` hooks emit TCP destination IP/port/family and always allow. |
+| Network audit/enforcement | Source complete, Linux evidence pending | Explicit-cgroup `connect4/connect6` hooks audit TCP and can synchronously block tuples absent from one exact-host/port default-deny profile. |
 | BPF build flow | Implemented, Linux evidence pending | `make bpf-object` compiles a CO-RE ELF and records object/BTF hashes, exact tool versions, and parsed program/map specs. |
 | Dashboard | Scaffolded | Next.js App Router pages exist with mock data. |
 | Runtime BPF loading | Started | `agentshield audit` loads a compiled BPF object and attaches file/exec probes on Linux. |
@@ -21,7 +21,7 @@ The project is currently in early MVP development. The repository contains the G
 | Audit reliability | Source complete, Linux saturation pending | Per-type per-CPU reserve failures become Go-synthesized `drop_notice` records; SIGINT/SIGTERM close and join the reader/monitor path. |
 | Kernel Event v3 | Started | Go-side decoding validates schema/size, preserves all 64-bit scope/time identities as JSON strings, adds receipt calibration, and rejects incompatible wire schemas. |
 | cgroup scoping | P2 source gate complete, Linux evidence pending | Exact-leaf registration, finish/TTL tombstones, ID reuse isolation, Core self-protection, and host-negative filtering have automated coverage. |
-| Policy engine | Post-event integration implemented | `audit --policy-file` evaluates file/exec/network events against one immutable generation, retains all hits, and emits the deterministic final decision; BPF map activation and kernel enforcement are pending. |
+| Policy engine | First enforcement path implemented | `audit --policy-file` retains all post-event hits and the final decision; one bounded exact-tuple network profile can be installed for synchronous cgroup connect blocking. Runtime Linux evidence and broader BPF map activation remain pending. |
 
 ## MVP Direction
 

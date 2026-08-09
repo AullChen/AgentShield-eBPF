@@ -45,9 +45,10 @@ multi-policy ordering, complete hit retention, the final decision, failed and
 successful generation switches, and raw/derived log ordering. Real Linux
 load/attach evidence is still required separately.
 
-## Deliberate limits
+## Deliberate limits at this checkpoint
 
-- All decisions are post-event and `enforced=false`; no operation is blocked.
+- Day 32 itself emitted post-event decisions only. Day 33 subsequently added
+  the bounded synchronous network path documented in `network-enforcement.md`.
 - The A/B evaluator snapshot is in process. A concrete eBPF rule/profile map
   store is still pending.
 - The standalone audit command provides global and cgroup context only. Run and

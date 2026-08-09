@@ -145,12 +145,14 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policy
 		return 2
 	}
 	var policyEngine *policy.Engine
+	var policyBundle policy.Bundle
 	if policyFile != "" {
 		loaded, err := policy.LoadFile(policyFile, policy.Limits{})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "load audit policy: %v\n", err)
 			return 1
 		}
+		policyBundle = loaded.Bundle
 		policyEngine, _, err = policy.NewEngine(
 			loaded.Bundle,
 			policy.Generation{Revision: 1, Bank: policy.BankA},
@@ -183,18 +185,50 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policy
 		return 1
 	}
 	cgroupPath = handle.Path
+	var networkEnforcement *bpfmgr.NetworkEnforcementConfig
+	if policyEngine != nil {
+		image, err := policy.CompileNetworkEnforcement(
+			policyBundle,
+			policy.EvaluationContext{CgroupID: fmt.Sprintf("%d", handle.ID)},
+			1,
+			policy.Generation{Revision: 1, Bank: policy.BankA},
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "configure synchronous network enforcement: %v\n", err)
+			return 1
+		}
+		if image != nil {
+			networkEnforcement = &bpfmgr.NetworkEnforcementConfig{
+				ProfileID: image.ProfileID, Generation: image.Generation,
+				PolicyID: image.PolicyID, RuleID: image.RuleID,
+				Allows: make([]bpfmgr.NetworkAllowTuple, len(image.Allows)),
+			}
+			for index, tuple := range image.Allows {
+				networkEnforcement.Allows[index] = bpfmgr.NetworkAllowTuple{
+					AddressFamily: tuple.AddressFamily, Port: tuple.Port, Address: tuple.Address,
+					MatchFlags: tuple.MatchFlags,
+				}
+			}
+		}
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	logger.InfoContext(ctx, "starting kernel audit", slog.String("bpf_object", objectPath), slog.String("network_cgroup", cgroupPath))
 	options := bpfmgr.AuditOptions{
-		ObjectPath: objectPath,
-		CgroupPath: cgroupPath,
+		ObjectPath:         objectPath,
+		CgroupPath:         cgroupPath,
+		NetworkEnforcement: networkEnforcement,
 		OnScopeMapReady: func(scopes bpfmgr.ScopeMap) error {
+			var profileID uint32
+			if networkEnforcement != nil {
+				profileID = networkEnforcement.ProfileID
+			}
 			return scopes.Put(handle.ID, scope.Value{
 				InstanceID:  instanceID,
 				ScopeCookie: scopeCookie,
+				ProfileID:   profileID,
 			})
 		},
 		OnReady: func() {

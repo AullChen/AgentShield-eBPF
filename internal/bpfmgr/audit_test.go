@@ -88,6 +88,33 @@ func TestDecodeAuditEvent(t *testing.T) {
 	}
 }
 
+func TestNetworkEnforcementConfigValidation(t *testing.T) {
+	valid := NetworkEnforcementConfig{
+		ProfileID: 1, Generation: 2, PolicyID: 3, RuleID: 4,
+		Allows: []NetworkAllowTuple{{AddressFamily: events.AddressFamilyIPv4, Port: 443}},
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+
+	invalid := valid
+	invalid.RuleID = 0
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("Validate() accepted zero rule ID")
+	}
+	invalid = valid
+	invalid.Allows = append(invalid.Allows, invalid.Allows[0])
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("Validate() accepted duplicate allow tuple")
+	}
+	invalid = valid
+	invalid.Allows[0].MatchFlags = NetworkAllowAnyAddress
+	invalid.Allows[0].Address[0] = 1
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("Validate() accepted any-address tuple with a concrete address")
+	}
+}
+
 func TestDecodeAuditEventRejectsWrongSize(t *testing.T) {
 	sample := make([]byte, 3)
 	binary.LittleEndian.PutUint16(sample, events.SchemaVersion)
