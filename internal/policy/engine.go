@@ -42,12 +42,22 @@ type NetworkDecisionReport struct {
 }
 
 type engineSnapshot struct {
-	generation Generation
-	bundle     Bundle
+	generation   Generation
+	bundle       Bundle
+	fileRules    map[string][]compiledFileRule
+	execRules    map[string][]compiledExecRule
+	networkRules map[string][]compiledNetworkRule
 }
 
-// Engine evaluates one immutable bundle generation per event. Activate builds
-// and validates the replacement before publishing it atomically.
+type preparedEngineBundle struct {
+	bundle       Bundle
+	fileRules    map[string][]compiledFileRule
+	execRules    map[string][]compiledExecRule
+	networkRules map[string][]compiledNetworkRule
+}
+
+// Engine evaluates one immutable, precompiled bundle generation per event.
+// Activate builds and validates the replacement before publishing it atomically.
 type Engine struct {
 	limits   Limits
 	activate sync.Mutex
@@ -63,7 +73,7 @@ func NewEngine(bundle Bundle, generation Generation, limits Limits) (*Engine, []
 		return nil, diagnostics, err
 	}
 	engine := &Engine{limits: limits.withDefaults()}
-	engine.active.Store(&engineSnapshot{generation: generation, bundle: prepared})
+	engine.active.Store(newEngineSnapshot(generation, prepared))
 	return engine, diagnostics, nil
 }
 
@@ -93,7 +103,7 @@ func (engine *Engine) Activate(bundle Bundle, generation Generation) ([]Diagnost
 	if err != nil {
 		return diagnostics, err
 	}
-	engine.active.Store(&engineSnapshot{generation: generation, bundle: prepared})
+	engine.active.Store(newEngineSnapshot(generation, prepared))
 	return diagnostics, nil
 }
 
@@ -114,16 +124,14 @@ func evaluateFileSnapshot(snapshot *engineSnapshot, context EvaluationContext, o
 		return emptyDecisionReport(snapshot.generation), nil
 	}
 	result := MatchResult{}
+	rules := selectFileRules(snapshot.fileRules, bundle)
 	seenHits := make(map[uint32]struct{})
 	seenGaps := make(map[string]struct{})
 	for _, observation := range observations {
 		if err := validateFileObservation(observation); err != nil {
 			return DecisionReport{}, err
 		}
-		matched, err := MatchFile(bundle, observation)
-		if err != nil {
-			return DecisionReport{}, err
-		}
+		matched := matchFileRules(rules, observation)
 		for _, hit := range matched.Hits {
 			if _, exists := seenHits[hit.RuleID]; exists {
 				continue
@@ -155,10 +163,7 @@ func (engine *Engine) EvaluateExec(context EvaluationContext, observation ExecOb
 	if len(bundle.Policies) == 0 {
 		return emptyDecisionReport(snapshot.generation), nil
 	}
-	result, err := MatchExec(bundle, observation)
-	if err != nil {
-		return DecisionReport{}, err
-	}
+	result := matchExecRules(selectExecRules(snapshot.execRules, bundle), observation)
 	return buildDecisionReport(snapshot.generation, bundle, result), nil
 }
 
@@ -174,10 +179,7 @@ func (engine *Engine) EvaluateNetwork(context EvaluationContext, observation Net
 	if len(bundle.Policies) == 0 {
 		return NetworkDecisionReport{DecisionReport: emptyDecisionReport(snapshot.generation)}, nil
 	}
-	result, err := MatchNetwork(bundle, observation)
-	if err != nil {
-		return NetworkDecisionReport{}, err
-	}
+	result := matchNetworkRules(selectNetworkRules(snapshot.networkRules, bundle), observation)
 	report := NetworkDecisionReport{
 		DecisionReport: buildDecisionReport(snapshot.generation, bundle, result.MatchResult),
 		Decisions:      result.Decisions,
@@ -204,29 +206,91 @@ func (engine *Engine) snapshot() (*engineSnapshot, error) {
 	return snapshot, nil
 }
 
-func prepareEngineBundle(bundle Bundle, limits Limits) (Bundle, []Diagnostic, error) {
+func prepareEngineBundle(bundle Bundle, limits Limits) (preparedEngineBundle, []Diagnostic, error) {
 	prepared := cloneBundle(bundle)
 	diagnostics, err := prepared.NormalizeAndValidate()
 	if err != nil {
-		return Bundle{}, diagnostics, fmt.Errorf("validate policy bundle: %w", err)
+		return preparedEngineBundle{}, diagnostics, fmt.Errorf("validate policy bundle: %w", err)
 	}
 	if _, err := PreviewCompile(prepared, limits); err != nil {
-		return Bundle{}, diagnostics, err
+		return preparedEngineBundle{}, diagnostics, err
 	}
-	if _, err := compileFileRules(prepared); err != nil {
-		return Bundle{}, diagnostics, err
+	fileRules, err := compileFileRules(prepared)
+	if err != nil {
+		return preparedEngineBundle{}, diagnostics, err
 	}
-	if _, err := compileExecRules(prepared); err != nil {
-		return Bundle{}, diagnostics, err
+	execRules, err := compileExecRules(prepared)
+	if err != nil {
+		return preparedEngineBundle{}, diagnostics, err
 	}
-	for _, policy := range prepared.Policies {
-		if policy.Enabled && policy.Conditions.Network != nil {
-			if err := validateNetworkPolicyMode(policy); err != nil {
-				return Bundle{}, diagnostics, err
-			}
-		}
+	networkRules, err := compileNetworkRules(prepared)
+	if err != nil {
+		return preparedEngineBundle{}, diagnostics, err
 	}
-	return prepared, diagnostics, nil
+	return preparedEngineBundle{
+		bundle:       prepared,
+		fileRules:    indexFileRules(fileRules),
+		execRules:    indexExecRules(execRules),
+		networkRules: indexNetworkRules(networkRules),
+	}, diagnostics, nil
+}
+
+func newEngineSnapshot(generation Generation, prepared preparedEngineBundle) *engineSnapshot {
+	return &engineSnapshot{
+		generation:   generation,
+		bundle:       prepared.bundle,
+		fileRules:    prepared.fileRules,
+		execRules:    prepared.execRules,
+		networkRules: prepared.networkRules,
+	}
+}
+
+func indexFileRules(rules []compiledFileRule) map[string][]compiledFileRule {
+	indexed := make(map[string][]compiledFileRule)
+	for _, rule := range rules {
+		indexed[rule.policy.ID] = append(indexed[rule.policy.ID], rule)
+	}
+	return indexed
+}
+
+func indexExecRules(rules []compiledExecRule) map[string][]compiledExecRule {
+	indexed := make(map[string][]compiledExecRule)
+	for _, rule := range rules {
+		indexed[rule.policy.ID] = append(indexed[rule.policy.ID], rule)
+	}
+	return indexed
+}
+
+func indexNetworkRules(rules []compiledNetworkRule) map[string][]compiledNetworkRule {
+	indexed := make(map[string][]compiledNetworkRule)
+	for _, rule := range rules {
+		indexed[rule.policy.ID] = append(indexed[rule.policy.ID], rule)
+	}
+	return indexed
+}
+
+func selectFileRules(indexed map[string][]compiledFileRule, bundle Bundle) []compiledFileRule {
+	var selected []compiledFileRule
+	for _, policy := range bundle.Policies {
+		selected = append(selected, indexed[policy.ID]...)
+	}
+	return selected
+}
+
+func selectExecRules(indexed map[string][]compiledExecRule, bundle Bundle) []compiledExecRule {
+	var selected []compiledExecRule
+	for _, policy := range bundle.Policies {
+		selected = append(selected, indexed[policy.ID]...)
+	}
+	return selected
+}
+
+func selectNetworkRules(indexed map[string][]compiledNetworkRule, bundle Bundle) []compiledNetworkRule {
+	var selected []compiledNetworkRule
+	for _, policy := range bundle.Policies {
+		selected = append(selected, indexed[policy.ID]...)
+	}
+	return selected
 }
 
 type conditionKind uint8

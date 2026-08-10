@@ -45,6 +45,11 @@ type NetworkMatchResult struct {
 	Decisions []NetworkPolicyDecision `json:"decisions"`
 }
 
+type compiledNetworkRule struct {
+	policy Policy
+	id     uint32
+}
+
 func MatchNetwork(bundle Bundle, observation NetworkObservation) (NetworkMatchResult, error) {
 	if err := bundle.Validate(); err != nil {
 		return NetworkMatchResult{}, fmt.Errorf("validate policy bundle: %w", err)
@@ -52,22 +57,39 @@ func MatchNetwork(bundle Bundle, observation NetworkObservation) (NetworkMatchRe
 	if err := validateNetworkObservation(observation); err != nil {
 		return NetworkMatchResult{}, err
 	}
-	observation.Destination = observation.Destination.Unmap()
-	result := NetworkMatchResult{}
+	rules, err := compileNetworkRules(bundle)
+	if err != nil {
+		return NetworkMatchResult{}, err
+	}
+	return matchNetworkRules(rules, observation), nil
+}
+
+func compileNetworkRules(bundle Bundle) ([]compiledNetworkRule, error) {
 	registry := make(ruleIDRegistry)
+	var rules []compiledNetworkRule
 	for _, policy := range bundle.Policies {
 		condition := policy.Conditions.Network
 		if !policy.Enabled || condition == nil {
 			continue
 		}
 		if err := validateNetworkPolicyMode(policy); err != nil {
-			return NetworkMatchResult{}, err
+			return nil, err
 		}
 		ruleID, err := registry.add(policy.ID, "network_default", 0)
 		if err != nil {
-			return NetworkMatchResult{}, err
+			return nil, err
 		}
-		decision := evaluateNetworkPolicy(policy, ruleID, observation)
+		rules = append(rules, compiledNetworkRule{policy: policy, id: ruleID})
+	}
+	return rules, nil
+}
+
+func matchNetworkRules(rules []compiledNetworkRule, observation NetworkObservation) NetworkMatchResult {
+	observation.Destination = observation.Destination.Unmap()
+	result := NetworkMatchResult{}
+	for _, rule := range rules {
+		policy := rule.policy
+		decision := evaluateNetworkPolicy(policy, rule.id, observation)
 		result.Decisions = append(result.Decisions, decision)
 		if observation.ObservedHostname != "" {
 			result.Gaps = append(result.Gaps, EvaluationGap{
@@ -92,7 +114,7 @@ func MatchNetwork(bundle Bundle, observation NetworkObservation) (NetworkMatchRe
 		}
 		result.Hits = append(result.Hits, PolicyHit{
 			PolicyID:        policy.ID,
-			RuleID:          ruleID,
+			RuleID:          rule.id,
 			RuleKind:        networkRuleKind(decision.Disposition),
 			RequestedAction: policy.RequestedAction,
 			EffectiveAction: effectiveAction,
@@ -104,7 +126,7 @@ func MatchNetwork(bundle Bundle, observation NetworkObservation) (NetworkMatchRe
 			Reasons:         decision.Reasons,
 		})
 	}
-	return result, nil
+	return result
 }
 
 func validateNetworkObservation(observation NetworkObservation) error {

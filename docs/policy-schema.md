@@ -115,6 +115,11 @@ standalone audit command supplies a trusted cgroup ID; it rejects enabled run-
 or label-scoped policies at load time until registration-context metadata is
 available, instead of silently treating them as non-matches.
 
+The engine validates and compiles file, exec, and network matchers when a
+generation is created or activated. Event evaluation reads that immutable
+compiled snapshot and does not revalidate or rebuild the bundle on the audit
+ring-buffer path.
+
 The tracked kernel network path captures TCP only; UDP DNS and QUIC
 reason-code tests exercise control-plane decisions until UDP capture and
 enforcement hooks exist. All current matcher results are post-event evidence,

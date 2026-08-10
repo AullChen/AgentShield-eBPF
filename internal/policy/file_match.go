@@ -50,6 +50,10 @@ func MatchFile(bundle Bundle, observation FileObservation) (MatchResult, error) 
 	if err != nil {
 		return MatchResult{}, err
 	}
+	return matchFileRules(rules, observation), nil
+}
+
+func matchFileRules(rules []compiledFileRule, observation FileObservation) MatchResult {
 	result := MatchResult{}
 	candidates := fileCandidates(observation, &result)
 	seen := make(map[uint32]struct{})
@@ -84,7 +88,7 @@ func MatchFile(bundle Bundle, observation FileObservation) (MatchResult, error) 
 			break
 		}
 	}
-	return result, nil
+	return result
 }
 
 func validateFileObservation(observation FileObservation) error {

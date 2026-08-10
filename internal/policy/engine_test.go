@@ -77,6 +77,24 @@ func TestEngineEvaluatesFileAndExecPolicies(t *testing.T) {
 	}
 }
 
+func TestEngineSnapshotPrecompilesEveryMatcher(t *testing.T) {
+	file := filePolicy("file", Scope{Type: ScopeGlobal}, 1, "/secret")
+	exec := filePolicy("exec", Scope{Type: ScopeGlobal}, 1, "/unused")
+	exec.Conditions = Conditions{Exec: &ExecCondition{Executables: []string{"bash"}}}
+	network := networkObservePolicy()
+	engine := mustEngine(t, Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{file, exec, network}}, Generation{Revision: 1, Bank: BankA})
+
+	snapshot := engine.active.Load()
+	if snapshot == nil {
+		t.Fatal("engine has no active snapshot")
+	}
+	if len(snapshot.fileRules[file.ID]) == 0 || len(snapshot.execRules[exec.ID]) == 0 ||
+		len(snapshot.networkRules[network.ID]) == 0 {
+		t.Fatalf("compiled rules missing: file=%d exec=%d network=%d",
+			len(snapshot.fileRules[file.ID]), len(snapshot.execRules[exec.ID]), len(snapshot.networkRules[network.ID]))
+	}
+}
+
 func TestEngineNetworkFinalRetainsMoreSpecificAllow(t *testing.T) {
 	specific := strictProxyPolicy()
 	specific.ID = "cgroup-allow"

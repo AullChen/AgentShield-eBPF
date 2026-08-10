@@ -50,6 +50,10 @@ func MatchExec(bundle Bundle, observation ExecObservation) (MatchResult, error) 
 	if err != nil {
 		return MatchResult{}, err
 	}
+	return matchExecRules(rules, observation), nil
+}
+
+func matchExecRules(rules []compiledExecRule, observation ExecObservation) MatchResult {
 	result := MatchResult{}
 	addExecCaptureGaps(observation, &result)
 	for _, rule := range rules {
@@ -77,7 +81,7 @@ func MatchExec(bundle Bundle, observation ExecObservation) (MatchResult, error) 
 			Reasons:         reasons,
 		})
 	}
-	return result, nil
+	return result
 }
 
 func validateExecObservation(observation ExecObservation) error {
