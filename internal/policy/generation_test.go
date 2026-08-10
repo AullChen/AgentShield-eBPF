@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -37,7 +38,7 @@ func TestGenerationUpdaterCommitsAndAlternatesBanks(t *testing.T) {
 }
 
 func TestGenerationUpdaterFailureNeverSwitchesActiveBank(t *testing.T) {
-	for _, step := range []string{"active", "reset", "rule", "profile", "read", "activate"} {
+	for _, step := range []string{"begin", "active", "reset", "rule", "profile", "read", "activate"} {
 		t.Run(step, func(t *testing.T) {
 			store := newMemoryBankStore()
 			store.failStep = step
@@ -112,6 +113,56 @@ func TestGenerationUpdaterHonorsCancellationBeforeActivation(t *testing.T) {
 	}
 }
 
+func TestGenerationUpdatersSerializeOnSharedStore(t *testing.T) {
+	store := newMemoryBankStore()
+	first, err := NewGenerationUpdater(store, 4, 2)
+	if err != nil {
+		t.Fatalf("NewGenerationUpdater(first): %v", err)
+	}
+	second, err := NewGenerationUpdater(store, 4, 2)
+	if err != nil {
+		t.Fatalf("NewGenerationUpdater(second): %v", err)
+	}
+
+	type result struct {
+		generation Generation
+		value      byte
+		err        error
+	}
+	start := make(chan struct{})
+	results := make(chan result, 2)
+	for index, updater := range []*GenerationUpdater{first, second} {
+		value := byte(index + 10)
+		go func() {
+			<-start
+			image := testBankImage()
+			image.Rules[0].Value[0] = value
+			generation, commitErr := updater.Commit(context.Background(), image)
+			results <- result{generation: generation, value: value, err: commitErr}
+		}()
+	}
+	close(start)
+
+	valuesByRevision := make(map[uint64]byte, 2)
+	for range 2 {
+		result := <-results
+		if result.err != nil {
+			t.Fatalf("Commit: %v", result.err)
+		}
+		valuesByRevision[result.generation.Revision] = result.value
+	}
+	if len(valuesByRevision) != 2 {
+		t.Fatalf("committed revisions = %v, want distinct revisions 1 and 2", valuesByRevision)
+	}
+	if store.active.Revision != 2 {
+		t.Fatalf("active generation = %+v, want revision 2", store.active)
+	}
+	activeImage := store.banks[store.active.Bank]
+	if got, want := activeImage.Rules[0].Value[0], valuesByRevision[2]; got != want {
+		t.Fatalf("active rule value = %d, want revision 2 value %d", got, want)
+	}
+}
+
 func testBankImage() BankImage {
 	return BankImage{
 		Rules: []MapEntry{
@@ -123,6 +174,7 @@ func testBankImage() BankImage {
 }
 
 type memoryBankStore struct {
+	updateMu        sync.Mutex
 	active          Generation
 	banks           map[Bank]BankImage
 	failStep        string
@@ -130,6 +182,10 @@ type memoryBankStore struct {
 	cancelAfterRule bool
 	cancel          context.CancelFunc
 	calls           int
+}
+
+type memoryBankUpdate struct {
+	store *memoryBankStore
 }
 
 func newMemoryBankStore() *memoryBankStore {
@@ -148,59 +204,78 @@ func (store *memoryBankStore) fail(step string) error {
 	return nil
 }
 
-func (store *memoryBankStore) Active(context.Context) (Generation, error) {
-	if err := store.fail("active"); err != nil {
+func (store *memoryBankStore) BeginUpdate(ctx context.Context) (BankUpdate, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	store.updateMu.Lock()
+	if err := store.fail("begin"); err != nil {
+		store.updateMu.Unlock()
+		return nil, err
+	}
+	return &memoryBankUpdate{store: store}, nil
+}
+
+func (update *memoryBankUpdate) Close() {
+	update.store.updateMu.Unlock()
+}
+
+func (update *memoryBankUpdate) Active(context.Context) (Generation, error) {
+	if err := update.store.fail("active"); err != nil {
 		return Generation{}, err
 	}
-	return store.active, nil
+	return update.store.active, nil
 }
 
-func (store *memoryBankStore) Reset(_ context.Context, bank Bank) error {
-	if err := store.fail("reset"); err != nil {
+func (update *memoryBankUpdate) Reset(_ context.Context, bank Bank) error {
+	if err := update.store.fail("reset"); err != nil {
 		return err
 	}
-	store.banks[bank] = BankImage{}
+	update.store.banks[bank] = BankImage{}
 	return nil
 }
 
-func (store *memoryBankStore) PutRule(_ context.Context, bank Bank, entry MapEntry) error {
-	if err := store.fail("rule"); err != nil {
+func (update *memoryBankUpdate) PutRule(_ context.Context, bank Bank, entry MapEntry) error {
+	if err := update.store.fail("rule"); err != nil {
 		return err
 	}
-	image := store.banks[bank]
+	image := update.store.banks[bank]
 	image.Rules = append(image.Rules, MapEntry{Key: entry.Key, Value: append([]byte(nil), entry.Value...)})
-	store.banks[bank] = image
-	if store.cancelAfterRule {
-		store.cancel()
+	update.store.banks[bank] = image
+	if update.store.cancelAfterRule {
+		update.store.cancel()
 	}
 	return nil
 }
 
-func (store *memoryBankStore) PutProfile(_ context.Context, bank Bank, entry MapEntry) error {
-	if err := store.fail("profile"); err != nil {
+func (update *memoryBankUpdate) PutProfile(_ context.Context, bank Bank, entry MapEntry) error {
+	if err := update.store.fail("profile"); err != nil {
 		return err
 	}
-	image := store.banks[bank]
+	image := update.store.banks[bank]
 	image.Profiles = append(image.Profiles, MapEntry{Key: entry.Key, Value: append([]byte(nil), entry.Value...)})
-	store.banks[bank] = image
+	update.store.banks[bank] = image
 	return nil
 }
 
-func (store *memoryBankStore) Read(_ context.Context, bank Bank) (BankImage, error) {
-	if err := store.fail("read"); err != nil {
+func (update *memoryBankUpdate) Read(_ context.Context, bank Bank) (BankImage, error) {
+	if err := update.store.fail("read"); err != nil {
 		return BankImage{}, err
 	}
-	image := cloneBankImage(store.banks[bank])
-	if store.corruptReadback {
+	image := cloneBankImage(update.store.banks[bank])
+	if update.store.corruptReadback {
 		image.Rules[0].Value[0]++
 	}
 	return image, nil
 }
 
-func (store *memoryBankStore) Activate(_ context.Context, generation Generation) error {
-	if err := store.fail("activate"); err != nil {
+func (update *memoryBankUpdate) Activate(_ context.Context, expected, generation Generation) error {
+	if err := update.store.fail("activate"); err != nil {
 		return err
 	}
-	store.active = generation
+	if update.store.active != expected {
+		return errors.New("active generation changed during update")
+	}
+	update.store.active = generation
 	return nil
 }

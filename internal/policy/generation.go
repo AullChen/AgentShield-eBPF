@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"sync"
 )
 
 type Bank uint8
@@ -34,22 +33,29 @@ type BankImage struct {
 }
 
 // BankStore represents the two rule/profile map banks and their active
-// selector. Activate must be atomic: returning an error must leave the active
-// generation unchanged.
+// selector. BeginUpdate must exclude every other update against the same
+// backing store until the returned update is closed.
 type BankStore interface {
+	BeginUpdate(context.Context) (BankUpdate, error)
+}
+
+// BankUpdate is an exclusive update transaction. Activate must compare the
+// active generation with expected and atomically switch to next only when they
+// match. Returning an error must leave the active generation unchanged.
+type BankUpdate interface {
 	Active(context.Context) (Generation, error)
 	Reset(context.Context, Bank) error
 	PutRule(context.Context, Bank, MapEntry) error
 	PutProfile(context.Context, Bank, MapEntry) error
 	Read(context.Context, Bank) (BankImage, error)
-	Activate(context.Context, Generation) error
+	Activate(context.Context, Generation, Generation) error
+	Close()
 }
 
 type GenerationUpdater struct {
 	store           BankStore
 	ruleCapacity    int
 	profileCapacity int
-	mu              sync.Mutex
 }
 
 func NewGenerationUpdater(store BankStore, ruleCapacity, profileCapacity int) (*GenerationUpdater, error) {
@@ -69,14 +75,17 @@ func NewGenerationUpdater(store BankStore, ruleCapacity, profileCapacity int) (*
 // Commit writes a complete image to the inactive bank, verifies an exact
 // readback, and only then switches the active generation.
 func (updater *GenerationUpdater) Commit(ctx context.Context, image BankImage) (Generation, error) {
-	updater.mu.Lock()
-	defer updater.mu.Unlock()
-
 	image = cloneBankImage(image)
 	if err := validateBankImage(image, updater.ruleCapacity, updater.profileCapacity); err != nil {
 		return Generation{}, err
 	}
-	active, err := updater.store.Active(ctx)
+	update, err := updater.store.BeginUpdate(ctx)
+	if err != nil {
+		return Generation{}, fmt.Errorf("begin bank update: %w", err)
+	}
+	defer update.Close()
+
+	active, err := update.Active(ctx)
 	if err != nil {
 		return Generation{}, fmt.Errorf("read active generation: %w", err)
 	}
@@ -90,14 +99,14 @@ func (updater *GenerationUpdater) Commit(ctx context.Context, image BankImage) (
 	if active.Bank == BankA {
 		inactive = BankB
 	}
-	if err := updater.store.Reset(ctx, inactive); err != nil {
+	if err := update.Reset(ctx, inactive); err != nil {
 		return Generation{}, fmt.Errorf("reset inactive bank %d: %w", inactive, err)
 	}
 	for _, entry := range image.Rules {
 		if err := ctx.Err(); err != nil {
 			return Generation{}, fmt.Errorf("write inactive rule bank: %w", err)
 		}
-		if err := updater.store.PutRule(ctx, inactive, entry); err != nil {
+		if err := update.PutRule(ctx, inactive, entry); err != nil {
 			return Generation{}, fmt.Errorf("write rule %d to inactive bank: %w", entry.Key, err)
 		}
 	}
@@ -105,11 +114,11 @@ func (updater *GenerationUpdater) Commit(ctx context.Context, image BankImage) (
 		if err := ctx.Err(); err != nil {
 			return Generation{}, fmt.Errorf("write inactive profile bank: %w", err)
 		}
-		if err := updater.store.PutProfile(ctx, inactive, entry); err != nil {
+		if err := update.PutProfile(ctx, inactive, entry); err != nil {
 			return Generation{}, fmt.Errorf("write profile %d to inactive bank: %w", entry.Key, err)
 		}
 	}
-	readback, err := updater.store.Read(ctx, inactive)
+	readback, err := update.Read(ctx, inactive)
 	if err != nil {
 		return Generation{}, fmt.Errorf("read back inactive bank: %w", err)
 	}
@@ -117,7 +126,7 @@ func (updater *GenerationUpdater) Commit(ctx context.Context, image BankImage) (
 		return Generation{}, fmt.Errorf("verify inactive bank: %w", err)
 	}
 	next := Generation{Revision: active.Revision + 1, Bank: inactive}
-	if err := updater.store.Activate(ctx, next); err != nil {
+	if err := update.Activate(ctx, active, next); err != nil {
 		return Generation{}, fmt.Errorf("activate generation %d: %w", next.Revision, err)
 	}
 	return next, nil
