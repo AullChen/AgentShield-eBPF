@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"net/netip"
 	"sync"
 	"testing"
 )
@@ -73,6 +74,35 @@ func TestEngineEvaluatesFileAndExecPolicies(t *testing.T) {
 	})
 	if err != nil || execReport.Final == nil || execReport.Final.PolicyID != "exec" {
 		t.Fatalf("exec report = %+v, error = %v", execReport, err)
+	}
+}
+
+func TestEngineNetworkFinalRetainsMoreSpecificAllow(t *testing.T) {
+	specific := strictProxyPolicy()
+	specific.ID = "cgroup-allow"
+	specific.Scope = Scope{Type: ScopeCgroup, CgroupID: "42"}
+	specific.Priority = -100
+	lower := strictProxyPolicy()
+	lower.ID = "global-deny"
+	lower.Scope = Scope{Type: ScopeGlobal}
+	lower.Priority = 100
+	lower.Conditions.Network.CIDRs = []string{"198.51.100.1/32"}
+	engine := mustEngine(t, Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{lower, specific}}, Generation{Revision: 1, Bank: BankA})
+
+	report, err := engine.EvaluateNetwork(
+		EvaluationContext{CgroupID: "42"},
+		NetworkObservation{Destination: netip.MustParseAddr("192.0.2.10"), Port: 3128, Protocol: ProtocolTCP},
+	)
+	if err != nil {
+		t.Fatalf("EvaluateNetwork() error = %v", err)
+	}
+	if report.Final == nil || report.Final.PolicyID != "cgroup-allow" ||
+		report.Final.NetworkDisposition != DispositionAllowed {
+		t.Fatalf("final = %+v, want cgroup allow", report.Final)
+	}
+	if len(report.Hits) != 2 || report.Hits[0].PolicyID != "cgroup-allow" ||
+		report.Hits[0].RuleKind != "network_allow" {
+		t.Fatalf("hits = %+v, want more-specific allow before global deny", report.Hits)
 	}
 }
 

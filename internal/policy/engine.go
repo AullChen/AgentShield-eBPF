@@ -18,12 +18,13 @@ type EvaluationContext struct {
 }
 
 type FinalDecision struct {
-	PolicyID        string   `json:"policy_id"`
-	RuleID          uint32   `json:"rule_id"`
-	Decision        Decision `json:"policy_decision"`
-	RequestedAction Action   `json:"requested_action"`
-	EffectiveAction Action   `json:"effective_action"`
-	Enforced        bool     `json:"enforced"`
+	PolicyID           string             `json:"policy_id"`
+	RuleID             uint32             `json:"rule_id"`
+	Decision           Decision           `json:"policy_decision"`
+	NetworkDisposition NetworkDisposition `json:"network_disposition,omitempty"`
+	RequestedAction    Action             `json:"requested_action"`
+	EffectiveAction    Action             `json:"effective_action"`
+	Enforced           bool               `json:"enforced"`
 }
 
 // DecisionReport retains every matching rule while identifying the single
@@ -177,10 +178,19 @@ func (engine *Engine) EvaluateNetwork(context EvaluationContext, observation Net
 	if err != nil {
 		return NetworkDecisionReport{}, err
 	}
-	return NetworkDecisionReport{
+	report := NetworkDecisionReport{
 		DecisionReport: buildDecisionReport(snapshot.generation, bundle, result.MatchResult),
 		Decisions:      result.Decisions,
-	}, nil
+	}
+	if report.Final != nil {
+		for _, decision := range report.Decisions {
+			if decision.PolicyID == report.Final.PolicyID && decision.RuleID == report.Final.RuleID {
+				report.Final.NetworkDisposition = decision.Disposition
+				break
+			}
+		}
+	}
+	return report, nil
 }
 
 func (engine *Engine) snapshot() (*engineSnapshot, error) {

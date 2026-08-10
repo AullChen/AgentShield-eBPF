@@ -33,7 +33,8 @@ func TestMatchNetworkStrictProfileAllowsOnlyProxyTuple(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MatchNetwork allowed: %v", err)
 	}
-	if allowed.Decisions[0].Disposition != DispositionAllowed || len(allowed.Hits) != 0 {
+	if allowed.Decisions[0].Disposition != DispositionAllowed || len(allowed.Hits) != 1 ||
+		allowed.Hits[0].RuleKind != "network_allow" || allowed.Hits[0].EffectiveAction != ActionAudit {
 		t.Fatalf("allowed result = %+v", allowed)
 	}
 	denied, err := MatchNetwork(bundle, NetworkObservation{

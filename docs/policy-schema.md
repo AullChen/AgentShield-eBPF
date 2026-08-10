@@ -108,10 +108,12 @@ port; its documentation address must be replaced before deployment.
 decoded file, exec, or network event. The raw event is emitted first and its
 `policy_decision` record follows immediately. The decision record identifies
 one immutable generation, retains all matching rules, and exposes one final
-decision using the precedence below. The standalone audit command supplies a
-trusted cgroup ID; it rejects enabled run- or label-scoped policies at load
-time until registration-context metadata is available, instead of silently
-treating them as non-matches.
+decision using the precedence below. Network final decisions also include
+`network_disposition`, so a higher-precedence static allowlist match remains
+visible even though its policy's configured default decision is deny. The
+standalone audit command supplies a trusted cgroup ID; it rejects enabled run-
+or label-scoped policies at load time until registration-context metadata is
+available, instead of silently treating them as non-matches.
 
 The tracked kernel network path captures TCP only; UDP DNS and QUIC
 reason-code tests exercise control-plane decisions until UDP capture and

@@ -66,6 +66,36 @@ func TestEvaluateAuditEventReconcilesKernelNetworkBlock(t *testing.T) {
 	}
 }
 
+func TestEvaluateAuditEventReconcilesKernelNetworkAllow(t *testing.T) {
+	allowPolicy := strictProxyPolicy()
+	engine := mustEngine(t, Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{allowPolicy}}, Generation{Revision: 1, Bank: BankA})
+	matched, err := MatchNetwork(Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{allowPolicy}}, NetworkObservation{
+		Destination: netip.MustParseAddr("192.0.2.10"), Port: 3128, Protocol: ProtocolTCP,
+	})
+	if err != nil {
+		t.Fatalf("MatchNetwork() error = %v", err)
+	}
+
+	records, err := engine.EvaluateAuditEvent(events.KernelEvent{
+		EventType: events.EventTypeNetConnect, EventTypeName: "net_connect",
+		Action: events.ActionBlock, ActionResult: events.ActionResultAllowed,
+		RuleID: matched.Hits[0].RuleID, CgroupID: 42,
+		DestinationIP: "192.0.2.10", DestinationPort: 3128, Protocol: events.ProtocolTCP,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAuditEvent() error = %v", err)
+	}
+	record := records[0].(AuditDecisionRecord)
+	if record.Final == nil || record.Final.NetworkDisposition != DispositionAllowed ||
+		!record.Final.Enforced || record.Final.EffectiveAction != ActionAudit {
+		t.Fatalf("final = %+v", record.Final)
+	}
+	if len(record.Hits) != 1 || !record.Hits[0].Enforced || record.Hits[0].PostEventOnly ||
+		!containsString(record.Hits[0].Reasons, "cgroup_connect_hook_allowed") {
+		t.Fatalf("hits = %+v", record.Hits)
+	}
+}
+
 func TestEvaluateAuditEventMatchesExecAndIgnoresOtherRecords(t *testing.T) {
 	execPolicy := filePolicy("exec", Scope{Type: ScopeGlobal}, 1, "/unused")
 	execPolicy.Conditions = Conditions{Exec: &ExecCondition{Executables: []string{"bash"}}}

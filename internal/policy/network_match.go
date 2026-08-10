@@ -76,12 +76,16 @@ func MatchNetwork(bundle Bundle, observation NetworkObservation) (NetworkMatchRe
 				Message:  "observed hostname did not participate in the allow decision",
 			})
 		}
-		if decision.Disposition != DispositionObserved && decision.Disposition != DispositionDenied {
+		if decision.Disposition != DispositionObserved &&
+			decision.Disposition != DispositionAllowed &&
+			decision.Disposition != DispositionDenied {
 			continue
 		}
 		effectiveAction := policy.RequestedAction
 		containmentHint := false
-		if decision.Disposition == DispositionDenied &&
+		if decision.Disposition == DispositionAllowed {
+			effectiveAction = ActionAudit
+		} else if decision.Disposition == DispositionDenied &&
 			(effectiveAction == ActionBlock || effectiveAction == ActionContain) {
 			effectiveAction = ActionAudit
 			containmentHint = policy.RequestedAction == ActionContain
@@ -205,8 +209,12 @@ func networkDenyReasons(observation NetworkObservation) []string {
 }
 
 func networkRuleKind(disposition NetworkDisposition) string {
-	if disposition == DispositionDenied {
+	switch disposition {
+	case DispositionAllowed:
+		return "network_allow"
+	case DispositionDenied:
 		return "network_default_deny"
+	default:
+		return "network_observe"
 	}
-	return "network_observe"
 }
