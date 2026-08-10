@@ -152,6 +152,10 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policy
 			fmt.Fprintf(os.Stderr, "load audit policy: %v\n", err)
 			return 1
 		}
+		if err := validateAuditPolicyScopes(loaded.Bundle); err != nil {
+			fmt.Fprintf(os.Stderr, "load audit policy: %v\n", err)
+			return 1
+		}
 		policyBundle = loaded.Bundle
 		policyEngine, _, err = policy.NewEngine(
 			loaded.Bundle,
@@ -255,6 +259,25 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policy
 
 	logger.ErrorContext(ctx, "kernel audit failed", slog.Any("error", err))
 	return 1
+}
+
+func validateAuditPolicyScopes(bundle policy.Bundle) error {
+	var unsupported []error
+	for _, configuredPolicy := range bundle.Policies {
+		if !configuredPolicy.Enabled {
+			continue
+		}
+		switch configuredPolicy.Scope.Type {
+		case policy.ScopeGlobal, policy.ScopeCgroup:
+			continue
+		case policy.ScopeRun, policy.ScopeLabels:
+			unsupported = append(unsupported, fmt.Errorf(
+				"policy %q uses %s scope, but standalone audit provides only global and cgroup scope context",
+				configuredPolicy.ID, configuredPolicy.Scope.Type,
+			))
+		}
+	}
+	return errors.Join(unsupported...)
 }
 
 func randomNonZeroUint64() (uint64, error) {
