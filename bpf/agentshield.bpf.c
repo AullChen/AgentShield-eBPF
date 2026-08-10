@@ -176,13 +176,15 @@ int agentshield_trace_execve(struct trace_event_raw_sys_enter *ctx)
 	read_len = bpf_probe_read_user_str(event->data,
 					   AGENTSHIELD_EXEC_EXE_LEN, filename);
 	if (read_len < 0 || read_len == AGENTSHIELD_EXEC_EXE_LEN)
-		event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+		event->flags |= AGENTSHIELD_FLAG_TRUNCATED |
+				AGENTSHIELD_FLAG_EXECUTABLE_TRUNCATED;
 
 #pragma unroll
 	for (i = 0; i < AGENTSHIELD_EXEC_ARG_COUNT; i++) {
 		arg = 0;
 		if (bpf_probe_read_user(&arg, sizeof(arg), &argv[i]) < 0) {
-			event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+			event->flags |= AGENTSHIELD_FLAG_TRUNCATED |
+					AGENTSHIELD_FLAG_ARGUMENTS_TRUNCATED;
 			break;
 		}
 		if (!arg)
@@ -193,12 +195,14 @@ int agentshield_trace_execve(struct trace_event_raw_sys_enter *ctx)
 				     i * AGENTSHIELD_EXEC_ARG_LEN],
 			AGENTSHIELD_EXEC_ARG_LEN, arg);
 		if (read_len < 0) {
-			event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+			event->flags |= AGENTSHIELD_FLAG_TRUNCATED |
+					AGENTSHIELD_FLAG_ARGUMENTS_TRUNCATED;
 			break;
 		}
 		captured_argc++;
 		if (read_len == AGENTSHIELD_EXEC_ARG_LEN)
-			event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+			event->flags |= AGENTSHIELD_FLAG_TRUNCATED |
+					AGENTSHIELD_FLAG_ARGUMENTS_TRUNCATED;
 	}
 	event->captured_argc_plus_one = captured_argc + 1;
 
@@ -206,7 +210,8 @@ int agentshield_trace_execve(struct trace_event_raw_sys_enter *ctx)
 		arg = 0;
 		if (bpf_probe_read_user(&arg, sizeof(arg),
 					&argv[AGENTSHIELD_EXEC_ARG_COUNT]) < 0 || arg)
-			event->flags |= AGENTSHIELD_FLAG_TRUNCATED;
+			event->flags |= AGENTSHIELD_FLAG_TRUNCATED |
+					AGENTSHIELD_FLAG_ARGUMENTS_TRUNCATED;
 	}
 
 	bpf_ringbuf_submit(event, 0);

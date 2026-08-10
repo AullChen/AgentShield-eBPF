@@ -62,7 +62,10 @@ Important semantics:
   task name.
 - `ppid` is read from the current task through CO-RE, because it is not a
   syscall tracepoint argument.
-- Long executable names, arguments, or argument lists set `truncated=true`.
+- Long executable names, arguments, or argument lists set the compatibility
+  aggregate `truncated=true`. Exec events also identify the affected capture
+  with `executable_truncated` and `arguments_truncated`; the two fields must not
+  be used interchangeably during policy matching.
 - These are attempt events. A syscall-entry tracepoint does not prove that the
   file open or process execution succeeded.
 - Up to four arguments are captured. The wire record carries the captured slot

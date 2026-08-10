@@ -47,18 +47,26 @@ func (engine *Engine) EvaluateAuditEvent(event events.KernelEvent) ([]any, error
 		}
 		report = fileReport
 	case events.EventTypeExecAttempt:
+		executableTruncated := event.ExecutableTruncated
+		argumentsTruncated := event.ArgumentsTruncated
+		if event.Truncated && !executableTruncated && !argumentsTruncated {
+			// Preserve conservative behavior for legacy JSON/wire-v3 events that
+			// only carry the aggregate truncation flag.
+			executableTruncated = true
+			argumentsTruncated = true
+		}
 		argumentsState := CaptureComplete
 		arguments := event.Argv
 		if event.FieldsUnavailable {
 			argumentsState = CaptureUnavailable
 			arguments = nil
-		} else if event.Truncated {
+		} else if argumentsTruncated {
 			argumentsState = CaptureTruncated
 		}
 		execReport, err := engine.EvaluateExec(context, ExecObservation{
 			Operation:           ExecOperationExecve,
 			Executable:          event.Data,
-			ExecutableTruncated: event.Truncated,
+			ExecutableTruncated: executableTruncated,
 			Arguments:           arguments,
 			ArgumentsState:      argumentsState,
 		})

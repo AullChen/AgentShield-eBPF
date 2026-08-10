@@ -245,6 +245,46 @@ func TestDecodeKernelExecEventV3(t *testing.T) {
 	}
 }
 
+func TestDecodeKernelExecTruncationFlagsAreIndependent(t *testing.T) {
+	tests := []struct {
+		name                string
+		flags               uint32
+		executableTruncated bool
+		argumentsTruncated  bool
+	}{
+		{
+			name: "executable only", flags: FlagTruncated | FlagExecutableTruncated,
+			executableTruncated: true,
+		},
+		{
+			name: "arguments only", flags: FlagTruncated | FlagArgumentsTruncated,
+			argumentsTruncated: true,
+		},
+		{
+			name: "legacy aggregate", flags: FlagTruncated,
+			executableTruncated: true, argumentsTruncated: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			event := decodeRawForTest(t, rawKernelEventV3{
+				SchemaVersion: SchemaVersion, EventType: EventTypeExecAttempt,
+				Flags: test.flags, CapturedArgcPlusOne: 1,
+			})
+			if !event.Truncated {
+				t.Fatal("Truncated = false, want aggregate truncation")
+			}
+			if event.ExecutableTruncated != test.executableTruncated ||
+				event.ArgumentsTruncated != test.argumentsTruncated {
+				t.Fatalf("specific truncation = executable:%t arguments:%t, want executable:%t arguments:%t",
+					event.ExecutableTruncated, event.ArgumentsTruncated,
+					test.executableTruncated, test.argumentsTruncated)
+			}
+		})
+	}
+}
+
 func TestDecodeKernelExecEventPreservesEmptyArgument(t *testing.T) {
 	raw := rawKernelEventV3{
 		SchemaVersion:       SchemaVersion,

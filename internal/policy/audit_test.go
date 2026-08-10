@@ -89,6 +89,25 @@ func TestEvaluateAuditEventMatchesExecAndIgnoresOtherRecords(t *testing.T) {
 	}
 }
 
+func TestEvaluateAuditEventDoesNotTreatArgumentTruncationAsExecutableTruncation(t *testing.T) {
+	execPolicy := filePolicy("exec", Scope{Type: ScopeGlobal}, 1, "/unused")
+	execPolicy.Conditions = Conditions{Exec: &ExecCondition{Executables: []string{"bash"}}}
+	engine := mustEngine(t, Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{execPolicy}}, Generation{Revision: 1, Bank: BankA})
+
+	records, err := engine.EvaluateAuditEvent(events.KernelEvent{
+		EventType: events.EventTypeExecAttempt, CgroupID: 42,
+		Data: "/usr/bin/bash", Argv: []string{"bash", "long-prefix"},
+		Truncated: true, ArgumentsTruncated: true,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAuditEvent() error = %v", err)
+	}
+	record := records[0].(AuditDecisionRecord)
+	if record.Final == nil || record.Final.PolicyID != "exec" {
+		t.Fatalf("final = %+v, want executable match despite argument truncation", record.Final)
+	}
+}
+
 func TestEvaluateAuditEventReportsOPathGapWithoutReadHit(t *testing.T) {
 	engine := mustEngine(t, Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{
 		filePolicy("read", Scope{Type: ScopeGlobal}, 1, "/shared"),

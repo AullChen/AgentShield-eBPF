@@ -45,9 +45,11 @@ const (
 	// ActionResultFallback is deprecated. Use FlagFallback with killed/failed.
 	ActionResultFallback uint16 = 5
 
-	FlagTruncated        uint32 = 1 << 0
-	FlagFallback         uint32 = 1 << 1
-	FlagFieldUnavailable uint32 = 1 << 2
+	FlagTruncated           uint32 = 1 << 0
+	FlagFallback            uint32 = 1 << 1
+	FlagFieldUnavailable    uint32 = 1 << 2
+	FlagExecutableTruncated uint32 = 1 << 3
+	FlagArgumentsTruncated  uint32 = 1 << 4
 
 	AddressFamilyIPv4 uint16 = 2
 	AddressFamilyIPv6 uint16 = 10
@@ -99,6 +101,8 @@ type KernelEvent struct {
 	DroppedEventTypeName      string            `json:"dropped_event_type_name,omitempty"`
 	DroppedCount              uint64            `json:"dropped_count,string,omitempty"`
 	Truncated                 bool              `json:"truncated"`
+	ExecutableTruncated       bool              `json:"executable_truncated"`
+	ArgumentsTruncated        bool              `json:"arguments_truncated"`
 	FieldsUnavailable         bool              `json:"fields_unavailable"`
 	RawEncoding               map[string]string `json:"raw_encoding,omitempty"`
 }
@@ -160,30 +164,40 @@ func DecodeKernelEvent(sample []byte) (KernelEvent, error) {
 	}
 
 	event := KernelEvent{
-		JSONSchemaVersion: JSONSchemaVersion,
-		SchemaVersion:     raw.SchemaVersion,
-		EventType:         raw.EventType,
-		EventTypeName:     EventTypeName(raw.EventType),
-		Action:            raw.Action,
-		ActionName:        ActionName(raw.Action),
-		ActionResult:      raw.ActionResult,
-		ActionResultName:  ActionResultName(raw.ActionResult),
-		TimestampNS:       raw.TimestampNS,
-		KernelMonotonicNS: raw.TimestampNS,
-		CgroupID:          raw.CgroupID,
-		InstanceID:        raw.InstanceID,
-		ScopeCookie:       raw.ScopeCookie,
-		PID:               raw.PID,
-		TGID:              raw.TGID,
-		PPID:              raw.PPID,
-		UID:               raw.UID,
-		ProfileID:         raw.ProfileID,
-		PolicyID:          raw.PolicyID,
-		RuleID:            raw.RuleID,
-		Flags:             raw.Flags,
-		SyscallFlags:      raw.SyscallFlags,
-		Truncated:         raw.Flags&FlagTruncated != 0,
-		FieldsUnavailable: raw.Flags&FlagFieldUnavailable != 0,
+		JSONSchemaVersion:   JSONSchemaVersion,
+		SchemaVersion:       raw.SchemaVersion,
+		EventType:           raw.EventType,
+		EventTypeName:       EventTypeName(raw.EventType),
+		Action:              raw.Action,
+		ActionName:          ActionName(raw.Action),
+		ActionResult:        raw.ActionResult,
+		ActionResultName:    ActionResultName(raw.ActionResult),
+		TimestampNS:         raw.TimestampNS,
+		KernelMonotonicNS:   raw.TimestampNS,
+		CgroupID:            raw.CgroupID,
+		InstanceID:          raw.InstanceID,
+		ScopeCookie:         raw.ScopeCookie,
+		PID:                 raw.PID,
+		TGID:                raw.TGID,
+		PPID:                raw.PPID,
+		UID:                 raw.UID,
+		ProfileID:           raw.ProfileID,
+		PolicyID:            raw.PolicyID,
+		RuleID:              raw.RuleID,
+		Flags:               raw.Flags,
+		SyscallFlags:        raw.SyscallFlags,
+		Truncated:           raw.Flags&FlagTruncated != 0,
+		ExecutableTruncated: raw.Flags&FlagExecutableTruncated != 0,
+		ArgumentsTruncated:  raw.Flags&FlagArgumentsTruncated != 0,
+		FieldsUnavailable:   raw.Flags&FlagFieldUnavailable != 0,
+	}
+	if raw.EventType == EventTypeExecAttempt && event.Truncated &&
+		!event.ExecutableTruncated && !event.ArgumentsTruncated {
+		// Wire-v3 objects predating the field-specific flags only set the
+		// aggregate bit. Treat both captures as uncertain rather than risk a
+		// false negative when a stale object is loaded.
+		event.ExecutableTruncated = true
+		event.ArgumentsTruncated = true
 	}
 	event.Comm = decodeEventCString(&event, "comm", raw.Comm[:])
 	switch raw.EventType {
