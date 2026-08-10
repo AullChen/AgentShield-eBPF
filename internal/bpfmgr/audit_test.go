@@ -208,24 +208,44 @@ func TestStreamAuditEventsEmitsDerivedRecordsImmediatelyAfterRawEvent(t *testing
 	}
 }
 
-func TestStreamAuditEventsReportsDerivedRecordFailure(t *testing.T) {
+func TestStreamAuditEventsIsolatesDerivedRecordFailure(t *testing.T) {
 	sample := encodeAuditSample(t, rawAuditEventV2{
 		SchemaVersion: events.SchemaVersion,
 		EventType:     events.EventTypeFileOpen,
 	})
-	called := false
+	reads := 0
 	want := errors.New("evaluate policy")
+	var reported error
+	var out bytes.Buffer
 	err := streamAuditEvents(auditSampleReaderFunc(func() ([]byte, error) {
-		if called {
+		if reads == 2 {
 			return nil, io.EOF
 		}
-		called = true
+		reads++
 		return sample, nil
-	}), AuditOptions{DeriveRecords: func(AuditEvent) ([]any, error) {
-		return nil, want
-	}}, io.Discard)
-	if !errors.Is(err, want) {
-		t.Fatalf("streamAuditEvents() error = %v, want derived failure", err)
+	}), AuditOptions{
+		DeriveRecords:        func(AuditEvent) ([]any, error) { return nil, want },
+		OnDerivedRecordError: func(err error) { reported = err },
+	}, &out)
+	if err != nil {
+		t.Fatalf("streamAuditEvents() error = %v", err)
+	}
+	if !errors.Is(reported, want) || reads != 2 {
+		t.Fatalf("reported = %v, reads = %d", reported, reads)
+	}
+	decoder := json.NewDecoder(&out)
+	for index := 0; index < 2; index++ {
+		var rawRecord map[string]any
+		var errorRecord map[string]any
+		if err := decoder.Decode(&rawRecord); err != nil {
+			t.Fatalf("decode raw record %d: %v", index, err)
+		}
+		if err := decoder.Decode(&errorRecord); err != nil {
+			t.Fatalf("decode error record %d: %v", index, err)
+		}
+		if errorRecord["record_type"] != "derived_record_error" || errorRecord["error"] != want.Error() {
+			t.Fatalf("error record %d = %+v", index, errorRecord)
+		}
 	}
 }
 

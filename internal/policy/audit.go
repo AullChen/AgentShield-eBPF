@@ -181,6 +181,15 @@ func (engine *Engine) evaluateFileAuditEvent(context EvaluationContext, event ev
 		}
 		return report, nil
 	}
+	if event.Data == "" {
+		report := emptyDecisionReport(snapshot.generation)
+		if len(selectPolicies(snapshot.bundle, context, conditionFile).Policies) > 0 {
+			report.Gaps = []EvaluationGap{{
+				Code: "user_path_unavailable", Message: "file pathname was not captured",
+			}}
+		}
+		return report, nil
+	}
 	accesses := []FileAccess{FileRead}
 	switch event.SyscallFlags & openAccessMode {
 	case openWriteOnly:

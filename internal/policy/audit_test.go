@@ -105,3 +105,20 @@ func TestEvaluateAuditEventReportsOPathGapWithoutReadHit(t *testing.T) {
 		t.Fatalf("record = %+v", record)
 	}
 }
+
+func TestEvaluateAuditEventReportsUnavailableFilePathWithoutFailing(t *testing.T) {
+	engine := mustEngine(t, Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{
+		filePolicy("read", Scope{Type: ScopeGlobal}, 1, "/shared"),
+	}}, Generation{Revision: 1, Bank: BankA})
+
+	records, err := engine.EvaluateAuditEvent(events.KernelEvent{
+		EventType: events.EventTypeFileOpen, CgroupID: 1, Data: "", Truncated: true,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAuditEvent() error = %v", err)
+	}
+	record := records[0].(AuditDecisionRecord)
+	if len(record.Hits) != 0 || !hasGap(record.Gaps, "user_path_unavailable") {
+		t.Fatalf("record = %+v", record)
+	}
+}

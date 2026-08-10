@@ -237,6 +237,9 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policy
 		OnMalformedEvent: func(err error) {
 			logger.WarnContext(ctx, "discarding malformed kernel event", slog.Any("error", err))
 		},
+		OnDerivedRecordError: func(err error) {
+			logger.WarnContext(ctx, "policy decision derivation failed", slog.Any("error", err))
+		},
 	}
 	if policyEngine != nil {
 		options.DeriveRecords = policyEngine.EvaluateAuditEvent

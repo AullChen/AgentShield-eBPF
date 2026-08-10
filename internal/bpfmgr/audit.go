@@ -29,15 +29,28 @@ type ReceiptTime struct {
 type ReceiptClock func() (ReceiptTime, error)
 
 type AuditOptions struct {
-	ObjectPath         string
-	CgroupPath         string
-	OnMalformedEvent   func(error)
-	OnReady            func()
-	OnScopeMapReady    func(ScopeMap) error
-	DeriveRecords      func(AuditEvent) ([]any, error)
-	NetworkEnforcement *NetworkEnforcementConfig
-	ReceiptClock       ReceiptClock
-	StatsInterval      time.Duration
+	ObjectPath           string
+	CgroupPath           string
+	OnMalformedEvent     func(error)
+	OnDerivedRecordError func(error)
+	OnReady              func()
+	OnScopeMapReady      func(ScopeMap) error
+	DeriveRecords        func(AuditEvent) ([]any, error)
+	NetworkEnforcement   *NetworkEnforcementConfig
+	ReceiptClock         ReceiptClock
+	StatsInterval        time.Duration
+}
+
+type DerivedRecordError struct {
+	RecordType        string `json:"record_type"`
+	KernelMonotonicNS uint64 `json:"kernel_monotonic_ns,string"`
+	CgroupID          uint64 `json:"cgroup_id,string"`
+	InstanceID        uint64 `json:"instance_id,string"`
+	ScopeCookie       uint64 `json:"scope_cookie,string"`
+	PID               uint32 `json:"pid"`
+	EventType         uint16 `json:"event_type"`
+	EventTypeName     string `json:"event_type_name"`
+	Error             string `json:"error"`
 }
 
 type NetworkAllowTuple struct {
@@ -187,13 +200,31 @@ func streamAuditEventsTo(reader auditSampleReader, opts AuditOptions, emitter *a
 		if opts.DeriveRecords != nil {
 			derived, err := opts.DeriveRecords(event)
 			if err != nil {
-				return fmt.Errorf("derive audit records: %w", err)
+				if opts.OnDerivedRecordError != nil {
+					opts.OnDerivedRecordError(err)
+				}
+				records = append(records, derivedRecordError(event, err))
+			} else {
+				records = append(records, derived...)
 			}
-			records = append(records, derived...)
 		}
 		if err := emitter.EmitBatch(records...); err != nil {
 			return fmt.Errorf("write audit event: %w", err)
 		}
+	}
+}
+
+func derivedRecordError(event AuditEvent, err error) DerivedRecordError {
+	return DerivedRecordError{
+		RecordType:        "derived_record_error",
+		KernelMonotonicNS: event.KernelMonotonicNS,
+		CgroupID:          event.CgroupID,
+		InstanceID:        event.InstanceID,
+		ScopeCookie:       event.ScopeCookie,
+		PID:               event.PID,
+		EventType:         event.EventType,
+		EventTypeName:     event.EventTypeName,
+		Error:             err.Error(),
 	}
 }
 
