@@ -55,8 +55,8 @@ func CompileNetworkEnforcement(bundle Bundle, context EvaluationContext, profile
 	if len(blocking) == 0 {
 		return nil, nil
 	}
-	if len(blocking) != 1 {
-		return nil, fmt.Errorf("%w: got %d applicable block policies; the first kernel profile supports exactly one", ErrNetworkEnforcementUnsupported, len(blocking))
+	if len(selected.Policies) != 1 {
+		return nil, fmt.Errorf("%w: got %d applicable network policies including %d block policies; the first kernel profile supports exactly one applicable policy when blocking", ErrNetworkEnforcementUnsupported, len(selected.Policies), len(blocking))
 	}
 	policy := blocking[0]
 	condition := policy.Conditions.Network

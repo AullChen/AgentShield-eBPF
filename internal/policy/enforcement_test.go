@@ -109,3 +109,18 @@ func TestCompileNetworkEnforcementReturnsNilWithoutApplicableBlockPolicy(t *test
 		t.Fatalf("image = %+v, error = %v", image, err)
 	}
 }
+
+func TestCompileNetworkEnforcementRejectsBlockWhenAnotherPolicyCanWin(t *testing.T) {
+	block := strictProxyPolicy()
+	block.Priority = 1
+	observe := networkObservePolicy()
+	observe.Priority = 1000
+
+	_, err := CompileNetworkEnforcement(
+		Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{block, observe}},
+		EvaluationContext{}, 1, Generation{Revision: 1, Bank: BankA},
+	)
+	if !errors.Is(err, ErrNetworkEnforcementUnsupported) {
+		t.Fatalf("conflicting-policy error = %v, want ErrNetworkEnforcementUnsupported", err)
+	}
+}
