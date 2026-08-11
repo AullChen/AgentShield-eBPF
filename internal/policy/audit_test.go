@@ -46,7 +46,7 @@ func TestEvaluateAuditEventReconcilesKernelNetworkBlock(t *testing.T) {
 	records, err := engine.EvaluateAuditEvent(events.KernelEvent{
 		EventType: events.EventTypeNetConnect, EventTypeName: "net_connect",
 		Action: events.ActionBlock, ActionResult: events.ActionResultBlocked,
-		RuleID: matched.Hits[0].RuleID, CgroupID: 42,
+		PolicyID: stablePolicyID(blockPolicy.ID), RuleID: matched.Hits[0].RuleID, CgroupID: 42,
 		DestinationIP: "198.51.100.8", DestinationPort: 443, Protocol: events.ProtocolTCP,
 	})
 	if err != nil {
@@ -79,7 +79,7 @@ func TestEvaluateAuditEventReconcilesKernelNetworkAllow(t *testing.T) {
 	records, err := engine.EvaluateAuditEvent(events.KernelEvent{
 		EventType: events.EventTypeNetConnect, EventTypeName: "net_connect",
 		Action: events.ActionBlock, ActionResult: events.ActionResultAllowed,
-		RuleID: matched.Hits[0].RuleID, CgroupID: 42,
+		PolicyID: stablePolicyID(allowPolicy.ID), RuleID: matched.Hits[0].RuleID, CgroupID: 42,
 		DestinationIP: "192.0.2.10", DestinationPort: 3128, Protocol: events.ProtocolTCP,
 	})
 	if err != nil {
@@ -92,6 +92,35 @@ func TestEvaluateAuditEventReconcilesKernelNetworkAllow(t *testing.T) {
 	}
 	if len(record.Hits) != 1 || !record.Hits[0].Enforced || record.Hits[0].PostEventOnly ||
 		!containsString(record.Hits[0].Reasons, "cgroup_connect_hook_allowed") {
+		t.Fatalf("hits = %+v", record.Hits)
+	}
+}
+
+func TestEvaluateAuditEventRejectsKernelBlockFromAnotherPolicy(t *testing.T) {
+	blockPolicy := strictProxyPolicy()
+	engine := mustEngine(t, Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{blockPolicy}}, Generation{Revision: 1, Bank: BankA})
+	matched, err := MatchNetwork(Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{blockPolicy}}, NetworkObservation{
+		Destination: netip.MustParseAddr("198.51.100.8"), Port: 443, Protocol: ProtocolTCP,
+	})
+	if err != nil {
+		t.Fatalf("MatchNetwork() error = %v", err)
+	}
+
+	records, err := engine.EvaluateAuditEvent(events.KernelEvent{
+		EventType: events.EventTypeNetConnect, EventTypeName: "net_connect",
+		Action: events.ActionBlock, ActionResult: events.ActionResultBlocked,
+		PolicyID: stablePolicyID("another-policy"), RuleID: matched.Hits[0].RuleID, CgroupID: 42,
+		DestinationIP: "198.51.100.8", DestinationPort: 443, Protocol: events.ProtocolTCP,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAuditEvent() error = %v", err)
+	}
+	record := records[0].(AuditDecisionRecord)
+	if record.Final == nil || record.Final.Enforced || record.Final.EffectiveAction != ActionAudit {
+		t.Fatalf("final = %+v, want unmatched post-event decision", record.Final)
+	}
+	if len(record.Hits) != 1 || record.Hits[0].Enforced ||
+		!containsString(record.Hits[0].Reasons, "enforcement_not_connected") {
 		t.Fatalf("hits = %+v", record.Hits)
 	}
 }

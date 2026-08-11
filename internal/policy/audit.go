@@ -115,7 +115,7 @@ func (engine *Engine) EvaluateAuditEvent(event events.KernelEvent) ([]any, error
 }
 
 func reconcileNetworkEnforcement(report *NetworkDecisionReport, event events.KernelEvent) {
-	if event.Action != events.ActionBlock || event.RuleID == 0 {
+	if event.Action != events.ActionBlock || event.PolicyID == 0 || event.RuleID == 0 {
 		return
 	}
 	resultReason := ""
@@ -129,7 +129,7 @@ func reconcileNetworkEnforcement(report *NetworkDecisionReport, event events.Ker
 	}
 	for index := range report.Decisions {
 		decision := &report.Decisions[index]
-		if decision.RuleID != event.RuleID {
+		if stablePolicyID(decision.PolicyID) != event.PolicyID || decision.RuleID != event.RuleID {
 			continue
 		}
 		decision.Enforced = true
@@ -137,7 +137,7 @@ func reconcileNetworkEnforcement(report *NetworkDecisionReport, event events.Ker
 	}
 	for index := range report.Hits {
 		hit := &report.Hits[index]
-		if hit.RuleID != event.RuleID {
+		if stablePolicyID(hit.PolicyID) != event.PolicyID || hit.RuleID != event.RuleID {
 			continue
 		}
 		hit.Enforced = true
@@ -148,7 +148,7 @@ func reconcileNetworkEnforcement(report *NetworkDecisionReport, event events.Ker
 			hit.EffectiveAction = ActionBlock
 		}
 	}
-	if report.Final != nil && report.Final.RuleID == event.RuleID {
+	if report.Final != nil && stablePolicyID(report.Final.PolicyID) == event.PolicyID && report.Final.RuleID == event.RuleID {
 		report.Final.Enforced = true
 		if event.ActionResult == events.ActionResultBlocked {
 			report.Final.EffectiveAction = ActionBlock
