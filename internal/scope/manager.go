@@ -11,13 +11,15 @@ import (
 )
 
 var (
-	ErrInvalidTarget    = errors.New("scope target requires one trusted exact cgroup path")
-	ErrIdentityMismatch = errors.New("resolved cgroup ID does not match BPF observation")
-	ErrAlreadyActive    = errors.New("cgroup scope is already active")
-	ErrOverlap          = errors.New("cgroup scope overlaps an active binding")
-	ErrNotActive        = errors.New("cgroup scope is not active")
-	ErrProtectedScope   = errors.New("cgroup scope contains AgentShield-Core")
-	ErrNotLeaf          = errors.New("cgroup scope is not an exact leaf")
+	ErrInvalidTarget         = errors.New("scope target requires one trusted exact cgroup path")
+	ErrIdentityMismatch      = errors.New("resolved cgroup ID does not match BPF observation")
+	ErrAlreadyActive         = errors.New("cgroup scope is already active")
+	ErrOverlap               = errors.New("cgroup scope overlaps an active binding")
+	ErrNotActive             = errors.New("cgroup scope is not active")
+	ErrScopeIdentityMismatch = errors.New("active cgroup scope identity does not match")
+	ErrProtectedScope        = errors.New("cgroup scope contains AgentShield-Core")
+	ErrNotLeaf               = errors.New("cgroup scope is not an exact leaf")
+	ErrHandleUnavailable     = errors.New("cgroup scope has no stable Linux directory descriptor")
 )
 
 type Value struct {
@@ -216,6 +218,44 @@ func (manager *Manager) Lookup(cgroupID uint64) (Registration, bool) {
 	defer manager.mu.Unlock()
 	active, exists := manager.active[cgroupID]
 	return active.registration, exists
+}
+
+// WithActiveIdentity executes action while the matching scope registration is
+// locked against unregister and reuse. This intentionally holds the
+// manager-wide lifecycle lock, so the action must remain short and must not
+// call back into the manager, retain the handle, or close it. It is intended for
+// security-sensitive operations that need the registration and its original
+// cgroup directory descriptor to remain active for the authorization window.
+func (manager *Manager) WithActiveIdentity(
+	cgroupID, instanceID, scopeCookie uint64,
+	action func(Registration, *Handle) error,
+) error {
+	if instanceID == 0 || scopeCookie == 0 {
+		return errors.New("instance ID and scope cookie must be non-zero")
+	}
+	if action == nil {
+		return errors.New("active scope action is required")
+	}
+
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	active, exists := manager.active[cgroupID]
+	if !exists {
+		return fmt.Errorf("%w: %d", ErrNotActive, cgroupID)
+	}
+	if active.registration.Value.InstanceID != instanceID ||
+		active.registration.Value.ScopeCookie != scopeCookie {
+		return fmt.Errorf(
+			"%w: cgroup=%d expected=%d/%d active=%d/%d",
+			ErrScopeIdentityMismatch,
+			cgroupID,
+			instanceID,
+			scopeCookie,
+			active.registration.Value.InstanceID,
+			active.registration.Value.ScopeCookie,
+		)
+	}
+	return action(active.registration, active.handle)
 }
 
 func (manager *Manager) ActiveIDs() []uint64 {

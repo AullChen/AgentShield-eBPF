@@ -12,6 +12,8 @@ Current notes:
   and ELF/spec versus kernel-load acceptance boundary.
 - `cgroup-scope-acceptance.md`: exact-leaf positive/host-negative gate,
   subtree rejection, and escape monitoring.
+- `containment.md`: Day 34 exact-scope `cgroup.kill` fallback executor,
+  identity revalidation, Core self-protection, and result semantics.
 - `file-exec-acceptance.md`: reproducible Day 14 Linux kernel load/attach and
   file/exec semantic acceptance gate.
 - `file-exec-audit.md`: current Day 12 file/exec attempt-event semantics and safety limits.

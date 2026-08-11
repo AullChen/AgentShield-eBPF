@@ -6,7 +6,7 @@ ifeq ($(OS),Windows_NT)
 BINARY := bin/agentshield.exe
 endif
 
-.PHONY: generate verify-generated bpf-object verify-bpf-object accept-p1 accept-p2 accept-network-block accept-sandbox test-p2 check-bpf-syntax check-linux-bpfmgr test build check clean
+.PHONY: generate verify-generated bpf-object verify-bpf-object accept-p1 accept-p2 accept-network-block accept-sandbox test-p2 check-bpf-syntax check-linux-bpfmgr check-linux-killer test build check clean
 
 generate:
 	go generate ./internal/bpfmgr
@@ -45,13 +45,22 @@ else
 	GOOS=linux GOARCH=amd64 go test -c -o bin/bpfmgr_linux.test ./internal/bpfmgr
 endif
 
+check-linux-killer: bin
+ifeq ($(OS),Windows_NT)
+	set GOOS=linux&& set GOARCH=amd64&& go test -c -o bin/killer_linux.test ./internal/killer
+	set GOOS=linux&& set GOARCH=amd64&& go test -c -o bin/scope_linux.test ./internal/scope
+else
+	GOOS=linux GOARCH=amd64 go test -c -o bin/killer_linux.test ./internal/killer
+	GOOS=linux GOARCH=amd64 go test -c -o bin/scope_linux.test ./internal/scope
+endif
+
 test:
 	go test ./...
 
 build: bin
 	go build -o $(BINARY) ./cmd/agentshield
 
-check: verify-generated check-bpf-syntax check-linux-bpfmgr test build
+check: verify-generated check-bpf-syntax check-linux-bpfmgr check-linux-killer test build
 
 bin:
 ifeq ($(OS),Windows_NT)

@@ -2,7 +2,7 @@
 
 AgentShield-eBPF is a Linux eBPF based runtime security and audit system for AI Agent sandboxes.
 
-The project is currently in early MVP development. The repository contains the Go control-plane skeleton, exact-leaf cgroup filtering and registration, file/process/network audit probes, a strict policy loader and compile preview, a minimal demo sandbox, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard scaffold. Kernel load/attach evidence, policy enforcement, event correlation, and live dashboard streaming are still under development.
+The project is currently in early MVP development. The repository contains the Go control-plane skeleton, exact-leaf cgroup filtering and registration, file/process/network audit probes, a strict policy loader and compile preview, a minimal demo sandbox, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard scaffold. Kernel load/attach evidence, broader policy enforcement, containment integration, event correlation, and live dashboard streaming are still under development.
 
 ## Current Status
 
@@ -22,6 +22,7 @@ The project is currently in early MVP development. The repository contains the G
 | Kernel Event v3 | Started | Go-side decoding validates schema/size, preserves all 64-bit scope/time identities as JSON strings, adds receipt calibration, and rejects incompatible wire schemas. |
 | cgroup scoping | P2 source gate complete, Linux evidence pending | Exact-leaf registration, finish/TTL tombstones, ID reuse isolation, Core self-protection, and host-negative filtering have automated coverage. |
 | Policy engine | First enforcement path implemented | `audit --policy-file` retains all post-event hits and the final decision; one bounded exact-tuple network profile can be installed for synchronous cgroup connect blocking. Runtime Linux evidence and broader BPF map activation remain pending. |
+| Fallback containment | Source complete, Linux evidence pending | `internal/killer` revalidates the active cgroup/instance/cookie identity and Core exclusion before using a stable exact-leaf descriptor for `cgroup.kill`; PID fields are evidence only. The executor is not yet wired into the audit reader. |
 
 ## MVP Direction
 
@@ -139,6 +140,7 @@ make generate
 make verify-generated
 make check-bpf-syntax
 make check-linux-bpfmgr
+make check-linux-killer
 make test
 make test-p2
 go vet ./...
@@ -240,6 +242,8 @@ Additional source milestones:
 - Day 15: explicit-cgroup TCP connect4/connect6 audit source and Go decoding
 - Day 16: per-type per-CPU drop stats, synthesized notices, calibrated receipt clocks, and SIGTERM shutdown
 - Day 17: single-run P1 pre-M1 acceptance harness and sanitized coverage matrix
+- Day 34: independent exact-scope `cgroup.kill` containment executor with Core
+  self-protection, reuse-safe authorization, and separate result semantics
 
 Current gate:
 
@@ -264,7 +268,9 @@ Subsequent work:
 - The tracked P1 coverage matrix is a pending source matrix, not Linux runtime evidence; see [docs/p1-coverage.md](docs/p1-coverage.md).
 - Current file/exec records are syscall-entry attempts; they do not prove success or file contents read.
 - Current exact-scope audit output may still contain sensitive path/argv fragments from the registered sandbox.
-- The project does not yet enforce policies or block behavior.
+- Only the exact-tuple TCP cgroup network path has synchronous block source;
+  its Linux evidence is pending. File/exec matching remains post-event, and the
+  independent containment executor is not yet connected to policy dispatch.
 - The source enforces exact-leaf cgroup capture, but supported-Linux runtime evidence is still pending.
 - The dashboard currently uses mock data.
 - The generated Go source binding embeds source text only; `make bpf-object` is the separate real ELF build.

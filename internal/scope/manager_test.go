@@ -151,6 +151,94 @@ func TestManagerCompletesUnregisterAfterHandleCloseError(t *testing.T) {
 	}
 }
 
+func TestManagerWithActiveIdentityRejectsStaleBindings(t *testing.T) {
+	store := &memoryMap{}
+	manager := newTestManager(t, store, fakeResolver{
+		handle: &Handle{ID: 42, Path: "/agent/leaf"},
+	}, fakeProbe{id: 42})
+	if _, err := manager.Register(context.Background(), Target{Path: "/agent/leaf"}, Value{
+		InstanceID: 11, ScopeCookie: 12,
+	}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	called := false
+	if err := manager.WithActiveIdentity(42, 11, 12, func(registration Registration, handle *Handle) error {
+		called = true
+		if registration.Path != "/agent/leaf" {
+			t.Fatalf("registration path = %q", registration.Path)
+		}
+		if handle == nil || handle.ID != registration.CgroupID {
+			t.Fatalf("borrowed handle = %+v", handle)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("WithActiveIdentity: %v", err)
+	}
+	if !called {
+		t.Fatal("authorized action was not called")
+	}
+
+	for _, identity := range []struct {
+		instanceID  uint64
+		scopeCookie uint64
+	}{{10, 12}, {11, 13}} {
+		called = false
+		err := manager.WithActiveIdentity(42, identity.instanceID, identity.scopeCookie, func(Registration, *Handle) error {
+			called = true
+			return nil
+		})
+		if !errors.Is(err, ErrScopeIdentityMismatch) {
+			t.Fatalf("WithActiveIdentity(%d/%d) error = %v, want ErrScopeIdentityMismatch",
+				identity.instanceID, identity.scopeCookie, err)
+		}
+		if called {
+			t.Fatal("action ran for a stale scope identity")
+		}
+	}
+}
+
+func TestManagerWithActiveIdentityHoldsLifecycleLock(t *testing.T) {
+	store := &memoryMap{}
+	manager := newTestManager(t, store, fakeResolver{
+		handle: &Handle{ID: 42, Path: "/agent/leaf"},
+	}, fakeProbe{id: 42})
+	if _, err := manager.Register(context.Background(), Target{Path: "/agent/leaf"}, Value{
+		InstanceID: 11, ScopeCookie: 12,
+	}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	actionResult := make(chan error, 1)
+	go func() {
+		actionResult <- manager.WithActiveIdentity(42, 11, 12, func(Registration, *Handle) error {
+			close(entered)
+			<-release
+			return nil
+		})
+	}()
+	<-entered
+	if manager.mu.TryLock() {
+		manager.mu.Unlock()
+		t.Fatal("manager lifecycle lock was not held during authorized action")
+	}
+
+	unregisterResult := make(chan error, 1)
+	go func() {
+		unregisterResult <- manager.Unregister(42)
+	}()
+
+	close(release)
+	if err := <-actionResult; err != nil {
+		t.Fatalf("WithActiveIdentity: %v", err)
+	}
+	if err := <-unregisterResult; err != nil {
+		t.Fatalf("Unregister: %v", err)
+	}
+}
+
 func TestManagerRejectsAmbiguousOrIncompleteTargets(t *testing.T) {
 	manager := newTestManager(t, &memoryMap{}, fakeResolver{}, fakeProbe{})
 	value := Value{InstanceID: 1, ScopeCookie: 2}
