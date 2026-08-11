@@ -10,6 +10,8 @@ import (
 	"slices"
 )
 
+var ErrNoCommittedGeneration = errors.New("no committed policy generation")
+
 type Bank uint8
 
 const (
@@ -31,6 +33,22 @@ type BankImage struct {
 	Rules    []MapEntry
 	Profiles []MapEntry
 }
+
+type RecoveredGeneration struct {
+	Generation Generation `json:"generation"`
+	Image      BankImage  `json:"image"`
+}
+
+// PolicyUpdateFailedRecord is emitted when a generation cannot be committed.
+// Pointer fields distinguish an unknown generation from generation zero.
+type PolicyUpdateFailedRecord struct {
+	RecordType          string      `json:"record_type"`
+	ActiveGeneration    *Generation `json:"active_generation,omitempty"`
+	AttemptedGeneration *Generation `json:"attempted_generation,omitempty"`
+	Error               string      `json:"error"`
+}
+
+type PolicyUpdateFailureReporter func(PolicyUpdateFailedRecord) error
 
 // BankStore represents the two rule/profile map banks and their active
 // selector. BeginUpdate must exclude every other update against the same
@@ -56,9 +74,21 @@ type GenerationUpdater struct {
 	store           BankStore
 	ruleCapacity    int
 	profileCapacity int
+	reportFailure   PolicyUpdateFailureReporter
 }
 
 func NewGenerationUpdater(store BankStore, ruleCapacity, profileCapacity int) (*GenerationUpdater, error) {
+	return newGenerationUpdater(store, ruleCapacity, profileCapacity, nil)
+}
+
+func NewReportingGenerationUpdater(store BankStore, ruleCapacity, profileCapacity int, reporter PolicyUpdateFailureReporter) (*GenerationUpdater, error) {
+	if reporter == nil {
+		return nil, errors.New("policy update failure reporter is required")
+	}
+	return newGenerationUpdater(store, ruleCapacity, profileCapacity, reporter)
+}
+
+func newGenerationUpdater(store BankStore, ruleCapacity, profileCapacity int, reporter PolicyUpdateFailureReporter) (*GenerationUpdater, error) {
 	if store == nil {
 		return nil, errors.New("bank store is required")
 	}
@@ -69,12 +99,34 @@ func NewGenerationUpdater(store BankStore, ruleCapacity, profileCapacity int) (*
 		store:           store,
 		ruleCapacity:    ruleCapacity,
 		profileCapacity: profileCapacity,
+		reportFailure:   reporter,
 	}, nil
 }
 
 // Commit writes a complete image to the inactive bank, verifies an exact
 // readback, and only then switches the active generation.
-func (updater *GenerationUpdater) Commit(ctx context.Context, image BankImage) (Generation, error) {
+func (updater *GenerationUpdater) Commit(ctx context.Context, image BankImage) (committed Generation, resultErr error) {
+	var activeGeneration, attemptedGeneration *Generation
+	defer func() {
+		if resultErr == nil || updater == nil || updater.reportFailure == nil {
+			return
+		}
+		record := PolicyUpdateFailedRecord{
+			RecordType:          "policy_update_failed",
+			ActiveGeneration:    activeGeneration,
+			AttemptedGeneration: attemptedGeneration,
+			Error:               resultErr.Error(),
+		}
+		if err := updater.reportFailure(record); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("report policy update failure: %w", err))
+		}
+	}()
+	if updater == nil {
+		return Generation{}, errors.New("generation updater is required")
+	}
+	if ctx == nil {
+		return Generation{}, errors.New("generation update context is required")
+	}
 	image = cloneBankImage(image)
 	if err := validateBankImage(image, updater.ruleCapacity, updater.profileCapacity); err != nil {
 		return Generation{}, err
@@ -92,13 +144,15 @@ func (updater *GenerationUpdater) Commit(ctx context.Context, image BankImage) (
 	if active.Bank != BankA && active.Bank != BankB {
 		return Generation{}, fmt.Errorf("active bank %d is invalid", active.Bank)
 	}
+	activeCopy := active
+	activeGeneration = &activeCopy
 	if active.Revision == math.MaxUint64 {
 		return Generation{}, errors.New("generation revision exhausted")
 	}
-	inactive := BankA
-	if active.Bank == BankA {
-		inactive = BankB
-	}
+	inactive := otherBank(active.Bank)
+	next := Generation{Revision: active.Revision + 1, Bank: inactive}
+	nextCopy := next
+	attemptedGeneration = &nextCopy
 	if err := update.Reset(ctx, inactive); err != nil {
 		return Generation{}, fmt.Errorf("reset inactive bank %d: %w", inactive, err)
 	}
@@ -125,11 +179,62 @@ func (updater *GenerationUpdater) Commit(ctx context.Context, image BankImage) (
 	if err := verifyBankImage(image, readback); err != nil {
 		return Generation{}, fmt.Errorf("verify inactive bank: %w", err)
 	}
-	next := Generation{Revision: active.Revision + 1, Bank: inactive}
+	if err := ctx.Err(); err != nil {
+		return Generation{}, fmt.Errorf("activate verified generation: %w", err)
+	}
 	if err := update.Activate(ctx, active, next); err != nil {
 		return Generation{}, fmt.Errorf("activate generation %d: %w", next.Revision, err)
 	}
 	return next, nil
+}
+
+// Recover returns the only committed active image and clears the inactive
+// staging bank. It rejects generation zero instead of guessing whether a
+// partial image is authoritative.
+func (updater *GenerationUpdater) Recover(ctx context.Context) (RecoveredGeneration, error) {
+	if updater == nil {
+		return RecoveredGeneration{}, errors.New("generation updater is required")
+	}
+	if ctx == nil {
+		return RecoveredGeneration{}, errors.New("generation recovery context is required")
+	}
+	update, err := updater.store.BeginUpdate(ctx)
+	if err != nil {
+		return RecoveredGeneration{}, fmt.Errorf("begin generation recovery: %w", err)
+	}
+	defer update.Close()
+
+	active, err := update.Active(ctx)
+	if err != nil {
+		return RecoveredGeneration{}, fmt.Errorf("read active generation during recovery: %w", err)
+	}
+	if active.Bank != BankA && active.Bank != BankB {
+		return RecoveredGeneration{}, fmt.Errorf("active bank %d is invalid", active.Bank)
+	}
+	if active.Revision == 0 {
+		return RecoveredGeneration{}, ErrNoCommittedGeneration
+	}
+	image, err := update.Read(ctx, active.Bank)
+	if err != nil {
+		return RecoveredGeneration{}, fmt.Errorf("read active bank %d during recovery: %w", active.Bank, err)
+	}
+	if err := validateBankImage(image, updater.ruleCapacity, updater.profileCapacity); err != nil {
+		return RecoveredGeneration{}, fmt.Errorf("validate active generation %d during recovery: %w", active.Revision, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return RecoveredGeneration{}, fmt.Errorf("clear inactive staging bank during recovery: %w", err)
+	}
+	if err := update.Reset(ctx, otherBank(active.Bank)); err != nil {
+		return RecoveredGeneration{}, fmt.Errorf("clear inactive staging bank during recovery: %w", err)
+	}
+	return RecoveredGeneration{Generation: active, Image: cloneBankImage(image)}, nil
+}
+
+func otherBank(bank Bank) Bank {
+	if bank == BankA {
+		return BankB
+	}
+	return BankA
 }
 
 func validateBankImage(image BankImage, ruleCapacity, profileCapacity int) error {

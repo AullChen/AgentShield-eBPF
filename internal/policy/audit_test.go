@@ -125,6 +125,33 @@ func TestEvaluateAuditEventRejectsKernelBlockFromAnotherPolicy(t *testing.T) {
 	}
 }
 
+func TestEvaluateAuditEventRejectsStaleBlockAfterActionChanges(t *testing.T) {
+	containPolicy := strictProxyPolicy()
+	containPolicy.RequestedAction = ActionContain
+	engine := mustEngine(t, Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{containPolicy}}, Generation{Revision: 2, Bank: BankB})
+	matched, err := MatchNetwork(Bundle{SchemaVersion: SchemaVersion, Policies: []Policy{containPolicy}}, NetworkObservation{
+		Destination: netip.MustParseAddr("198.51.100.8"), Port: 443, Protocol: ProtocolTCP,
+	})
+	if err != nil {
+		t.Fatalf("MatchNetwork() error = %v", err)
+	}
+
+	records, err := engine.EvaluateAuditEvent(events.KernelEvent{
+		EventType: events.EventTypeNetConnect, EventTypeName: "net_connect",
+		Action: events.ActionBlock, ActionResult: events.ActionResultBlocked,
+		PolicyID: stablePolicyID(containPolicy.ID), RuleID: matched.Hits[0].RuleID, CgroupID: 42,
+		DestinationIP: "198.51.100.8", DestinationPort: 443, Protocol: events.ProtocolTCP,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAuditEvent() error = %v", err)
+	}
+	record := records[0].(AuditDecisionRecord)
+	if record.Final == nil || record.Final.Enforced || record.Final.RequestedAction != ActionContain ||
+		record.Final.EffectiveAction != ActionAudit || len(record.Hits) != 1 || !record.Hits[0].ContainmentHint {
+		t.Fatalf("stale block decision = %+v", record)
+	}
+}
+
 func TestEvaluateAuditEventMatchesExecAndIgnoresOtherRecords(t *testing.T) {
 	execPolicy := filePolicy("exec", Scope{Type: ScopeGlobal}, 1, "/unused")
 	execPolicy.Conditions = Conditions{Exec: &ExecCondition{Executables: []string{"bash"}}}

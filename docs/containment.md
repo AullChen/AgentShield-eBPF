@@ -1,6 +1,6 @@
 # Post-event cgroup containment
 
-Status date: 2026-08-11 (Day 34)
+Status date: 2026-08-12 (Day 35)
 
 AgentShield's fallback containment is an independent user-space action. It does
 not make the triggering syscall blocked and does not mutate the raw kernel
@@ -53,9 +53,21 @@ acquisition; numeric PID alone remains forbidden.
 ## Integration status
 
 `internal/killer` is intentionally not called from the policy matcher or ring
-buffer reader. Those paths remain side-effect free and non-blocking. A trusted
-Run-aware coordinator must explicitly opt into containment and persist/emit the
-returned result; that integration belongs to the P3 acceptance work.
+buffer reader. Those paths remain side-effect free and non-blocking. The Day 35
+Run-aware coordinator resolves the complete event identity to a
+non-terminating active Run, evaluates its trusted Run/cgroup/label context, and
+calls containment only for the final `deny + contain` hit carrying a
+containment hint. It emits the decision and an independent result correlated by
+Run, generation, policy, rule, event, and scope identity. Execution errors are
+result data and do not discard the decision record.
+
+The coordinator is a safe orchestration boundary, not live audit-loop wiring.
+It may perform cgroup filesystem I/O and must run behind a bounded worker after
+raw evidence is emitted. The standalone `audit` command does not currently own
+the registration Manager needed for exact lifecycle authorization, so it does
+not invoke containment. This coordinator deliberately accepts active Runs only;
+terminating or tombstoned delayed events need a separate attribution-only
+derivation path and can never authorize containment.
 
 The orchestration and failure paths have automated tests. Linux-only tests cover
 descriptor-relative leaf inspection and the `cgroup.kill` write, and are
@@ -68,6 +80,7 @@ Reproducible source checks:
 
 ```sh
 go test ./internal/killer ./internal/scope
+go test ./internal/api -run '^Test(P3Acceptance|PolicyCoordinator.*)$'
 make check-linux-killer
 go test ./...
 ```

@@ -19,6 +19,7 @@ const (
 // kernel event that immediately precedes it in the JSON Lines audit stream.
 type AuditDecisionRecord struct {
 	RecordType                string `json:"record_type"`
+	RunID                     string `json:"run_id,omitempty"`
 	KernelMonotonicNS         uint64 `json:"kernel_monotonic_ns,string"`
 	ServerReceivedMonotonicNS uint64 `json:"server_received_monotonic_ns,string,omitempty"`
 	CgroupID                  uint64 `json:"cgroup_id,string"`
@@ -35,7 +36,29 @@ type AuditDecisionRecord struct {
 // matcher and one correlated decision record for file, exec, and network
 // events. The caller can append the result directly after the raw event.
 func (engine *Engine) EvaluateAuditEvent(event events.KernelEvent) ([]any, error) {
-	context := EvaluationContext{CgroupID: strconv.FormatUint(event.CgroupID, 10)}
+	record, matched, err := engine.EvaluateAuditDecision(EvaluationContext{}, event)
+	if err != nil {
+		return nil, err
+	}
+	if !matched {
+		return nil, nil
+	}
+	return []any{record}, nil
+}
+
+// EvaluateAuditDecision evaluates one event with trusted Run metadata supplied
+// by an orchestration layer. The event's cgroup identity remains authoritative
+// and must agree with an explicitly supplied cgroup context.
+func (engine *Engine) EvaluateAuditDecision(context EvaluationContext, event events.KernelEvent) (AuditDecisionRecord, bool, error) {
+	eventCgroupID := strconv.FormatUint(event.CgroupID, 10)
+	if context.CgroupID != "" && context.CgroupID != eventCgroupID {
+		return AuditDecisionRecord{}, false, fmt.Errorf(
+			"policy context cgroup %q does not match event cgroup %q",
+			context.CgroupID,
+			eventCgroupID,
+		)
+	}
+	context.CgroupID = eventCgroupID
 	var report DecisionReport
 	var networkDecisions []NetworkPolicyDecision
 
@@ -43,7 +66,7 @@ func (engine *Engine) EvaluateAuditEvent(event events.KernelEvent) ([]any, error
 	case events.EventTypeFileOpen:
 		fileReport, err := engine.evaluateFileAuditEvent(context, event)
 		if err != nil {
-			return nil, err
+			return AuditDecisionRecord{}, false, err
 		}
 		report = fileReport
 	case events.EventTypeExecAttempt:
@@ -71,13 +94,13 @@ func (engine *Engine) EvaluateAuditEvent(event events.KernelEvent) ([]any, error
 			ArgumentsState:      argumentsState,
 		})
 		if err != nil {
-			return nil, err
+			return AuditDecisionRecord{}, false, err
 		}
 		report = execReport
 	case events.EventTypeNetConnect:
 		destination, err := netip.ParseAddr(event.DestinationIP)
 		if err != nil {
-			return nil, fmt.Errorf("parse audit destination %q: %w", event.DestinationIP, err)
+			return AuditDecisionRecord{}, false, fmt.Errorf("parse audit destination %q: %w", event.DestinationIP, err)
 		}
 		protocol := NetworkProtocol("")
 		if event.Protocol == events.ProtocolTCP {
@@ -89,17 +112,18 @@ func (engine *Engine) EvaluateAuditEvent(event events.KernelEvent) ([]any, error
 			Protocol:    protocol,
 		})
 		if err != nil {
-			return nil, err
+			return AuditDecisionRecord{}, false, err
 		}
 		reconcileNetworkEnforcement(&networkReport, event)
 		report = networkReport.DecisionReport
 		networkDecisions = networkReport.Decisions
 	default:
-		return nil, nil
+		return AuditDecisionRecord{}, false, nil
 	}
 
 	record := AuditDecisionRecord{
 		RecordType:                "policy_decision",
+		RunID:                     context.RunID,
 		KernelMonotonicNS:         event.KernelMonotonicNS,
 		ServerReceivedMonotonicNS: event.ServerReceivedMonotonicNS,
 		CgroupID:                  event.CgroupID,
@@ -111,48 +135,66 @@ func (engine *Engine) EvaluateAuditEvent(event events.KernelEvent) ([]any, error
 		DecisionReport:            report,
 		NetworkDecisions:          networkDecisions,
 	}
-	return []any{record}, nil
+	return record, true, nil
 }
 
 func reconcileNetworkEnforcement(report *NetworkDecisionReport, event events.KernelEvent) {
 	if event.Action != events.ActionBlock || event.PolicyID == 0 || event.RuleID == 0 {
 		return
 	}
+	if report.Final == nil || stablePolicyID(report.Final.PolicyID) != event.PolicyID ||
+		report.Final.RuleID != event.RuleID || report.Final.RequestedAction != ActionBlock {
+		return
+	}
 	resultReason := ""
+	expectedDisposition := NetworkDisposition("")
 	switch event.ActionResult {
 	case events.ActionResultBlocked:
 		resultReason = "cgroup_connect_hook_blocked"
+		expectedDisposition = DispositionDenied
 	case events.ActionResultAllowed:
 		resultReason = "cgroup_connect_hook_allowed"
+		expectedDisposition = DispositionAllowed
 	default:
 		return
 	}
+	decisionIndex := -1
 	for index := range report.Decisions {
 		decision := &report.Decisions[index]
-		if stablePolicyID(decision.PolicyID) != event.PolicyID || decision.RuleID != event.RuleID {
-			continue
+		if stablePolicyID(decision.PolicyID) == event.PolicyID && decision.RuleID == event.RuleID &&
+			decision.Disposition == expectedDisposition {
+			decisionIndex = index
+			break
 		}
-		decision.Enforced = true
-		decision.Reasons = appendWithout(decision.Reasons, resultReason)
 	}
+	if decisionIndex == -1 {
+		return
+	}
+	hitIndex := -1
 	for index := range report.Hits {
 		hit := &report.Hits[index]
-		if stablePolicyID(hit.PolicyID) != event.PolicyID || hit.RuleID != event.RuleID {
-			continue
-		}
-		hit.Enforced = true
-		hit.PostEventOnly = false
-		hit.Reasons = removeReason(hit.Reasons, "enforcement_not_connected")
-		hit.Reasons = appendWithout(hit.Reasons, resultReason)
-		if event.ActionResult == events.ActionResultBlocked {
-			hit.EffectiveAction = ActionBlock
+		if stablePolicyID(hit.PolicyID) == event.PolicyID && hit.RuleID == event.RuleID &&
+			hit.RequestedAction == ActionBlock {
+			hitIndex = index
+			break
 		}
 	}
-	if report.Final != nil && stablePolicyID(report.Final.PolicyID) == event.PolicyID && report.Final.RuleID == event.RuleID {
-		report.Final.Enforced = true
-		if event.ActionResult == events.ActionResultBlocked {
-			report.Final.EffectiveAction = ActionBlock
-		}
+	if hitIndex == -1 {
+		return
+	}
+
+	decision := &report.Decisions[decisionIndex]
+	decision.Enforced = true
+	decision.Reasons = appendWithout(decision.Reasons, resultReason)
+	hit := &report.Hits[hitIndex]
+	hit.Enforced = true
+	hit.PostEventOnly = false
+	hit.Reasons = removeReason(hit.Reasons, "enforcement_not_connected")
+	hit.Reasons = appendWithout(hit.Reasons, resultReason)
+	report.Final.Enforced = true
+	if event.ActionResult == events.ActionResultBlocked {
+		hit.EffectiveAction = ActionBlock
+		report.Final.EffectiveAction = ActionBlock
 	}
 }
 

@@ -12,8 +12,9 @@ Current notes:
   and ELF/spec versus kernel-load acceptance boundary.
 - `cgroup-scope-acceptance.md`: exact-leaf positive/host-negative gate,
   subtree rejection, and escape monitoring.
-- `containment.md`: Day 34 exact-scope `cgroup.kill` fallback executor,
-  identity revalidation, Core self-protection, and result semantics.
+- `containment.md`: Day 34 exact-scope `cgroup.kill` fallback executor and Day
+  35 trusted Run-aware coordination, identity revalidation, Core protection,
+  and separate result semantics.
 - `file-exec-acceptance.md`: reproducible Day 14 Linux kernel load/attach and
   file/exec semantic acceptance gate.
 - `file-exec-audit.md`: current Day 12 file/exec attempt-event semantics and safety limits.
@@ -28,7 +29,8 @@ Current notes:
   lifecycle gate and supported-Linux evidence procedure.
 - `policy-schema.md`: policy bundle schema, strict loader limits, compile
   preview classes, deterministic scope precedence, and enforcement semantics.
-- `p3-policy-integration-check.md`: Day 32 multi-policy resolution, immutable
-  generation switching, live audit JSON Lines integration, and current limits.
+- `p3-policy-integration-check.md`: Day 35 audit/alert/block/contain source
+  acceptance, update-failure/recovery contract, reproducible gate, and runtime
+  limits.
 
 Local planning documents, drafts, and proposal materials are kept in `.local-docs/` and ignored by Git.

@@ -113,6 +113,24 @@ func TestGenerationUpdaterHonorsCancellationBeforeActivation(t *testing.T) {
 	}
 }
 
+func TestGenerationUpdaterHonorsCancellationAfterReadback(t *testing.T) {
+	store := newMemoryBankStore()
+	store.cancelAfterRead = true
+	ctx, cancel := context.WithCancel(context.Background())
+	store.cancel = cancel
+	updater, err := NewGenerationUpdater(store, 4, 2)
+	if err != nil {
+		t.Fatalf("NewGenerationUpdater: %v", err)
+	}
+	_, err = updater.Commit(ctx, testBankImage())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Commit error = %v, want context.Canceled", err)
+	}
+	if store.active != (Generation{Revision: 0, Bank: BankA}) {
+		t.Fatalf("active generation changed after readback cancellation: %+v", store.active)
+	}
+}
+
 func TestGenerationUpdatersSerializeOnSharedStore(t *testing.T) {
 	store := newMemoryBankStore()
 	first, err := NewGenerationUpdater(store, 4, 2)
@@ -163,6 +181,96 @@ func TestGenerationUpdatersSerializeOnSharedStore(t *testing.T) {
 	}
 }
 
+func TestGenerationUpdaterReportsFailedAttemptWithoutChangingActive(t *testing.T) {
+	store := newMemoryBankStore()
+	var failures []PolicyUpdateFailedRecord
+	updater, err := NewReportingGenerationUpdater(store, 4, 2, func(record PolicyUpdateFailedRecord) error {
+		failures = append(failures, record)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("NewReportingGenerationUpdater: %v", err)
+	}
+	active, err := updater.Commit(context.Background(), testBankImage())
+	if err != nil {
+		t.Fatalf("first Commit: %v", err)
+	}
+	store.failStep = "activate"
+	if _, err := updater.Commit(context.Background(), testBankImage()); err == nil {
+		t.Fatal("second Commit succeeded despite activation failure")
+	}
+	if store.active != active {
+		t.Fatalf("active generation = %+v, want unchanged %+v", store.active, active)
+	}
+	if len(failures) != 1 {
+		t.Fatalf("failure records = %+v, want one", failures)
+	}
+	record := failures[0]
+	if record.RecordType != "policy_update_failed" || record.ActiveGeneration == nil ||
+		*record.ActiveGeneration != active || record.AttemptedGeneration == nil ||
+		*record.AttemptedGeneration != (Generation{Revision: 2, Bank: BankA}) ||
+		!strings.Contains(record.Error, "activate generation 2") {
+		t.Fatalf("failure record = %+v", record)
+	}
+}
+
+func TestGenerationUpdaterRecoversCommittedBankAndClearsStaging(t *testing.T) {
+	store := newMemoryBankStore()
+	updater, err := NewGenerationUpdater(store, 4, 2)
+	if err != nil {
+		t.Fatalf("NewGenerationUpdater: %v", err)
+	}
+	committedImage := testBankImage()
+	active, err := updater.Commit(context.Background(), committedImage)
+	if err != nil {
+		t.Fatalf("first Commit: %v", err)
+	}
+
+	store.failStep = "profile"
+	stagedImage := testBankImage()
+	stagedImage.Rules[0].Value[0] = 99
+	if _, err := updater.Commit(context.Background(), stagedImage); err == nil {
+		t.Fatal("staging Commit succeeded despite injected profile failure")
+	}
+	if len(store.banks[BankA].Rules) == 0 {
+		t.Fatal("test did not leave a partial inactive bank")
+	}
+
+	restarted, err := NewGenerationUpdater(store, 4, 2)
+	if err != nil {
+		t.Fatalf("NewGenerationUpdater after restart: %v", err)
+	}
+	recovered, err := restarted.Recover(context.Background())
+	if err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+	if recovered.Generation != active || !equalEntries(recovered.Image.Rules, committedImage.Rules) ||
+		!equalEntries(recovered.Image.Profiles, committedImage.Profiles) {
+		t.Fatalf("recovered = %+v, want generation %+v and committed image", recovered, active)
+	}
+	if len(store.banks[BankA].Rules) != 0 || len(store.banks[BankA].Profiles) != 0 {
+		t.Fatalf("inactive staging bank was not cleared: %+v", store.banks[BankA])
+	}
+
+	next, err := restarted.Commit(context.Background(), stagedImage)
+	if err != nil {
+		t.Fatalf("Commit after recovery: %v", err)
+	}
+	if next != (Generation{Revision: 2, Bank: BankA}) {
+		t.Fatalf("next generation = %+v", next)
+	}
+}
+
+func TestGenerationUpdaterRejectsRecoveryWithoutCommittedGeneration(t *testing.T) {
+	updater, err := NewGenerationUpdater(newMemoryBankStore(), 4, 2)
+	if err != nil {
+		t.Fatalf("NewGenerationUpdater: %v", err)
+	}
+	if _, err := updater.Recover(context.Background()); !errors.Is(err, ErrNoCommittedGeneration) {
+		t.Fatalf("Recover error = %v, want ErrNoCommittedGeneration", err)
+	}
+}
+
 func testBankImage() BankImage {
 	return BankImage{
 		Rules: []MapEntry{
@@ -180,6 +288,7 @@ type memoryBankStore struct {
 	failStep        string
 	corruptReadback bool
 	cancelAfterRule bool
+	cancelAfterRead bool
 	cancel          context.CancelFunc
 	calls           int
 }
@@ -265,6 +374,9 @@ func (update *memoryBankUpdate) Read(_ context.Context, bank Bank) (BankImage, e
 	image := cloneBankImage(update.store.banks[bank])
 	if update.store.corruptReadback {
 		image.Rules[0].Value[0]++
+	}
+	if update.store.cancelAfterRead {
+		update.store.cancel()
 	}
 	return image, nil
 }
