@@ -77,14 +77,16 @@ type AgentRun struct {
 }
 
 type RunStore struct {
-	mu             sync.RWMutex
-	runs           map[string]AgentRun
-	activeByCgroup map[uint64]string
-	latestByCgroup map[uint64]string
-	liveByIdentity map[ScopeIdentity]string
-	terminating    map[string]struct{}
-	tombstones     map[ScopeIdentity]runTombstone
-	tombstoneSeq   uint64
+	mu              sync.RWMutex
+	runs            map[string]AgentRun
+	activeByCgroup  map[uint64]string
+	latestByCgroup  map[uint64]string
+	liveByIdentity  map[ScopeIdentity]string
+	terminating     map[string]struct{}
+	tombstones      map[ScopeIdentity]runTombstone
+	tombstoneSeq    uint64
+	checkpoints     map[string]*checkpointRunState
+	checkpointBytes int64
 }
 
 func NewRunStore() *RunStore {
@@ -95,6 +97,7 @@ func NewRunStore() *RunStore {
 		liveByIdentity: make(map[ScopeIdentity]string),
 		terminating:    make(map[string]struct{}),
 		tombstones:     make(map[ScopeIdentity]runTombstone),
+		checkpoints:    make(map[string]*checkpointRunState),
 	}
 }
 
@@ -108,6 +111,7 @@ func (store *RunStore) Add(run AgentRun) error {
 		store.liveByIdentity = make(map[ScopeIdentity]string)
 		store.terminating = make(map[string]struct{})
 		store.tombstones = make(map[ScopeIdentity]runTombstone)
+		store.checkpoints = make(map[string]*checkpointRunState)
 	}
 	if _, exists := store.runs[run.RunID]; exists {
 		return errors.New("run ID already exists")
@@ -168,6 +172,7 @@ func (store *RunStore) FailScope(cgroupID uint64, reason string) (AgentRun, bool
 	run.StatusReason = reason
 	store.runs[runID] = run
 	delete(store.activeByCgroup, cgroupID)
+	store.dropCheckpointStateLocked(runID)
 	run.Labels = cloneLabels(run.Labels)
 	return run, true, true
 }
@@ -375,42 +380,59 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 }
 
 func (handler *RegistrationHandler) VerifyIngestToken(token string) (AgentRun, error) {
-	if len(token) == 0 || len(token) > maxTokenBytes {
+	runID, tokenHash, expiry, err := handler.parseIngestToken(token)
+	if err != nil {
+		return AgentRun{}, err
+	}
+	handler.store.mu.RLock()
+	defer handler.store.mu.RUnlock()
+	now := handler.now().UTC()
+	if !now.Before(expiry) {
+		return AgentRun{}, errors.New("expired ingest token")
+	}
+	run, exists := handler.store.runs[runID]
+	if !exists || !hmac.Equal(run.TokenHash[:], tokenHash) {
 		return AgentRun{}, errors.New("invalid ingest token")
+	}
+	_, terminating := handler.store.terminating[runID]
+	if run.Status != "active" || terminating || run.RunExpiry.IsZero() ||
+		!now.Before(run.RunExpiry) || !now.Before(run.TokenExpiry) {
+		return AgentRun{}, errors.New("inactive or expired ingest token")
+	}
+	run.Labels = cloneLabels(run.Labels)
+	return run, nil
+}
+
+func (handler *RegistrationHandler) parseIngestToken(token string) (string, []byte, time.Time, error) {
+	if len(token) == 0 || len(token) > maxTokenBytes {
+		return "", nil, time.Time{}, errors.New("invalid ingest token")
 	}
 	encodedPayload, encodedSignature, ok := strings.Cut(token, ".")
 	if !ok {
-		return AgentRun{}, errors.New("invalid ingest token")
+		return "", nil, time.Time{}, errors.New("invalid ingest token")
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(encodedPayload)
 	if err != nil {
-		return AgentRun{}, errors.New("invalid ingest token")
+		return "", nil, time.Time{}, errors.New("invalid ingest token")
 	}
 	signature, err := base64.RawURLEncoding.DecodeString(encodedSignature)
 	if err != nil {
-		return AgentRun{}, errors.New("invalid ingest token")
+		return "", nil, time.Time{}, errors.New("invalid ingest token")
 	}
 	mac := hmac.New(sha256.New, handler.signingKey[:])
 	_, _ = mac.Write(payload)
 	if !hmac.Equal(signature, mac.Sum(nil)) {
-		return AgentRun{}, errors.New("invalid ingest token")
+		return "", nil, time.Time{}, errors.New("invalid ingest token")
 	}
 	fields := strings.Split(string(payload), "\n")
 	if len(fields) != 3 {
-		return AgentRun{}, errors.New("invalid ingest token")
+		return "", nil, time.Time{}, errors.New("invalid ingest token")
 	}
 	expiryUnixNano, err := strconv.ParseInt(fields[1], 10, 64)
-	if err != nil || !handler.now().Before(time.Unix(0, expiryUnixNano)) {
-		return AgentRun{}, errors.New("expired ingest token")
+	if err != nil || expiryUnixNano <= 0 || fields[0] == "" {
+		return "", nil, time.Time{}, errors.New("invalid ingest token")
 	}
-	run, exists := handler.store.Get(fields[0])
-	if !exists || !hmac.Equal(run.TokenHash[:], sha256Sum(token)) {
-		return AgentRun{}, errors.New("invalid ingest token")
-	}
-	if run.Status != "active" || !handler.now().Before(run.TokenExpiry) {
-		return AgentRun{}, errors.New("inactive or expired ingest token")
-	}
-	return run, nil
+	return fields[0], sha256Sum(token), time.Unix(0, expiryUnixNano), nil
 }
 
 func (handler *RegistrationHandler) signToken(runID string, expiry time.Time) (string, error) {

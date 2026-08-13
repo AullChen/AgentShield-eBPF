@@ -15,6 +15,8 @@ Current notes:
 - `containment.md`: Day 34 exact-scope `cgroup.kill` fallback executor and Day
   35 trusted Run-aware coordination, identity revalidation, Core protection,
   and separate result semantics.
+- `checkpoint-ingest.md`: Day 36 isolated Run-scoped checkpoint ingestion,
+  token binding, dual-clock receipts, replay semantics, and lifecycle limits.
 - `file-exec-acceptance.md`: reproducible Day 14 Linux kernel load/attach and
   file/exec semantic acceptance gate.
 - `file-exec-audit.md`: current Day 12 file/exec attempt-event semantics and safety limits.

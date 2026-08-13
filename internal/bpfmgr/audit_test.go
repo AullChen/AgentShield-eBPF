@@ -12,7 +12,18 @@ import (
 	"time"
 
 	"github.com/agentshield/agentshield-ebpf/internal/events"
+	"github.com/agentshield/agentshield-ebpf/internal/timebase"
 )
+
+func TestReceiptClockCalibrationUsesMonotonicMidpoint(t *testing.T) {
+	sample, err := timebase.Calibrate(100, 1_000, 105)
+	if err != nil {
+		t.Fatalf("Calibrate: %v", err)
+	}
+	if sample.MonotonicNS != 102 || sample.UnixNS != 1_000 || sample.ErrorNS != 3 {
+		t.Fatalf("sample = %+v", sample)
+	}
+}
 
 type rawAuditEventV2 struct {
 	SchemaVersion       uint16

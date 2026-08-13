@@ -10,6 +10,7 @@ import (
 
 	"github.com/agentshield/agentshield-ebpf/internal/events"
 	"github.com/agentshield/agentshield-ebpf/internal/scope"
+	"github.com/agentshield/agentshield-ebpf/internal/timebase"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
@@ -297,16 +298,13 @@ func captureReceiptTime() (ReceiptTime, error) {
 		return ReceiptTime{}, fmt.Errorf("read monotonic clock after realtime: %w", err)
 	}
 
-	beforeNS := before.Nano()
-	afterNS := after.Nano()
-	realtimeNS := realtime.Nano()
-	if beforeNS < 0 || afterNS < beforeNS || realtimeNS < 0 {
-		return ReceiptTime{}, errors.New("clock_gettime returned an invalid sample")
+	sample, err := timebase.Calibrate(before.Nano(), realtime.Nano(), after.Nano())
+	if err != nil {
+		return ReceiptTime{}, err
 	}
-	interval := uint64(afterNS - beforeNS)
 	return ReceiptTime{
-		MonotonicNS:        uint64(beforeNS) + interval/2,
-		UnixNS:             uint64(realtimeNS),
-		CalibrationErrorNS: (interval + 1) / 2,
+		MonotonicNS:        sample.MonotonicNS,
+		UnixNS:             sample.UnixNS,
+		CalibrationErrorNS: sample.ErrorNS,
 	}, nil
 }

@@ -23,6 +23,7 @@ The project is currently in early MVP development. The repository contains the G
 | cgroup scoping | P2 source gate complete, Linux evidence pending | Exact-leaf registration, finish/TTL tombstones, ID reuse isolation, Core self-protection, and host-negative filtering have automated coverage. |
 | Policy engine | P3 source gate complete, runtime pending | `make test-p3` distinguishes audit, alert, synchronous block, and post-event containment; failed A/B attempts retain the active generation and the reporting updater exposes structured failure data. Concrete BPF activation, persistence, policy CRUD, and Linux evidence remain pending. |
 | Fallback containment | Coordinator source complete, Linux evidence pending | `internal/killer` revalidates exact scope/Core identity before descriptor-relative `cgroup.kill`; the Run-aware coordinator acts only on the final hinted decision and emits a separate result. Production dispatch is not wired into the audit reader. |
+| Checkpoint ingest | Source complete, persistence pending | The isolated Run-scoped endpoint binds Bearer tokens to the route, records calibrated server receipt clocks, and provides bounded sequence/idempotency replay. Agent `run_finished` remains non-authoritative. |
 
 ## MVP Direction
 
@@ -141,8 +142,10 @@ make verify-generated
 make check-bpf-syntax
 make check-linux-bpfmgr
 make check-linux-killer
+make check-linux-api
 make test
 make test-p2
+make test-checkpoint
 go vet ./...
 make build
 ```
@@ -246,6 +249,8 @@ Additional source milestones:
   self-protection, reuse-safe authorization, and separate result semantics
 - Day 35: trusted Run-aware policy/containment coordination, four-semantics P3
   source gate, structured update failures, and an A/B recovery primitive
+- Day 36: isolated Run-scoped checkpoint ingest with token binding, calibrated
+  receipt clocks, strict limits, atomic replay, and non-authoritative finish claims
 
 Current gate:
 
@@ -280,6 +285,9 @@ Subsequent work:
   concrete persistent eBPF bank, persistent policy bundle, unified kernel/user
   activation transaction, or raw-event generation field, so process restart
   and block hot-update recovery are not claimed.
+- Checkpoint replay state is bounded and in memory until the Day 38 persistent
+  store. Restart persistence is not yet claimed, and Agent-supplied summaries
+  must already be redacted.
 - The source enforces exact-leaf cgroup capture, but supported-Linux runtime evidence is still pending.
 - The dashboard currently uses mock data.
 - The generated Go source binding embeds source text only; `make bpf-object` is the separate real ELF build.

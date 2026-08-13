@@ -114,6 +114,7 @@ func (store *RunStore) completeTermination(runID, terminalStatus string, endedAt
 		delete(store.activeByCgroup, run.CgroupID)
 	}
 	delete(store.liveByIdentity, identity)
+	store.dropCheckpointStateLocked(runID)
 
 	store.pruneTombstonesLocked(endedAt)
 	for len(store.tombstones) >= maxEntries {
