@@ -110,7 +110,9 @@ func (store *RunStore) completeTermination(runID, terminalStatus string, endedAt
 	run.EndedAt = endedAt.UTC()
 	store.runs[runID] = run
 	delete(store.terminating, runID)
-	delete(store.activeByCgroup, run.CgroupID)
+	if activeRunID, active := store.activeByCgroup[run.CgroupID]; active && activeRunID == runID {
+		delete(store.activeByCgroup, run.CgroupID)
+	}
 	delete(store.liveByIdentity, identity)
 
 	store.pruneTombstonesLocked(endedAt)

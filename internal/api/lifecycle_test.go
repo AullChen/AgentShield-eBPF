@@ -236,6 +236,40 @@ func TestFinishRollsBackStateWhenScopeRemovalFails(t *testing.T) {
 	}
 }
 
+func TestCompletingOldRunPreservesReplacementCgroupIndex(t *testing.T) {
+	store := NewRunStore()
+	now := time.Date(2026, 8, 13, 9, 30, 0, 0, time.UTC)
+	old := AgentRun{
+		RunID: "old-run", CgroupID: 42, InstanceID: 1, ScopeCookie: 2,
+		Status: "active", RegisteredAt: now, RunExpiry: now.Add(time.Hour),
+	}
+	if err := store.Add(old); err != nil {
+		t.Fatalf("add old Run: %v", err)
+	}
+	if _, begun, err := store.beginTermination(old.RunID); err != nil || !begun {
+		t.Fatalf("begin old termination: begun=%v error=%v", begun, err)
+	}
+
+	store.mu.Lock()
+	delete(store.activeByCgroup, old.CgroupID)
+	store.mu.Unlock()
+	replacement := AgentRun{
+		RunID: "new-run", CgroupID: 42, InstanceID: 1, ScopeCookie: 3,
+		Status: "active", RegisteredAt: now.Add(time.Second), RunExpiry: now.Add(time.Hour),
+	}
+	if err := store.Add(replacement); err != nil {
+		t.Fatalf("add replacement Run: %v", err)
+	}
+	if _, err := store.completeTermination(old.RunID, "finished", now.Add(2*time.Second), time.Minute, 10); err != nil {
+		t.Fatalf("complete old termination: %v", err)
+	}
+
+	failed, transitioned, exists := store.FailScope(42, scope.ViolationMemberEscape)
+	if !exists || !transitioned || failed.RunID != replacement.RunID {
+		t.Fatalf("FailScope replacement = run=%+v exists=%v transitioned=%v", failed, exists, transitioned)
+	}
+}
+
 func TestRunStoreRejectsScopeIdentityCollision(t *testing.T) {
 	store := NewRunStore()
 	now := time.Date(2026, 7, 27, 14, 0, 0, 0, time.UTC)
