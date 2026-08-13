@@ -23,6 +23,7 @@ import (
 const (
 	RegisterPath    = "/api/v1/agents/register"
 	defaultTokenTTL = 15 * time.Minute
+	defaultRunTTL   = 24 * time.Hour
 	maxRequestBytes = 64 << 10
 	maxTokenBytes   = 512
 )
@@ -69,6 +70,7 @@ type AgentRun struct {
 	Status       string
 	StatusReason string
 	RegisteredAt time.Time
+	RunExpiry    time.Time
 	EndedAt      time.Time
 	TokenHash    [sha256.Size]byte
 	TokenExpiry  time.Time
@@ -176,6 +178,7 @@ type RegistrationHandler struct {
 	random              io.Reader
 	now                 func() time.Time
 	tokenTTL            time.Duration
+	runTTL              time.Duration
 	tombstoneTTL        time.Duration
 	tombstoneMaxEntries int
 	instanceID          uint64
@@ -186,6 +189,7 @@ type RegistrationOptions struct {
 	Random              io.Reader
 	Now                 func() time.Time
 	TokenTTL            time.Duration
+	RunTTL              time.Duration
 	TombstoneTTL        time.Duration
 	TombstoneMaxEntries int
 }
@@ -208,6 +212,12 @@ func NewRegistrationHandler(registrar Registrar, store *RunStore, options Regist
 	}
 	if options.TokenTTL < time.Second || options.TokenTTL > time.Hour {
 		return nil, errors.New("token TTL must be between one second and one hour")
+	}
+	if options.RunTTL == 0 {
+		options.RunTTL = defaultRunTTL
+	}
+	if options.RunTTL < time.Second || options.RunTTL > defaultRunTTL {
+		return nil, fmt.Errorf("Run TTL must be between one second and %s", defaultRunTTL)
 	}
 	if options.TombstoneTTL == 0 {
 		options.TombstoneTTL = defaultTombstoneTTL
@@ -232,6 +242,7 @@ func NewRegistrationHandler(registrar Registrar, store *RunStore, options Regist
 		random:              options.Random,
 		now:                 options.Now,
 		tokenTTL:            options.TokenTTL,
+		runTTL:              options.RunTTL,
 		tombstoneTTL:        options.TombstoneTTL,
 		tombstoneMaxEntries: options.TombstoneMaxEntries,
 		instanceID:          instanceID,
@@ -337,6 +348,7 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 		Labels:       input.Labels,
 		Status:       "active",
 		RegisteredAt: now,
+		RunExpiry:    now.Add(handler.runTTL),
 		TokenHash:    sha256.Sum256([]byte(token)),
 		TokenExpiry:  expiry,
 	}

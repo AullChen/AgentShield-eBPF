@@ -155,7 +155,7 @@ func TestSequentialCgroupReuseKeepsRunIdentitiesSeparate(t *testing.T) {
 	}
 }
 
-func TestCleanupExpiredRunsRemovesScope(t *testing.T) {
+func TestCleanupExpiredRunsUsesRunLifetimeNotIngestTokenLifetime(t *testing.T) {
 	scopeMap := &testScopeMap{}
 	manager, err := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{
 		"/agent/leaf": 42,
@@ -168,6 +168,7 @@ func TestCleanupExpiredRunsRemovesScope(t *testing.T) {
 	handler, err := NewRegistrationHandler(manager, store, RegistrationOptions{
 		Now:      func() time.Time { return now },
 		TokenTTL: time.Second,
+		RunTTL:   2 * time.Second,
 	})
 	if err != nil {
 		t.Fatalf("NewRegistrationHandler: %v", err)
@@ -179,6 +180,21 @@ func TestCleanupExpiredRunsRemovesScope(t *testing.T) {
 		t.Fatalf("CleanupExpiredRuns: %v", err)
 	}
 	run, exists := store.Get(registered.RunID)
+	if !exists || run.Status != "active" || !run.EndedAt.IsZero() {
+		t.Fatalf("Run ended with its ingest token: %+v, exists=%v", run, exists)
+	}
+	if len(scopeMap.values) != 1 {
+		t.Fatalf("scope map after token expiry = %v, want active scope", scopeMap.values)
+	}
+	if _, err := handler.VerifyIngestToken(registered.IngestToken); err == nil {
+		t.Fatal("expired ingest token retained access")
+	}
+
+	now = now.Add(time.Second)
+	if err := handler.CleanupExpiredRuns(); err != nil {
+		t.Fatalf("CleanupExpiredRuns at Run expiry: %v", err)
+	}
+	run, exists = store.Get(registered.RunID)
 	if !exists || run.Status != "expired" || run.EndedAt.IsZero() {
 		t.Fatalf("expired Run = %+v, exists=%v", run, exists)
 	}

@@ -133,7 +133,7 @@ func (store *RunStore) expiredActiveRunIDs(now time.Time) []string {
 	defer store.mu.RUnlock()
 	runIDs := make([]string, 0)
 	for runID, run := range store.runs {
-		if run.Status == "active" && !now.Before(run.TokenExpiry) {
+		if run.Status == "active" && !run.RunExpiry.IsZero() && !now.Before(run.RunExpiry) {
 			runIDs = append(runIDs, runID)
 		}
 	}

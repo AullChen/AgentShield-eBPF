@@ -46,6 +46,9 @@ A successful response uses decimal strings for all 64-bit identities:
 
 Core generates the run and scope identities. The ingest token is HMAC-signed,
 expires after 15 minutes by default, and is stored only as a SHA-256 hash.
+The credential lifetime is independent from the Run lifetime: token expiry
+stops checkpoint writes but never removes a live cgroup scope. A separate
+server-owned Run TTL defaults to 24 hours as a bounded cleanup fallback.
 Successful credential responses set `Cache-Control: no-store`.
 Duplicate cgroup IDs and parent/child overlaps with an active binding return
 HTTP 409. Core resolves its own cgroup when the manager starts and refuses to
@@ -77,5 +80,6 @@ another Core instance are `unknown`. Neither case falls back to the current
 cgroup owner.
 
 `CleanupExpiredRuns` applies the same map-first cleanup and tombstone behavior
-to active Runs whose server-issued lifetime has expired. The caller should run
-it from the trusted lifecycle scheduler.
+only to active Runs whose separate server-issued Run lifetime has expired. It
+does not treat ingest-token expiry as task exit. The caller should run it from
+the trusted lifecycle scheduler.
