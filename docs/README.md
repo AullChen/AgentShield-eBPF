@@ -17,6 +17,8 @@ Current notes:
   and separate result semantics.
 - `checkpoint-ingest.md`: Day 36 isolated Run-scoped checkpoint ingestion,
   token binding, dual-clock receipts, replay semantics, and lifecycle limits.
+- `../sdk/python/README.md` and `../sandbox/README.md`: Day 37 checkpoint-only
+  Python client and trusted supervisor lifecycle contract.
 - `file-exec-acceptance.md`: reproducible Day 14 Linux kernel load/attach and
   file/exec semantic acceptance gate.
 - `file-exec-audit.md`: current Day 12 file/exec attempt-event semantics and safety limits.

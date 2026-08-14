@@ -6,7 +6,7 @@ ifeq ($(OS),Windows_NT)
 BINARY := bin/agentshield.exe
 endif
 
-.PHONY: generate verify-generated bpf-object verify-bpf-object accept-p1 accept-p2 accept-network-block accept-sandbox test-p2 test-p3 test-checkpoint check-bpf-syntax check-linux-bpfmgr check-linux-killer check-linux-api test build check clean
+.PHONY: generate verify-generated bpf-object verify-bpf-object accept-p1 accept-p2 accept-network-block accept-sandbox test-p2 test-p3 test-checkpoint test-sdk test-supervisor check-bpf-syntax check-linux-bpfmgr check-linux-killer check-linux-api test build check clean
 
 generate:
 	go generate ./internal/bpfmgr
@@ -32,6 +32,12 @@ test-p3:
 
 test-checkpoint:
 	go test ./internal/api -run '^TestCheckpoint' -count=1
+
+test-sdk:
+	python -m unittest discover -s sdk/python/tests -v
+
+test-supervisor:
+	python -m unittest discover -s sandbox/tests -v
 
 accept-p2: bpf-object build
 	sudo ./scripts/accept-p2.sh $(BPF_OBJECT) $(BPF_MANIFEST)

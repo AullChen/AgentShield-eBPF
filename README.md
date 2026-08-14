@@ -24,6 +24,7 @@ The project is currently in early MVP development. The repository contains the G
 | Policy engine | P3 source gate complete, runtime pending | `make test-p3` distinguishes audit, alert, synchronous block, and post-event containment; failed A/B attempts retain the active generation and the reporting updater exposes structured failure data. Concrete BPF activation, persistence, policy CRUD, and Linux evidence remain pending. |
 | Fallback containment | Coordinator source complete, Linux evidence pending | `internal/killer` revalidates exact scope/Core identity before descriptor-relative `cgroup.kill`; the Run-aware coordinator acts only on the final hinted decision and emits a separate result. Production dispatch is not wired into the audit reader. |
 | Checkpoint ingest | Source complete, persistence pending | The isolated Run-scoped endpoint binds Bearer tokens to the route, records calibrated server receipt clocks, and provides bounded sequence/idempotency replay. Agent `run_finished` remains non-authoritative. |
+| Agent SDK/supervisor | Source examples complete | The Python client exposes only checkpoint writes; the trusted supervisor keeps management on an owner-only Unix socket and requires registered-scope identity plus complete leaf exit before finish. Production task adapters are pending. |
 
 ## MVP Direction
 
@@ -46,7 +47,7 @@ cmd/agentshield/     Go control-plane CLI entrypoint
 cmd/bpfgen/          Local BPF source binding generator
 internal/            Go internal packages
 dashboard/           Next.js dashboard scaffold
-sdk/python/          Future Python Agent adapter SDK
+sdk/python/          Checkpoint-only Python Agent adapter SDK
 sandbox/             Minimal hardened demo Agent and repository-owned fake secret
 deploy/              Future local deployment files
 configs/             Runtime and policy configuration examples
@@ -146,6 +147,8 @@ make check-linux-api
 make test
 make test-p2
 make test-checkpoint
+make test-sdk
+make test-supervisor
 go vet ./...
 make build
 ```
@@ -251,6 +254,8 @@ Additional source milestones:
   source gate, structured update failures, and an A/B recovery primitive
 - Day 36: isolated Run-scoped checkpoint ingest with token binding, calibrated
   receipt clocks, strict limits, atomic replay, and non-authoritative finish claims
+- Day 37: checkpoint-only Python client plus a separate trusted supervisor
+  contract for register, exact-leaf exit confirmation, and finish
 
 Current gate:
 
@@ -288,6 +293,10 @@ Subsequent work:
 - Checkpoint replay state is bounded and in memory until the Day 38 persistent
   store. Restart persistence is not yet claimed, and Agent-supplied summaries
   must already be redacted.
+- The Day 37 supervisor is a tested orchestration contract, not a production
+  process/container adapter. An adapter must hold the exact-leaf descriptor,
+  verify registration identity, and observe the root workload exit plus an
+  empty leaf before management finish.
 - The source enforces exact-leaf cgroup capture, but supported-Linux runtime evidence is still pending.
 - The dashboard currently uses mock data.
 - The generated Go source binding embeds source text only; `make bpf-object` is the separate real ELF build.
