@@ -14,5 +14,5 @@ Package responsibilities are split by runtime concern:
 - `logging`
 - `policy`
 - `scope`
-- `store`
+- `store`: redacted SQLite evidence persistence and isolated bounded writer.
 - `version`

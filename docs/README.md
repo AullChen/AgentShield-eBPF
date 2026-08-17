@@ -21,6 +21,8 @@ Current notes:
   Python client and trusted supervisor lifecycle contract.
 - `file-exec-acceptance.md`: reproducible Day 14 Linux kernel load/attach and
   file/exec semantic acceptance gate.
+- `event-store.md`: Day 38 SQLite/WAL evidence persistence, pre-queue
+  redaction, bounded non-blocking writer, and circuit-breaker semantics.
 - `file-exec-audit.md`: current Day 12 file/exec attempt-event semantics and safety limits.
 - `network-audit.md`: Day 15 cgroup connect4/connect6 semantics, fixture, and
   explicit coverage/fallback matrix.

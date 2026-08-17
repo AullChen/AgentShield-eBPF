@@ -25,6 +25,7 @@ The project is currently in early MVP development. The repository contains the G
 | Fallback containment | Coordinator source complete, Linux evidence pending | `internal/killer` revalidates exact scope/Core identity before descriptor-relative `cgroup.kill`; the Run-aware coordinator acts only on the final hinted decision and emits a separate result. Production dispatch is not wired into the audit reader. |
 | Checkpoint ingest | Source complete, persistence pending | The isolated Run-scoped endpoint binds Bearer tokens to the route, records calibrated server receipt clocks, and provides bounded sequence/idempotency replay. Agent `run_finished` remains non-authoritative. |
 | Agent SDK/supervisor | Source examples complete | The Python client exposes only checkpoint writes; the trusted supervisor keeps management on an owner-only Unix socket and requires registered-scope identity plus complete leaf exit before finish. Production task adapters are pending. |
+| Event store | Source complete, integration pending | Real SQLite/WAL persistence uses a redacted normalized record model, bounded non-blocking queue/recent buffer, capacity pruning, gap diagnostics, and a circuit breaker. Reader wiring and historical APIs are pending. |
 
 ## MVP Direction
 
@@ -149,6 +150,7 @@ make test-p2
 make test-checkpoint
 make test-sdk
 make test-supervisor
+go test ./internal/store
 go vet ./...
 make build
 ```
@@ -256,6 +258,8 @@ Additional source milestones:
   receipt clocks, strict limits, atomic replay, and non-authoritative finish claims
 - Day 37: checkpoint-only Python client plus a separate trusted supervisor
   contract for register, exact-leaf exit confirmation, and finish
+- Day 38: SQLite/WAL evidence store with pre-queue redaction, bounded fan-out,
+  capacity controls, drop diagnostics, and circuit recovery
 
 Current gate:
 
@@ -290,9 +294,9 @@ Subsequent work:
   concrete persistent eBPF bank, persistent policy bundle, unified kernel/user
   activation transaction, or raw-event generation field, so process restart
   and block hot-update recovery are not claimed.
-- Checkpoint replay state is bounded and in memory until the Day 38 persistent
-  store. Restart persistence is not yet claimed, and Agent-supplied summaries
-  must already be redacted.
+- Checkpoint replay state remains bounded and in memory; Day 38 adds the
+  persistent evidence store but has not yet wired checkpoint acceptance into
+  it. Restart-safe checkpoint idempotency is not yet claimed.
 - The Day 37 supervisor is a tested orchestration contract, not a production
   process/container adapter. An adapter must hold the exact-leaf descriptor,
   verify registration identity, and observe the root workload exit plus an
