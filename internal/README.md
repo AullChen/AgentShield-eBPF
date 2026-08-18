@@ -7,7 +7,7 @@ Package responsibilities are split by runtime concern:
 - `api`
 - `bpfmgr`
 - `config`
-- `correlator`
+- `correlator`: two-stage Run attribution and deterministic checkpoint matching.
 - `envcheck`
 - `events`
 - `killer`

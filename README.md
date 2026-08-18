@@ -26,6 +26,7 @@ The project is currently in early MVP development. The repository contains the G
 | Checkpoint ingest | Source complete, persistence pending | The isolated Run-scoped endpoint binds Bearer tokens to the route, records calibrated server receipt clocks, and provides bounded sequence/idempotency replay. Agent `run_finished` remains non-authoritative. |
 | Agent SDK/supervisor | Source examples complete | The Python client exposes only checkpoint writes; the trusted supervisor keeps management on an owner-only Unix socket and requires registered-scope identity plus complete leaf exit before finish. Production task adapters are pending. |
 | Event store | Source complete, integration pending | Real SQLite/WAL persistence uses a redacted normalized record model, bounded non-blocking queue/recent buffer, capacity pruning, gap diagnostics, and a circuit breaker. Reader wiring and historical APIs are pending. |
+| Correlation | Source complete, integration pending | Captured instance/cookie identity resolves the Run first; only then are same-Run checkpoints scored by process, tool semantics, and server-monotonic proximity. Equal candidates remain explicitly ambiguous. |
 
 ## MVP Direction
 
@@ -151,6 +152,7 @@ make test-checkpoint
 make test-sdk
 make test-supervisor
 go test ./internal/store
+go test ./internal/correlator
 go vet ./...
 make build
 ```
@@ -260,6 +262,8 @@ Additional source milestones:
   contract for register, exact-leaf exit confirmation, and finish
 - Day 38: SQLite/WAL evidence store with pre-queue redaction, bounded fan-out,
   capacity controls, drop diagnostics, and circuit recovery
+- Day 39: deterministic two-stage Run attribution and within-Run checkpoint
+  correlation with explicit factors, conflict reporting, and 0–100 clamping
 
 Current gate:
 

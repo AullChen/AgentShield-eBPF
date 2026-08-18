@@ -15,6 +15,8 @@ Current notes:
 - `containment.md`: Day 34 exact-scope `cgroup.kill` fallback executor and Day
   35 trusted Run-aware coordination, identity revalidation, Core protection,
   and separate result semantics.
+- `correlation.md`: Day 39 two-stage scope-to-Run attribution and deterministic
+  within-Run checkpoint scoring/conflict semantics.
 - `checkpoint-ingest.md`: Day 36 isolated Run-scoped checkpoint ingestion,
   token binding, dual-clock receipts, replay semantics, and lifecycle limits.
 - `../sdk/python/README.md` and `../sandbox/README.md`: Day 37 checkpoint-only
