@@ -10,6 +10,7 @@ Package responsibilities are split by runtime concern:
 - `correlator`: two-stage Run attribution and deterministic checkpoint matching.
 - `envcheck`
 - `events`
+- `evidence`: provenance-safe evidence timeline construction and P4 sample.
 - `killer`
 - `logging`
 - `policy`

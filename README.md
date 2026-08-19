@@ -27,6 +27,7 @@ The project is currently in early MVP development. The repository contains the G
 | Agent SDK/supervisor | Source examples complete | The Python client exposes only checkpoint writes; the trusted supervisor keeps management on an owner-only Unix socket and requires registered-scope identity plus complete leaf exit before finish. Production task adapters are pending. |
 | Event store | Source complete, integration pending | Real SQLite/WAL persistence uses a redacted normalized record model, bounded non-blocking queue/recent buffer, capacity pruning, gap diagnostics, and a circuit breaker. Reader wiring and historical APIs are pending. |
 | Correlation | Source complete, integration pending | Captured instance/cookie identity resolves the Run first; only then are same-Run checkpoints scored by process, tool semantics, and server-monotonic proximity. Equal candidates remain explicitly ambiguous. |
+| Evidence timeline | P4 source gate complete, runtime pending | The tracked JSON separates agent claims, kernel facts, policy decisions, synchronous block, and post-event containment while preserving attribution and correlation rationale. Production fan-in remains pending. |
 
 ## MVP Direction
 
@@ -153,6 +154,7 @@ make test-sdk
 make test-supervisor
 go test ./internal/store
 go test ./internal/correlator
+go test ./internal/evidence -run '^TestP4Acceptance$'
 go vet ./...
 make build
 ```
@@ -264,6 +266,8 @@ Additional source milestones:
   capacity controls, drop diagnostics, and circuit recovery
 - Day 39: deterministic two-stage Run attribution and within-Run checkpoint
   correlation with explicit factors, conflict reporting, and 0–100 clamping
+- Day 40: P4 evidence timeline schema, tracked JSON sample, provenance and
+  attribution/correlation rationale, with syscall/block/containment separation
 
 Current gate:
 

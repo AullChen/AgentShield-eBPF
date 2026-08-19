@@ -40,5 +40,7 @@ Current notes:
 - `p3-policy-integration-check.md`: Day 35 audit/alert/block/contain source
   acceptance, update-failure/recovery contract, reproducible gate, and runtime
   limits.
+- `p4-acceptance.md`: Day 40 source evidence timeline, provenance boundaries,
+  correlation rationale, and block/containment result separation.
 
 Local planning documents, drafts, and proposal materials are kept in `.local-docs/` and ignored by Git.

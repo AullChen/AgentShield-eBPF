@@ -1,0 +1,131 @@
+{
+  "schema_version": "1",
+  "run_id": "run-demo",
+  "items": [
+    {
+      "sequence": "1",
+      "id": "checkpoint-tool-1",
+      "type": "tool_started",
+      "source": "agent_claim",
+      "server_monotonic_ns": "1000000000",
+      "server_unix_ns": "1800000000000000000",
+      "summary": "Run redacted shell step"
+    },
+    {
+      "sequence": "2",
+      "id": "kernel-exec-1",
+      "type": "exec_attempt",
+      "source": "kernel_fact",
+      "server_monotonic_ns": "1001000000",
+      "server_unix_ns": "1800000000001000000",
+      "summary": "exec attempt observed",
+      "attribution": {
+        "status": "exact",
+        "run_id": "run-demo",
+        "run_status": "active",
+        "basis": "instance_id+scope_cookie"
+      },
+      "correlation": {
+        "event_id": "kernel-exec-1",
+        "attribution": {
+          "run_id": "run-demo",
+          "run_status": "active",
+          "status": "exact"
+        },
+        "selected_checkpoint_id": "checkpoint-tool-1",
+        "confidence": 99,
+        "conflict": false,
+        "candidates": [
+          {
+            "checkpoint_id": "checkpoint-tool-1",
+            "score": 99,
+            "delta_ns": 1000000,
+            "factors": [
+              { "name": "same_tgid", "points": 35, "detail": "checkpoint and event share TGID" },
+              { "name": "tool_name", "points": 25, "detail": "normalized tool names match" },
+              { "name": "semantic_phase", "points": 15, "detail": "checkpoint type is compatible with event class" },
+              { "name": "server_monotonic_proximity", "points": 24, "detail": "same-host server monotonic time window" }
+            ]
+          }
+        ],
+        "correlation_status": "matched",
+        "authoritative_clock": "server_monotonic_ns"
+      },
+      "operation": {
+        "attempt_observed": true,
+        "action_result": "none",
+        "mechanism": "tracepoint/sys_enter_execve"
+      }
+    },
+    {
+      "sequence": "3",
+      "id": "decision-contain-1",
+      "type": "policy_decision",
+      "source": "policy_decision",
+      "server_monotonic_ns": "1002000000",
+      "server_unix_ns": "1800000000002000000",
+      "summary": "deny and request post-event containment",
+      "decision": {
+        "policy_id": "policy-exec",
+        "rule_id": "rule-shell",
+        "requested_action": "contain",
+        "final_decision": "deny",
+        "enforced": false,
+        "mechanism": "post_event"
+      }
+    },
+    {
+      "sequence": "4",
+      "id": "containment-1",
+      "type": "containment_result",
+      "source": "containment_result",
+      "server_monotonic_ns": "1003000000",
+      "server_unix_ns": "1800000000003000000",
+      "summary": "exact scope contained",
+      "containment": {
+        "requested": true,
+        "result": "killed",
+        "method": "cgroup.kill",
+        "target_identity": "instance_id+scope_cookie+cgroup_id",
+        "original_action_result": "none"
+      }
+    },
+    {
+      "sequence": "5",
+      "id": "kernel-net-1",
+      "type": "net_connect",
+      "source": "kernel_fact",
+      "server_monotonic_ns": "1004000000",
+      "server_unix_ns": "1800000000004000000",
+      "summary": "connect rejected by kernel hook",
+      "attribution": {
+        "status": "exact",
+        "run_id": "run-demo",
+        "run_status": "active",
+        "basis": "instance_id+scope_cookie"
+      },
+      "operation": {
+        "attempt_observed": true,
+        "action_result": "blocked",
+        "mechanism": "cgroup/connect4"
+      }
+    },
+    {
+      "sequence": "6",
+      "id": "decision-block-1",
+      "type": "policy_decision",
+      "source": "policy_decision",
+      "server_monotonic_ns": "1005000000",
+      "server_unix_ns": "1800000000005000000",
+      "summary": "synchronous network block",
+      "decision": {
+        "policy_id": "policy-network",
+        "rule_id": "rule-default-deny",
+        "requested_action": "block",
+        "final_decision": "deny",
+        "enforced": true,
+        "mechanism": "cgroup/connect4"
+      }
+    }
+  ]
+}

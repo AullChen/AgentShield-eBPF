@@ -1,0 +1,15 @@
+package evidence
+
+import "github.com/agentshield/agentshield-ebpf/internal/correlator"
+
+func BuildP4Sample() (Timeline, error) {
+	correlation := &correlator.Result{EventID: "kernel-exec-1", Attribution: correlator.Attribution{RunID: "run-demo", RunStatus: "active", Status: correlator.AttributionExact}, SelectedCheckpoint: "checkpoint-tool-1", Confidence: 99, CorrelationStatus: "matched", AuthoritativeClock: "server_monotonic_ns", Candidates: []correlator.Candidate{{CheckpointID: "checkpoint-tool-1", Score: 99, DeltaNS: 1000000, Factors: []correlator.Factor{{Name: "same_tgid", Points: 35, Detail: "checkpoint and event share TGID"}, {Name: "tool_name", Points: 25, Detail: "normalized tool names match"}, {Name: "semantic_phase", Points: 15, Detail: "checkpoint type is compatible with event class"}, {Name: "server_monotonic_proximity", Points: 24, Detail: "same-host server monotonic time window"}}}}}
+	return Build("run-demo", []Event{
+		{ID: "checkpoint-tool-1", Type: "tool_started", Source: AgentClaim, ServerMonotonicNS: 1000000000, ServerUnixNS: 1800000000000000000, Summary: "Run redacted shell step"},
+		{ID: "kernel-exec-1", Type: "exec_attempt", Source: KernelFact, ServerMonotonicNS: 1001000000, ServerUnixNS: 1800000000001000000, Summary: "exec attempt observed", Attribution: &Attribution{Status: "exact", RunID: "run-demo", RunStatus: "active", Basis: "instance_id+scope_cookie"}, Correlation: correlation, Operation: &OperationResult{AttemptObserved: true, ActionResult: "none", Mechanism: "tracepoint/sys_enter_execve"}},
+		{ID: "decision-contain-1", Type: "policy_decision", Source: PolicyDecision, ServerMonotonicNS: 1002000000, ServerUnixNS: 1800000000002000000, Summary: "deny and request post-event containment", Decision: &Decision{PolicyID: "policy-exec", RuleID: "rule-shell", RequestedAction: "contain", FinalDecision: "deny", Enforced: false, Mechanism: "post_event"}},
+		{ID: "containment-1", Type: "containment_result", Source: ContainmentResult, ServerMonotonicNS: 1003000000, ServerUnixNS: 1800000000003000000, Summary: "exact scope contained", Containment: &Containment{Requested: true, Result: "killed", Method: "cgroup.kill", TargetIdentity: "instance_id+scope_cookie+cgroup_id", OriginalActionResult: "none"}},
+		{ID: "kernel-net-1", Type: "net_connect", Source: KernelFact, ServerMonotonicNS: 1004000000, ServerUnixNS: 1800000000004000000, Summary: "connect rejected by kernel hook", Attribution: &Attribution{Status: "exact", RunID: "run-demo", RunStatus: "active", Basis: "instance_id+scope_cookie"}, Operation: &OperationResult{AttemptObserved: true, ActionResult: "blocked", Mechanism: "cgroup/connect4"}},
+		{ID: "decision-block-1", Type: "policy_decision", Source: PolicyDecision, ServerMonotonicNS: 1005000000, ServerUnixNS: 1800000000005000000, Summary: "synchronous network block", Decision: &Decision{PolicyID: "policy-network", RuleID: "rule-default-deny", RequestedAction: "block", FinalDecision: "deny", Enforced: true, Mechanism: "cgroup/connect4"}},
+	})
+}
