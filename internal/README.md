@@ -15,5 +15,6 @@ Package responsibilities are split by runtime concern:
 - `logging`
 - `policy`
 - `scope`
+- `stream`: authenticated resumable WebSocket fan-out with bounded clients.
 - `store`: redacted SQLite evidence persistence and isolated bounded writer.
 - `version`

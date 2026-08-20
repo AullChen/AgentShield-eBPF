@@ -42,5 +42,7 @@ Current notes:
   limits.
 - `p4-acceptance.md`: Day 40 source evidence timeline, provenance boundaries,
   correlation rationale, and block/containment result separation.
+- `realtime-stream.md`: Day 41 authenticated WebSocket, resume window,
+  browser ticket bootstrap, filters, and slow-client isolation.
 
 Local planning documents, drafts, and proposal materials are kept in `.local-docs/` and ignored by Git.

@@ -28,6 +28,7 @@ The project is currently in early MVP development. The repository contains the G
 | Event store | Source complete, integration pending | Real SQLite/WAL persistence uses a redacted normalized record model, bounded non-blocking queue/recent buffer, capacity pruning, gap diagnostics, and a circuit breaker. Reader wiring and historical APIs are pending. |
 | Correlation | Source complete, integration pending | Captured instance/cookie identity resolves the Run first; only then are same-Run checkpoints scored by process, tool semantics, and server-monotonic proximity. Equal candidates remain explicitly ambiguous. |
 | Evidence timeline | P4 source gate complete, runtime pending | The tracked JSON separates agent claims, kernel facts, policy decisions, synchronous block, and post-event containment while preserving attribution and correlation rationale. Production fan-in remains pending. |
+| Realtime stream | Source complete, integration pending | Authenticated RFC 6455 fan-out uses decimal-string cursors, a 10,000-message/five-minute recovery window, one-time browser tickets, and bounded slow-client queues. Production listener/snapshot wiring is pending. |
 
 ## MVP Direction
 
@@ -155,6 +156,7 @@ make test-supervisor
 go test ./internal/store
 go test ./internal/correlator
 go test ./internal/evidence -run '^TestP4Acceptance$'
+go test ./internal/stream
 go vet ./...
 make build
 ```
@@ -268,6 +270,8 @@ Additional source milestones:
   correlation with explicit factors, conflict reporting, and 0–100 clamping
 - Day 40: P4 evidence timeline schema, tracked JSON sample, provenance and
   attribution/correlation rationale, with syscall/block/containment separation
+- Day 41: authenticated resumable WebSocket stream, single-use browser ticket,
+  bounded recovery history, filters, and slow-client isolation
 
 Current gate:
 
