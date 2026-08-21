@@ -4,7 +4,7 @@ Private Go packages for the AgentShield control plane.
 
 Package responsibilities are split by runtime concern:
 
-- `api`
+- `api`: Run/checkpoint management plus the read-only Dashboard Overview API.
 - `bpfmgr`
 - `config`
 - `correlator`: two-stage Run attribution and deterministic checkpoint matching.

@@ -195,6 +195,22 @@ select {
   padding: 16px;
 }
 
+.notice {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+}
+
+.danger-notice {
+  border-left: 3px solid var(--signal);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
 .table {
   border-collapse: collapse;
   width: 100%;
@@ -211,6 +227,22 @@ select {
 .table th {
   color: #65706c;
   font-weight: 600;
+}
+
+.table td strong,
+.subtle-code {
+  display: block;
+}
+
+.subtle-code {
+  color: #66706c;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.numeric {
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .pill {
@@ -255,6 +287,55 @@ select {
   color: #2c3431;
   font-family: "JetBrains Mono", Consolas, monospace;
   font-size: 13px;
+}
+
+.capability-list {
+  display: grid;
+  gap: 0;
+}
+
+.capability-row {
+  align-items: start;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 12px 0;
+}
+
+.capability-row:first-child {
+  padding-top: 0;
+}
+
+.capability-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.capability-row strong {
+  font-size: 13px;
+}
+
+.capability-row p,
+.empty-state,
+.freshness {
+  color: #66706c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.capability-row p {
+  margin: 4px 0 0;
+}
+
+.empty-state {
+  margin: 0;
+  padding: 20px 4px;
+}
+
+.freshness {
+  margin: 14px 0 0;
+  text-align: right;
 }
 
 @media (max-width: 900px) {

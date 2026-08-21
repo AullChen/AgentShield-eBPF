@@ -15,7 +15,7 @@ The project is currently in early MVP development. The repository contains the G
 | Process audit probe | Started | `tracepoint/syscalls/sys_enter_execve` captures executable and bounded argv summaries. |
 | Network audit/enforcement | Source complete, Linux evidence pending | Explicit-cgroup `connect4/connect6` hooks audit TCP and can synchronously block tuples absent from one exact-host/port default-deny profile. |
 | BPF build flow | Implemented, Linux evidence pending | `make bpf-object` compiles a CO-RE ELF and records object/BTF hashes, exact tool versions, and parsed program/map specs. |
-| Dashboard | Scaffolded | Next.js App Router pages exist with mock data. |
+| Dashboard | Overview source complete, integration pending | Overview reads a validated, read-only API on the server and shows honest unavailable states; the remaining pages still use scaffolds/mock data. |
 | Runtime BPF loading | Started | `agentshield audit` loads a compiled BPF object and attaches file/exec probes on Linux. |
 | Ring buffer consumption | Started | `audit` decodes file, process, and network ring-buffer events and emits Go-synthesized loss notices as JSON schema v2 Lines. |
 | Audit reliability | Source complete, Linux saturation pending | Per-type per-CPU reserve failures become Go-synthesized `drop_notice` records; SIGINT/SIGTERM close and join the reader/monitor path. |
@@ -209,13 +209,18 @@ This is not a replacement for compiling and loading a real CO-RE BPF object on L
 
 ## Dashboard
 
-The dashboard currently exposes static App Router pages with mock data:
+The dashboard exposes these App Router pages:
 
 - Overview
 - Live Trace
 - Policies
 - History
 - Diagnostics
+
+Overview reads `GET /api/v1/overview` through server-only
+`AGENTSHIELD_API_URL` and `AGENTSHIELD_READ_TOKEN` settings. The remaining
+pages are still scaffolds or use mock data. See
+[docs/dashboard-overview.md](docs/dashboard-overview.md).
 
 Start it locally with:
 
@@ -272,6 +277,8 @@ Additional source milestones:
   attribution/correlation rationale, with syscall/block/containment separation
 - Day 41: authenticated resumable WebSocket stream, single-use browser ticket,
   bounded recovery history, filters, and slow-client isolation
+- Day 42: authenticated Overview snapshot API and dashboard Run/count/
+  capability rendering without mock fallback
 
 Current gate:
 
@@ -314,7 +321,8 @@ Subsequent work:
   verify registration identity, and observe the root workload exit plus an
   empty leaf before management finish.
 - The source enforces exact-leaf cgroup capture, but supported-Linux runtime evidence is still pending.
-- The dashboard currently uses mock data.
+- Dashboard Overview has a real API contract but production control-plane fan-in
+  and listener composition are pending; the remaining pages are still scaffolds.
 - The generated Go source binding embeds source text only; `make bpf-object` is the separate real ELF build.
 
 ## License
