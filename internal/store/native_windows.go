@@ -26,6 +26,9 @@ var (
 	sqliteStep     = sqliteDLL.NewProc("sqlite3_step")
 	sqliteColumn   = sqliteDLL.NewProc("sqlite3_column_int64")
 	sqliteFinalize = sqliteDLL.NewProc("sqlite3_finalize")
+	kernel32DLL    = syscall.NewLazyDLL("kernel32.dll")
+	lstrlenA       = kernel32DLL.NewProc("lstrlenA")
+	rtlMoveMemory  = kernel32DLL.NewProc("RtlMoveMemory")
 )
 
 type windowsSQLite struct{ handle uintptr }
@@ -101,13 +104,15 @@ func bytePointerString(pointer uintptr) string {
 	if pointer == 0 {
 		return "unknown error"
 	}
-	bytes := make([]byte, 0, 128)
-	for index := uintptr(0); index < 4096; index++ {
-		value := *(*byte)(unsafe.Pointer(pointer + index))
-		if value == 0 {
-			break
-		}
-		bytes = append(bytes, value)
+	length, _, _ := lstrlenA.Call(pointer)
+	if length == 0 {
+		return ""
 	}
+	if length > 4096 {
+		length = 4096
+	}
+	bytes := make([]byte, int(length))
+	rtlMoveMemory.Call(uintptr(unsafe.Pointer(&bytes[0])), pointer, length)
+	runtime.KeepAlive(bytes)
 	return string(bytes)
 }
