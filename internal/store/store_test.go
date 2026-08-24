@@ -60,7 +60,7 @@ func TestWriterCircuitBreakerDoesNotBlockAndReportsGap(t *testing.T) {
 	var diagnostics bytes.Buffer
 	writer, err := NewWriter(backend, WriterOptions{
 		QueueCapacity: 2, RecentCapacity: 1, RecentBytes: 2048, BatchSize: 1,
-		FlushInterval: time.Millisecond, RetryInterval: 5 * time.Millisecond,
+		FlushInterval: time.Millisecond, RetryInterval: 100 * time.Millisecond,
 		Redactor: NewRedactor([]string{"do-not-log"}), Diagnostics: &diagnostics,
 	})
 	if err != nil {
