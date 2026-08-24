@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -42,10 +43,15 @@ func run(args []string) int {
 		cgroupPath := flags.String("cgroup", "", "cgroup v2 path for connect4/connect6 audit hooks")
 		scopeCgroupPath := flags.String("scope-cgroup", "", "trusted exact leaf cgroup v2 path to register for audit")
 		policyFile := flags.String("policy-file", "", "YAML or JSON policy bundle evaluated after each audit event")
+		apiListen := flags.String("api-listen", "", "optional loopback IP:port for the read-only dashboard API")
+		readTokenFile := flags.String("read-token-file", "", "owner-only file containing the dashboard read token")
+		runID := flags.String("run-id", "", "trusted Run ID for dashboard attribution")
 		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
 			return exitCode
 		}
-		return runAudit(cfg, *bpfObject, *cgroupPath, *scopeCgroupPath, *policyFile)
+		return runAudit(cfg, *bpfObject, *cgroupPath, *scopeCgroupPath, *policyFile, liveAPIOptions{
+			listenAddress: *apiListen, readTokenFile: *readTokenFile, runID: *runID,
+		})
 	case "diagnose":
 		flags := newFlagSet(command, &cfg)
 		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
@@ -129,7 +135,7 @@ func runHealth(ctx context.Context, cfg config.Config) int {
 	return 0
 }
 
-func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policyFile string) int {
+func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policyFile string, liveOptions liveAPIOptions) int {
 	logger, err := logging.New(cfg.LogLevel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "invalid logger configuration: %v\n", err)
@@ -216,8 +222,20 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policy
 		}
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signalContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	ctx, cancel := context.WithCancel(signalContext)
+	defer cancel()
+
+	var live *liveAPI
+	if liveOptions.enabled() {
+		live, err = startLiveAPI(ctx, cancel, liveOptions, logger)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "start dashboard API: %v\n", err)
+			return 1
+		}
+		logger.InfoContext(ctx, "dashboard API listening", slog.String("address", live.address))
+	}
 
 	logger.InfoContext(ctx, "starting kernel audit", slog.String("bpf_object", objectPath), slog.String("network_cgroup", cgroupPath))
 	options := bpfmgr.AuditOptions{
@@ -237,6 +255,9 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policy
 		},
 		OnReady: func() {
 			logger.InfoContext(ctx, "kernel audit hooks attached")
+			if live != nil {
+				live.hooksReady()
+			}
 		},
 		OnMalformedEvent: func(err error) {
 			logger.WarnContext(ctx, "discarding malformed kernel event", slog.Any("error", err))
@@ -248,7 +269,20 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policy
 	if policyEngine != nil {
 		options.DeriveRecords = policyEngine.EvaluateAuditEvent
 	}
-	err = bpfmgr.RunAudit(ctx, options, os.Stdout)
+	var output io.Writer = os.Stdout
+	if live != nil {
+		output = live.output(os.Stdout)
+	}
+	err = bpfmgr.RunAudit(ctx, options, output)
+	if live != nil {
+		status := "finished"
+		if err != nil {
+			status = "failed"
+		}
+		if closeErr := live.close(status); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}
 	if err == nil {
 		return 0
 	}
@@ -341,4 +375,7 @@ func printUsage(out *os.File) {
 	fmt.Fprintln(out, "        --cgroup string      cgroup v2 path for connect4/connect6 audit hooks")
 	fmt.Fprintln(out, "        --scope-cgroup string trusted exact leaf cgroup v2 path to audit")
 	fmt.Fprintln(out, "        --policy-file string  YAML or JSON bundle for post-event policy decisions")
+	fmt.Fprintln(out, "        --api-listen IP:port  optional loopback dashboard API listener")
+	fmt.Fprintln(out, "        --read-token-file path owner-only dashboard read token file")
+	fmt.Fprintln(out, "        --run-id string       trusted Run ID for streamed records")
 }

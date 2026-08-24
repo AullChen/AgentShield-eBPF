@@ -19,6 +19,9 @@ func TestOverviewStateUsesStringCountsAndRealRunData(t *testing.T) {
 	if err := state.ObserveEvent(OverviewEventInput{RunID: "run-1", PolicyHit: true, Blocked: true, OccurredAt: now}); err != nil {
 		t.Fatal(err)
 	}
+	if err := state.ObservePolicyHit("run-1"); err != nil {
+		t.Fatal(err)
+	}
 	if err := state.SetCapabilities([]OverviewCapability{
 		{Name: "cgroup_v2", Status: "available", Detail: "exact leaf registered"},
 		{Name: "bpf_load", Status: "unknown", Detail: "active probe pending"},
@@ -31,7 +34,7 @@ func TestOverviewStateUsesStringCountsAndRealRunData(t *testing.T) {
 		t.Fatal(err)
 	}
 	if snapshot.Counts.ActiveRuns != "1" || snapshot.Counts.KernelEvents != "1" ||
-		snapshot.Counts.PolicyHits != "1" || snapshot.Counts.Blocked != "1" {
+		snapshot.Counts.PolicyHits != "2" || snapshot.Counts.Blocked != "1" {
 		t.Fatalf("counts = %#v", snapshot.Counts)
 	}
 	if len(snapshot.Runs) != 1 || snapshot.Runs[0].RunID != "run-1" ||

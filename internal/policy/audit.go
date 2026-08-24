@@ -22,6 +22,7 @@ type AuditDecisionRecord struct {
 	RunID                     string `json:"run_id,omitempty"`
 	KernelMonotonicNS         uint64 `json:"kernel_monotonic_ns,string"`
 	ServerReceivedMonotonicNS uint64 `json:"server_received_monotonic_ns,string,omitempty"`
+	ServerReceivedUnixNS      uint64 `json:"server_received_unix_ns,string,omitempty"`
 	CgroupID                  uint64 `json:"cgroup_id,string"`
 	InstanceID                uint64 `json:"instance_id,string"`
 	ScopeCookie               uint64 `json:"scope_cookie,string"`
@@ -126,6 +127,7 @@ func (engine *Engine) EvaluateAuditDecision(context EvaluationContext, event eve
 		RunID:                     context.RunID,
 		KernelMonotonicNS:         event.KernelMonotonicNS,
 		ServerReceivedMonotonicNS: event.ServerReceivedMonotonicNS,
+		ServerReceivedUnixNS:      event.ServerReceivedUnixNS,
 		CgroupID:                  event.CgroupID,
 		InstanceID:                event.InstanceID,
 		ScopeCookie:               event.ScopeCookie,

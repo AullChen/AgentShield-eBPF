@@ -28,5 +28,6 @@ Run the source gate with:
 go test ./internal/stream -count=1
 ```
 
-Production listener wiring and the durable `/api/v1/snapshot` implementation
-remain pending, so this is not yet an end-to-end runtime claim.
+Day 43 wires the Hub to the optional loopback listener and Linux audit JSON
+Lines sink; see `dashboard-live-trace.md`. A durable `/api/v1/snapshot` and
+supported-Linux runtime evidence remain pending.

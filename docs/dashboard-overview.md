@@ -21,7 +21,8 @@ component and is not emitted into the browser bundle. Missing configuration,
 authentication failure, an incompatible schema, and an unavailable API render
 an explicit unavailable state rather than fabricated metrics.
 
-`OverviewState` is the tested in-memory provider contract. Production audit,
-policy, Run lifecycle, and diagnostic fan-in plus listener composition remain
-pending; the UI/API data path is source-complete but not presented as a running
-deployment.
+`OverviewState` is the tested in-memory provider contract. Day 43 wires the
+standalone Linux audit command's Run, kernel-event, policy-hit, block, hook, and
+listener state into it. Checkpoint/supervisor lifecycle and the full diagnostic
+fan-in remain pending, and supported-Linux evidence is still required before
+presenting it as a runtime-accepted deployment.

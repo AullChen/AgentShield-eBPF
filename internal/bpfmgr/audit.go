@@ -42,15 +42,17 @@ type AuditOptions struct {
 }
 
 type DerivedRecordError struct {
-	RecordType        string `json:"record_type"`
-	KernelMonotonicNS uint64 `json:"kernel_monotonic_ns,string"`
-	CgroupID          uint64 `json:"cgroup_id,string"`
-	InstanceID        uint64 `json:"instance_id,string"`
-	ScopeCookie       uint64 `json:"scope_cookie,string"`
-	PID               uint32 `json:"pid"`
-	EventType         uint16 `json:"event_type"`
-	EventTypeName     string `json:"event_type_name"`
-	Error             string `json:"error"`
+	RecordType                string `json:"record_type"`
+	KernelMonotonicNS         uint64 `json:"kernel_monotonic_ns,string"`
+	ServerReceivedMonotonicNS uint64 `json:"server_received_monotonic_ns,string,omitempty"`
+	ServerReceivedUnixNS      uint64 `json:"server_received_unix_ns,string,omitempty"`
+	CgroupID                  uint64 `json:"cgroup_id,string"`
+	InstanceID                uint64 `json:"instance_id,string"`
+	ScopeCookie               uint64 `json:"scope_cookie,string"`
+	PID                       uint32 `json:"pid"`
+	EventType                 uint16 `json:"event_type"`
+	EventTypeName             string `json:"event_type_name"`
+	Error                     string `json:"error"`
 }
 
 type NetworkAllowTuple struct {
@@ -216,15 +218,17 @@ func streamAuditEventsTo(reader auditSampleReader, opts AuditOptions, emitter *a
 
 func derivedRecordError(event AuditEvent, err error) DerivedRecordError {
 	return DerivedRecordError{
-		RecordType:        "derived_record_error",
-		KernelMonotonicNS: event.KernelMonotonicNS,
-		CgroupID:          event.CgroupID,
-		InstanceID:        event.InstanceID,
-		ScopeCookie:       event.ScopeCookie,
-		PID:               event.PID,
-		EventType:         event.EventType,
-		EventTypeName:     event.EventTypeName,
-		Error:             err.Error(),
+		RecordType:                "derived_record_error",
+		KernelMonotonicNS:         event.KernelMonotonicNS,
+		ServerReceivedMonotonicNS: event.ServerReceivedMonotonicNS,
+		ServerReceivedUnixNS:      event.ServerReceivedUnixNS,
+		CgroupID:                  event.CgroupID,
+		InstanceID:                event.InstanceID,
+		ScopeCookie:               event.ScopeCookie,
+		PID:                       event.PID,
+		EventType:                 event.EventType,
+		EventTypeName:             event.EventTypeName,
+		Error:                     err.Error(),
 	}
 }
 

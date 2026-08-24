@@ -148,6 +148,21 @@ func TestStreamRejectsMissingAuthentication(t *testing.T) {
 	}
 }
 
+func TestHubCloseRejectsPublishAndSignalsSubscribers(t *testing.T) {
+	hub, _ := NewHub(HubOptions{})
+	_, client, _ := hub.subscribe(0, false, Filter{IncludeAudit: true})
+	hub.Close()
+	select {
+	case <-hub.done:
+	default:
+		t.Fatal("hub close did not signal subscribers")
+	}
+	if _, err := hub.Publish(testEvent("after-close", "run-1", "high")); err != ErrHubClosed {
+		t.Fatalf("Publish after close error = %v", err)
+	}
+	hub.unsubscribe(client)
+}
+
 func testStream(t *testing.T, options HubOptions) (*Hub, *Handler) {
 	t.Helper()
 	hub, err := NewHub(options)
@@ -226,7 +241,7 @@ func websocketRequest(host, path, authorization string) string {
 
 func readMessage(t *testing.T, connection net.Conn, reader *bufio.Reader) Message {
 	t.Helper()
-	_ = connection.SetReadDeadline(time.Now().Add(time.Second))
+	_ = connection.SetReadDeadline(time.Now().Add(5 * time.Second))
 	first, err := reader.ReadByte()
 	if err != nil {
 		t.Fatal(err)

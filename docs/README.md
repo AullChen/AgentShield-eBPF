@@ -19,6 +19,8 @@ Current notes:
   within-Run checkpoint scoring/conflict semantics.
 - `dashboard-overview.md`: Day 42 read-only Overview API, string counters,
   server-only dashboard credentials, and honest unavailable states.
+- `dashboard-live-trace.md`: Day 43 audit-to-WebSocket bridge, browser filters,
+  string-safe `u64` rendering, redaction, and loopback deployment contract.
 - `checkpoint-ingest.md`: Day 36 isolated Run-scoped checkpoint ingestion,
   token binding, dual-clock receipts, replay semantics, and lifecycle limits.
 - `../sdk/python/README.md` and `../sandbox/README.md`: Day 37 checkpoint-only

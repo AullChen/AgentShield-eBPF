@@ -147,6 +147,19 @@ func (state *OverviewState) ObserveEvent(input OverviewEventInput) error {
 	return nil
 }
 
+func (state *OverviewState) ObservePolicyHit(runID string) error {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if _, exists := state.runs[runID]; !exists {
+		return ErrOverviewRunNotFound
+	}
+	if state.policyHits == math.MaxUint64 {
+		return ErrOverviewOverflow
+	}
+	state.policyHits++
+	return nil
+}
+
 func (state *OverviewState) SetCapabilities(capabilities []OverviewCapability) error {
 	seen := make(map[string]struct{}, len(capabilities))
 	copyOf := make([]OverviewCapability, len(capabilities))

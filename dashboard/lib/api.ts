@@ -50,7 +50,7 @@ export async function loadOverview(): Promise<APIResult<OverviewData>> {
     if (!response.ok) {
       return { data: null, error: `Control plane returned HTTP ${response.status}.` };
     }
-    const text = await readLimitedText(response);
+    const text = await readLimitedText(response, maximumResponseBytes);
     const parsed: unknown = JSON.parse(text);
     if (!isOverviewData(parsed)) {
       return { data: null, error: "Control plane returned an incompatible overview schema." };
@@ -135,9 +135,9 @@ function isRFC3339(value: unknown): value is string {
   return typeof value === "string" && value.length <= 35 && !Number.isNaN(Date.parse(value));
 }
 
-async function readLimitedText(response: Response): Promise<string> {
+export async function readLimitedText(response: Response, maximumBytes: number): Promise<string> {
   const declaredLength = Number(response.headers.get("content-length") ?? "0");
-  if (declaredLength > maximumResponseBytes) throw new Error("response_too_large");
+  if (maximumBytes < 1 || declaredLength > maximumBytes) throw new Error("response_too_large");
   if (!response.body) return "";
 
   const reader = response.body.getReader();
@@ -148,11 +148,25 @@ async function readLimitedText(response: Response): Promise<string> {
     const { done, value } = await reader.read();
     if (done) break;
     bytes += value.byteLength;
-    if (bytes > maximumResponseBytes) {
+    if (bytes > maximumBytes) {
       await reader.cancel();
       throw new Error("response_too_large");
     }
     text += decoder.decode(value, { stream: true });
   }
   return text + decoder.decode();
+}
+
+export function controlPlaneWebSocketURL(streamPath: string, baseURL: URL): URL | null {
+  try {
+    const configured = process.env.AGENTSHIELD_STREAM_URL;
+    const endpoint = configured ? new URL(configured) : new URL(streamPath, baseURL);
+    if (!configured) endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
+    const loopback = endpoint.hostname === "localhost" || endpoint.hostname === "127.0.0.1" || endpoint.hostname === "[::1]";
+    if (endpoint.protocol !== "wss:" && !(endpoint.protocol === "ws:" && loopback)) return null;
+    if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.pathname !== "/api/v1/stream") return null;
+    return endpoint;
+  } catch {
+    return null;
+  }
 }

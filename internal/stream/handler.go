@@ -173,6 +173,9 @@ func (handler *Handler) serveStream(response http.ResponseWriter, request *http.
 			return
 		case <-done:
 			return
+		case <-handler.hub.done:
+			_ = writeCloseFrame(connection, &writeMu, 1001, "server shutdown")
+			return
 		case message := <-client.messages:
 			if err := writeJSONFrame(connection, &writeMu, message); err != nil {
 				return

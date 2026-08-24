@@ -41,6 +41,21 @@ select {
   font: inherit;
 }
 
+button {
+  background: var(--shell);
+  border: 1px solid var(--shell);
+  color: #ffffff;
+  cursor: pointer;
+  padding: 9px 13px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--circuit);
+  outline-offset: 2px;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
@@ -268,6 +283,46 @@ select {
   gap: 12px;
 }
 
+.trace-filters {
+  align-items: end;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 1fr) minmax(130px, 0.5fr) minmax(180px, 1fr) auto auto;
+  margin-bottom: 12px;
+  padding: 14px;
+}
+
+.trace-filters label {
+  color: #59615e;
+  display: grid;
+  font-size: 12px;
+  gap: 6px;
+}
+
+.trace-filters input,
+.trace-filters select {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--shell);
+  min-width: 0;
+  padding: 8px 9px;
+}
+
+.trace-filters .checkbox-label {
+  align-items: center;
+  display: flex;
+  padding-bottom: 9px;
+  white-space: nowrap;
+}
+
+.stream-status {
+  color: #66706c;
+  font-size: 12px;
+  margin: 0 0 14px;
+}
+
 .trace-row {
   border-left: 3px solid var(--line);
   display: grid;
@@ -281,6 +336,17 @@ select {
 
 .trace-row.medium {
   border-left-color: var(--copper);
+}
+
+.trace-row.info {
+  border-left-color: var(--circuit);
+}
+
+.trace-heading {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
 }
 
 .trace-row code {
@@ -363,5 +429,14 @@ select {
   .status-strip,
   .grid-two {
     grid-template-columns: 1fr;
+  }
+
+  .trace-filters {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .trace-filters .checkbox-label {
+    padding-bottom: 0;
   }
 }

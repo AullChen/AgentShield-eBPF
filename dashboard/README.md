@@ -27,4 +27,9 @@ AGENTSHIELD_READ_TOKEN=replace-with-a-random-read-only-token
 
 Only loopback development endpoints may use plain HTTP. If either value is
 missing or the API is unavailable, Overview shows an explicit unavailable state
-instead of mock metrics. Other pages are implemented in later P5 days.
+instead of mock metrics.
+
+Live Trace obtains a one-time ticket through the same-origin Next.js route and
+connects to `/api/v1/stream`. Set `AGENTSHIELD_STREAM_URL` only when the public
+WebSocket URL differs from the API URL; non-loopback URLs must use `wss://`.
+Policies, History, and Diagnostics are implemented in later P5 days.

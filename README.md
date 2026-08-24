@@ -2,7 +2,7 @@
 
 AgentShield-eBPF is a Linux eBPF based runtime security and audit system for AI Agent sandboxes.
 
-The project is currently in early MVP development. The repository contains the Go control-plane skeleton, exact-leaf cgroup filtering and registration, file/process/network audit probes, a strict policy loader and compile preview, a minimal demo sandbox, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard scaffold. Kernel load/attach evidence, broader policy enforcement, live containment dispatch, event correlation, and live dashboard streaming are still under development.
+The project is currently in early MVP development. The repository contains the Go control-plane skeleton, exact-leaf cgroup filtering and registration, file/process/network audit probes, a strict policy loader and compile preview, a minimal demo sandbox, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard. Kernel load/attach evidence, broader policy enforcement, live containment dispatch, and full evidence detail/history remain under development.
 
 ## Current Status
 
@@ -15,7 +15,7 @@ The project is currently in early MVP development. The repository contains the G
 | Process audit probe | Started | `tracepoint/syscalls/sys_enter_execve` captures executable and bounded argv summaries. |
 | Network audit/enforcement | Source complete, Linux evidence pending | Explicit-cgroup `connect4/connect6` hooks audit TCP and can synchronously block tuples absent from one exact-host/port default-deny profile. |
 | BPF build flow | Implemented, Linux evidence pending | `make bpf-object` compiles a CO-RE ELF and records object/BTF hashes, exact tool versions, and parsed program/map specs. |
-| Dashboard | Overview source complete, integration pending | Overview reads a validated, read-only API on the server and shows honest unavailable states; the remaining pages still use scaffolds/mock data. |
+| Dashboard | Overview/Live Trace source connected, Linux evidence pending | Overview and filtered Live Trace read the authenticated audit API without mock fallback; Policies, History, and Diagnostics remain scaffolds. |
 | Runtime BPF loading | Started | `agentshield audit` loads a compiled BPF object and attaches file/exec probes on Linux. |
 | Ring buffer consumption | Started | `audit` decodes file, process, and network ring-buffer events and emits Go-synthesized loss notices as JSON schema v2 Lines. |
 | Audit reliability | Source complete, Linux saturation pending | Per-type per-CPU reserve failures become Go-synthesized `drop_notice` records; SIGINT/SIGTERM close and join the reader/monitor path. |
@@ -28,7 +28,7 @@ The project is currently in early MVP development. The repository contains the G
 | Event store | Source complete, integration pending | Real SQLite/WAL persistence uses a redacted normalized record model, bounded non-blocking queue/recent buffer, capacity pruning, gap diagnostics, and a circuit breaker. Reader wiring and historical APIs are pending. |
 | Correlation | Source complete, integration pending | Captured instance/cookie identity resolves the Run first; only then are same-Run checkpoints scored by process, tool semantics, and server-monotonic proximity. Equal candidates remain explicitly ambiguous. |
 | Evidence timeline | P4 source gate complete, runtime pending | The tracked JSON separates agent claims, kernel facts, policy decisions, synchronous block, and post-event containment while preserving attribution and correlation rationale. Production fan-in remains pending. |
-| Realtime stream | Source complete, integration pending | Authenticated RFC 6455 fan-out uses decimal-string cursors, a 10,000-message/five-minute recovery window, one-time browser tickets, and bounded slow-client queues. Production listener/snapshot wiring is pending. |
+| Realtime stream | Audit integration source complete, Linux evidence pending | The optional loopback audit API adds redacted JSON fan-out, decimal-string cursors, one-time browser tickets, bounded recovery, and slow-client isolation. Durable snapshot/history is pending. |
 
 ## MVP Direction
 
@@ -217,10 +217,12 @@ The dashboard exposes these App Router pages:
 - History
 - Diagnostics
 
-Overview reads `GET /api/v1/overview` through server-only
+Overview reads `GET /api/v1/overview` and Live Trace uses the authenticated
+`/api/v1/stream` through server-only
 `AGENTSHIELD_API_URL` and `AGENTSHIELD_READ_TOKEN` settings. The remaining
 pages are still scaffolds or use mock data. See
-[docs/dashboard-overview.md](docs/dashboard-overview.md).
+[docs/dashboard-overview.md](docs/dashboard-overview.md) and
+[docs/dashboard-live-trace.md](docs/dashboard-live-trace.md).
 
 Start it locally with:
 
@@ -279,6 +281,8 @@ Additional source milestones:
   bounded recovery history, filters, and slow-client isolation
 - Day 42: authenticated Overview snapshot API and dashboard Run/count/
   capability rendering without mock fallback
+- Day 43: redacted audit-to-WebSocket bridge and bounded Live Trace with
+  run/severity/type filters and string-safe `u64` formatting
 
 Current gate:
 
@@ -321,8 +325,9 @@ Subsequent work:
   verify registration identity, and observe the root workload exit plus an
   empty leaf before management finish.
 - The source enforces exact-leaf cgroup capture, but supported-Linux runtime evidence is still pending.
-- Dashboard Overview has a real API contract but production control-plane fan-in
-  and listener composition are pending; the remaining pages are still scaffolds.
+- Dashboard Overview and Live Trace have an optional audit listener/fan-in, but
+  supported-Linux runtime evidence and durable resync snapshots remain pending;
+  Policies, History, and Diagnostics are still scaffolds.
 - The generated Go source binding embeds source text only; `make bpf-object` is the separate real ELF build.
 
 ## License

@@ -17,11 +17,16 @@ const (
 	maxPayloadBytes    = 64 << 10
 )
 
-var ErrInvalidEvent = errors.New("invalid stream event")
+var (
+	ErrInvalidEvent = errors.New("invalid stream event")
+	ErrHubClosed    = errors.New("stream hub is closed")
+	ErrSequenceFull = errors.New("stream sequence is exhausted")
+)
 
 type Event struct {
 	ID                string
 	Type              string
+	Source            string
 	RunID             string
 	Severity          string
 	EventType         string
@@ -37,6 +42,7 @@ type Message struct {
 	ResumeCursor      string          `json:"resume_cursor"`
 	ID                string          `json:"id"`
 	Type              string          `json:"type"`
+	Source            string          `json:"source,omitempty"`
 	RunID             string          `json:"run_id,omitempty"`
 	Severity          string          `json:"severity,omitempty"`
 	EventType         string          `json:"event_type,omitempty"`
@@ -74,6 +80,8 @@ type Hub struct {
 	history     []Message
 	nextID      uint64
 	clients     map[uint64]*subscription
+	closed      bool
+	done        chan struct{}
 }
 
 type subscription struct {
@@ -112,6 +120,7 @@ func NewHub(options HubOptions) (*Hub, error) {
 		clientQueue: options.ClientQueue,
 		snapshotURL: options.SnapshotURL,
 		clients:     make(map[uint64]*subscription),
+		done:        make(chan struct{}),
 	}, nil
 }
 
@@ -122,6 +131,12 @@ func (hub *Hub) Publish(event Event) (Message, error) {
 
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
+	if hub.closed {
+		return Message{}, ErrHubClosed
+	}
+	if hub.latest == ^uint64(0) {
+		return Message{}, ErrSequenceFull
+	}
 
 	now := hub.now()
 	hub.pruneLocked(now)
@@ -133,6 +148,7 @@ func (hub *Hub) Publish(event Event) (Message, error) {
 		ResumeCursor:      sequence,
 		ID:                event.ID,
 		Type:              event.Type,
+		Source:            event.Source,
 		RunID:             event.RunID,
 		Severity:          event.Severity,
 		EventType:         event.EventType,
@@ -165,7 +181,7 @@ func (hub *Hub) Publish(event Event) (Message, error) {
 }
 
 func validateEvent(event Event) error {
-	if event.ID == "" || len(event.ID) > 128 || event.Type == "" || len(event.Type) > 64 ||
+	if event.ID == "" || len(event.ID) > 128 || event.Type == "" || len(event.Type) > 64 || len(event.Source) > 32 ||
 		len(event.RunID) > 128 || len(event.Severity) > 32 || len(event.EventType) > 64 ||
 		len(event.Payload) == 0 || len(event.Payload) > maxPayloadBytes || !json.Valid(event.Payload) {
 		return ErrInvalidEvent
@@ -185,11 +201,23 @@ func (hub *Hub) subscribe(cursor uint64, cursorSet bool, filter Filter) ([]Messa
 	defer hub.mu.Unlock()
 
 	hub.pruneLocked(hub.now())
+	if hub.closed {
+		message := hub.resyncLocked("server_shutdown", cursor, hub.latest+1)
+		return nil, nil, &message
+	}
 	oldest := hub.latest + 1
 	if len(hub.history) > 0 {
 		oldest, _ = strconv.ParseUint(hub.history[0].Sequence, 10, 64)
 	}
-	if cursorSet && (cursor > hub.latest || cursor+1 < oldest) {
+	expired := cursor > hub.latest
+	if cursorSet && !expired {
+		if len(hub.history) == 0 {
+			expired = cursor < hub.latest
+		} else {
+			expired = cursor < oldest-1
+		}
+	}
+	if cursorSet && expired {
 		reason := "cursor_expired"
 		if cursor > hub.latest {
 			reason = "cursor_ahead"
@@ -228,6 +256,16 @@ func (hub *Hub) unsubscribe(client *subscription) {
 	hub.mu.Unlock()
 }
 
+func (hub *Hub) Close() {
+	hub.mu.Lock()
+	if !hub.closed {
+		hub.closed = true
+		close(hub.done)
+		hub.clients = make(map[uint64]*subscription)
+	}
+	hub.mu.Unlock()
+}
+
 func (hub *Hub) resync(reason string, cursor uint64) Message {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
@@ -255,13 +293,15 @@ func (hub *Hub) resyncLocked(reason string, requested, oldest uint64) Message {
 	})
 	latest := strconv.FormatUint(hub.latest, 10)
 	return Message{
-		SchemaVersion: "1",
-		Sequence:      latest,
-		ResumeCursor:  latest,
-		ID:            fmt.Sprintf("resync-%d", hub.latest),
-		Type:          "resync_required",
-		Payload:       payload,
-		createdAt:     hub.now(),
+		SchemaVersion:     "1",
+		Sequence:          latest,
+		ResumeCursor:      latest,
+		ID:                fmt.Sprintf("resync-%d", hub.latest),
+		Type:              "resync_required",
+		ServerMonotonicNS: "0",
+		ServerUnixNS:      "0",
+		Payload:           payload,
+		createdAt:         hub.now(),
 	}
 }
 
