@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 type Filters = { runID: string; severity: string; eventType: string; includeAudit: boolean };
@@ -142,7 +143,7 @@ export function LiveTrace() {
             <article className={`trace-row ${message.severity ?? "info"}`} key={`${message.sequence}-${message.id}`}>
               <div className="trace-heading"><strong>{formatUnixNS(message.server_unix_ns)} · {message.event_type ?? message.type}</strong><span className="pill">seq {message.sequence}</span></div>
               <code>{recordSubject(message.payload)}</code>
-              <span>{message.run_id ?? "unattributed"} · {message.source ?? "unknown source"}{cgroupIdentity(message.payload)}</span>
+              <span>{message.run_id ? <Link className="inline-link" href={`/evidence/${encodeURIComponent(message.run_id)}`}>{message.run_id}</Link> : "unattributed"} · {message.source ?? "unknown source"}{cgroupIdentity(message.payload)}</span>
             </article>
           )) : <p className="empty-state">No matching live records received. Start the configured sandbox or adjust filters.</p>}
         </div>

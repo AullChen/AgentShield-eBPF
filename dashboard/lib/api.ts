@@ -29,19 +29,91 @@ export type OverviewData = {
   capabilities: OverviewCapability[];
 };
 
+export type EvidenceSource = "agent_claim" | "kernel_fact" | "policy_decision" | "containment_result";
+
+export type EvidenceAttribution = {
+  status: string;
+  run_id?: string;
+  run_status?: string;
+  basis: string;
+};
+
+export type EvidenceCorrelation = {
+  selected_checkpoint_id?: string;
+  confidence: number;
+  conflict: boolean;
+  correlation_status: string;
+  authoritative_clock: string;
+};
+
+export type EvidenceOperation = {
+  attempt_observed: boolean;
+  action_result: string;
+  mechanism: string;
+};
+
+export type EvidenceDecision = {
+  policy_id: string;
+  rule_id: string;
+  requested_action: string;
+  final_decision: string;
+  enforced: boolean;
+  mechanism: string;
+};
+
+export type EvidenceContainment = {
+  requested: boolean;
+  result: string;
+  method: string;
+  target_identity: string;
+  original_action_result: string;
+};
+
+export type EvidenceItem = {
+  sequence: string;
+  id: string;
+  type: string;
+  source: EvidenceSource;
+  server_monotonic_ns: string;
+  server_unix_ns: string;
+  summary: string;
+  attribution?: EvidenceAttribution;
+  correlation?: EvidenceCorrelation;
+  operation?: EvidenceOperation;
+  decision?: EvidenceDecision;
+  containment?: EvidenceContainment;
+};
+
+export type EvidenceData = {
+  schema_version: "1";
+  run_id: string;
+  items: EvidenceItem[];
+};
+
 export type APIResult<T> = { data: T; error: null } | { data: null; error: string };
 
 const decimalString = /^(0|[1-9][0-9]*)$/;
 const maximumResponseBytes = 1 << 20;
 
 export async function loadOverview(): Promise<APIResult<OverviewData>> {
+  return loadControlPlane("/api/v1/overview", isOverviewData, "overview");
+}
+
+export async function loadEvidence(runID: string): Promise<APIResult<EvidenceData>> {
+  if (!isShortString(runID, 128)) {
+    return { data: null, error: "Run ID is invalid." };
+  }
+  return loadControlPlane(`/api/v1/evidence/${encodeURIComponent(runID)}`, isEvidenceData, "evidence");
+}
+
+async function loadControlPlane<T>(path: string, validate: (value: unknown) => value is T, schemaName: string): Promise<APIResult<T>> {
   const configuration = controlPlaneConfiguration();
   if (configuration.error !== null) {
     return { data: null, error: configuration.error };
   }
 
   try {
-    const endpoint = new URL("/api/v1/overview", configuration.baseURL);
+    const endpoint = new URL(path, configuration.baseURL);
     const response = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${configuration.token}` },
       cache: "no-store",
@@ -52,8 +124,8 @@ export async function loadOverview(): Promise<APIResult<OverviewData>> {
     }
     const text = await readLimitedText(response, maximumResponseBytes);
     const parsed: unknown = JSON.parse(text);
-    if (!isOverviewData(parsed)) {
-      return { data: null, error: "Control plane returned an incompatible overview schema." };
+    if (!validate(parsed)) {
+      return { data: null, error: `Control plane returned an incompatible ${schemaName} schema.` };
     }
     return { data: parsed, error: null };
   } catch (error) {
@@ -62,6 +134,59 @@ export async function loadOverview(): Promise<APIResult<OverviewData>> {
     }
     return { data: null, error: "Control plane is unavailable." };
   }
+}
+
+function isEvidenceData(value: unknown): value is EvidenceData {
+  return isRecord(value) && value.schema_version === "1" && isShortString(value.run_id, 128) &&
+    Array.isArray(value.items) && value.items.length <= 10_000 && value.items.every(isEvidenceItem);
+}
+
+function isEvidenceItem(value: unknown): value is EvidenceItem {
+  if (!isRecord(value) || !isDecimalString(value.sequence) || !isShortString(value.id, 128) ||
+      !isShortString(value.type, 64) || !isEvidenceSource(value.source) ||
+      !isDecimalString(value.server_monotonic_ns) || !isDecimalString(value.server_unix_ns) ||
+      !isBoundedString(value.summary, 4096)) {
+    return false;
+  }
+  return (value.attribution === undefined || isEvidenceAttribution(value.attribution)) &&
+    (value.correlation === undefined || isEvidenceCorrelation(value.correlation)) &&
+    (value.operation === undefined || isEvidenceOperation(value.operation)) &&
+    (value.decision === undefined || isEvidenceDecision(value.decision)) &&
+    (value.containment === undefined || isEvidenceContainment(value.containment));
+}
+
+function isEvidenceSource(value: unknown): value is EvidenceSource {
+  return value === "agent_claim" || value === "kernel_fact" || value === "policy_decision" || value === "containment_result";
+}
+
+function isEvidenceAttribution(value: unknown): value is EvidenceAttribution {
+  return isRecord(value) && isShortString(value.status, 32) && isBoundedString(value.basis, 256) &&
+    (value.run_id === undefined || isShortString(value.run_id, 128)) &&
+    (value.run_status === undefined || isShortString(value.run_status, 32));
+}
+
+function isEvidenceCorrelation(value: unknown): value is EvidenceCorrelation {
+  return isRecord(value) && (value.selected_checkpoint_id === undefined || isShortString(value.selected_checkpoint_id, 128)) &&
+    typeof value.confidence === "number" && Number.isInteger(value.confidence) && value.confidence >= 0 && value.confidence <= 100 &&
+    typeof value.conflict === "boolean" && isShortString(value.correlation_status, 32) &&
+    isShortString(value.authoritative_clock, 64);
+}
+
+function isEvidenceOperation(value: unknown): value is EvidenceOperation {
+  return isRecord(value) && typeof value.attempt_observed === "boolean" &&
+    isShortString(value.action_result, 32) && isShortString(value.mechanism, 128);
+}
+
+function isEvidenceDecision(value: unknown): value is EvidenceDecision {
+  return isRecord(value) && isShortString(value.policy_id, 128) && isShortString(value.rule_id, 32) &&
+    isShortString(value.requested_action, 32) && isShortString(value.final_decision, 32) &&
+    typeof value.enforced === "boolean" && isShortString(value.mechanism, 128);
+}
+
+function isEvidenceContainment(value: unknown): value is EvidenceContainment {
+  return isRecord(value) && typeof value.requested === "boolean" && isShortString(value.result, 32) &&
+    isShortString(value.method, 128) && isShortString(value.target_identity, 256) &&
+    isShortString(value.original_action_result, 32);
 }
 
 export function controlPlaneConfiguration():

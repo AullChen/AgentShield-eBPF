@@ -32,4 +32,7 @@ instead of mock metrics.
 Live Trace obtains a one-time ticket through the same-origin Next.js route and
 connects to `/api/v1/stream`. Set `AGENTSHIELD_STREAM_URL` only when the public
 WebSocket URL differs from the API URL; non-loopback URLs must use `wss://`.
-Policies, History, and Diagnostics are implemented in later P5 days.
+History links known Runs to `/evidence/{run_id}`. Evidence detail uses the same
+server-only token and clearly identifies its five-minute recovery window;
+durable history is not implied. Policies and Diagnostics are implemented in
+later P5 days.

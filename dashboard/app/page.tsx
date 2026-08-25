@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { loadOverview, type OverviewData } from "../lib/api";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +45,7 @@ export default async function OverviewPage() {
                 <tbody>
                   {overview.runs.map((run) => (
                     <tr key={run.run_id}>
-                      <td><strong>{run.label || run.run_id}</strong><code className="subtle-code">{run.run_id}</code></td>
+                      <td><Link className="table-link" href={`/evidence/${encodeURIComponent(run.run_id)}`}><strong>{run.label || run.run_id}</strong><code className="subtle-code">{run.run_id}</code></Link></td>
                       <td><span className={`pill ${statusClass(run.status)}`}>{run.status}</span></td>
                       <td>{formatTimestamp(run.started_at)}</td>
                       <td className="numeric">{formatDecimal(run.event_count)}</td>

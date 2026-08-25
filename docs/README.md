@@ -21,6 +21,8 @@ Current notes:
   server-only dashboard credentials, and honest unavailable states.
 - `dashboard-live-trace.md`: Day 43 audit-to-WebSocket bridge, browser filters,
   string-safe `u64` rendering, redaction, and loopback deployment contract.
+- `dashboard-evidence.md`: Day 44 bounded evidence snapshots, five-source
+  separation, and attempt-versus-outcome wording rules.
 - `checkpoint-ingest.md`: Day 36 isolated Run-scoped checkpoint ingestion,
   token binding, dual-clock receipts, replay semantics, and lifecycle limits.
 - `../sdk/python/README.md` and `../sandbox/README.md`: Day 37 checkpoint-only
