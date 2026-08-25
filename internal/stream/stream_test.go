@@ -40,6 +40,38 @@ func TestAuthenticatedWebSocketReceivesFilteredEvent(t *testing.T) {
 	}
 }
 
+func TestSnapshotReturnsNewestMatchingMessagesWithoutSharingPayload(t *testing.T) {
+	hub, err := NewHub(HubOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []Event{
+		testEvent("first", "run-1", "high"),
+		testEvent("other", "run-2", "high"),
+		testEvent("second", "run-1", "high"),
+		testEvent("third", "run-1", "high"),
+	} {
+		if _, err := hub.Publish(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	messages, err := hub.Snapshot(Filter{RunID: "run-1", IncludeAudit: true}, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 || messages[0].ID != "second" || messages[1].ID != "third" {
+		t.Fatalf("snapshot = %#v", messages)
+	}
+	messages[0].Payload[0] = '['
+	again, err := hub.Snapshot(Filter{RunID: "run-1", IncludeAudit: true}, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again[0].Payload) != `{"summary":"redacted"}` {
+		t.Fatalf("snapshot payload shared backing storage: %q", again[0].Payload)
+	}
+}
+
 func TestTicketIsSingleUse(t *testing.T) {
 	_, handler := testStream(t, HubOptions{})
 	server := httptest.NewServer(handler.Routes())

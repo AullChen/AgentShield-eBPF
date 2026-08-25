@@ -122,17 +122,24 @@ func (sink *JSONLineSink) publishLine(line []byte) {
 		return
 	}
 
-	kernelFact := header.RecordType == ""
+	kernelFact := header.RecordType == "" && header.EventTypeName != "drop_notice" && header.EventTypeName != "self_diag"
 	eventType := header.EventTypeName
 	recordType := "kernel_event"
 	source := "kernel_fact"
-	if !kernelFact {
+	if header.RecordType != "" {
 		eventType = header.RecordType
 		recordType = header.RecordType
 		source = "policy_decision"
-		if header.RecordType == "derived_record_error" || header.RecordType == "drop_notice" {
+		switch header.RecordType {
+		case "agent_checkpoint":
+			source = "agent_claim"
+		case "containment_result":
+			source = "containment_result"
+		case "derived_record_error", "drop_notice", "self_diag":
 			source = "diagnostic"
 		}
+	} else if !kernelFact {
+		source = "diagnostic"
 	}
 	if eventType == "" {
 		eventType = recordType

@@ -77,6 +77,14 @@ func startLiveAPI(ctx context.Context, cancel context.CancelFunc, options liveAP
 	if err != nil {
 		return nil, err
 	}
+	evidenceProvider, err := api.NewStreamEvidenceProvider(hub)
+	if err != nil {
+		return nil, err
+	}
+	evidenceHandler, err := api.NewEvidenceHandler(evidenceProvider, api.EvidenceHandlerOptions{ReadToken: readToken})
+	if err != nil {
+		return nil, err
+	}
 	sink, err := streamapi.NewJSONLineSink(hub, streamapi.JSONLineSinkOptions{
 		RunID: options.runID, SensitiveValues: []string{readToken},
 		OnPublished: func(record streamapi.PublishedRecord) {
@@ -101,6 +109,7 @@ func startLiveAPI(ctx context.Context, cancel context.CancelFunc, options liveAP
 
 	routes := http.NewServeMux()
 	routes.Handle("/api/v1/overview", overviewHandler.Routes())
+	routes.Handle("/api/v1/evidence/", evidenceHandler.Routes())
 	routes.Handle("/api/v1/stream", streamHandler.Routes())
 	routes.Handle("/api/v1/stream-ticket", streamHandler.Routes())
 	listener, err := net.Listen("tcp", options.listenAddress)

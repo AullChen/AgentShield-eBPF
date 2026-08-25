@@ -180,6 +180,41 @@ func (hub *Hub) Publish(event Event) (Message, error) {
 	return published, nil
 }
 
+// Snapshot returns a bounded copy of the newest retained messages matching the
+// filter. It is intentionally backed by the same recovery window as the live
+// stream; callers must not present it as durable history.
+func (hub *Hub) Snapshot(filter Filter, limit int) ([]Message, error) {
+	if limit < 1 || limit > defaultCapacity {
+		return nil, errors.New("invalid stream snapshot limit")
+	}
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	hub.pruneLocked(hub.now())
+
+	start := 0
+	matched := 0
+	for index := len(hub.history) - 1; index >= 0; index-- {
+		if !matches(filter, hub.history[index]) {
+			continue
+		}
+		matched++
+		start = index
+		if matched == limit {
+			break
+		}
+	}
+	messages := make([]Message, 0, matched)
+	for index := start; index < len(hub.history); index++ {
+		message := hub.history[index]
+		if !matches(filter, message) {
+			continue
+		}
+		message.Payload = append(json.RawMessage(nil), message.Payload...)
+		messages = append(messages, message)
+	}
+	return messages, nil
+}
+
 func validateEvent(event Event) error {
 	if event.ID == "" || len(event.ID) > 128 || event.Type == "" || len(event.Type) > 64 || len(event.Source) > 32 ||
 		len(event.RunID) > 128 || len(event.Severity) > 32 || len(event.EventType) > 64 ||
