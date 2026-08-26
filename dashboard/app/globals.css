@@ -75,6 +75,11 @@ button {
   padding: 9px 13px;
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible {
@@ -179,6 +184,20 @@ select:focus-visible {
   line-height: 1.55;
   margin: 10px 0 0;
   max-width: 680px;
+}
+
+.header-actions {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+}
+
+.header-actions button {
+  white-space: nowrap;
+}
+
+.policy-status .metric strong {
+  font-size: 22px;
 }
 
 .eyebrow {

@@ -90,6 +90,27 @@ export type EvidenceData = {
   items: EvidenceItem[];
 };
 
+export type PolicySummary = {
+  id: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  scope: string;
+  decision: string;
+  requested_action: string;
+  severity: string;
+  condition: "file" | "exec" | "network";
+  priority: number;
+};
+
+export type PolicyData = {
+  schema_version: "1";
+  generated_at: string;
+  configured: boolean;
+  generation: { revision: string; bank: string };
+  policies: PolicySummary[];
+};
+
 export type APIResult<T> = { data: T; error: null } | { data: null; error: string };
 
 const decimalString = /^(0|[1-9][0-9]*)$/;
@@ -104,6 +125,10 @@ export async function loadEvidence(runID: string): Promise<APIResult<EvidenceDat
     return { data: null, error: "Run ID is invalid." };
   }
   return loadControlPlane(`/api/v1/evidence/${encodeURIComponent(runID)}`, isEvidenceData, "evidence");
+}
+
+export async function loadPolicies(): Promise<APIResult<PolicyData>> {
+  return loadControlPlane("/api/v1/policies", isPolicyData, "policy");
 }
 
 async function loadControlPlane<T>(path: string, validate: (value: unknown) => value is T, schemaName: string): Promise<APIResult<T>> {
@@ -187,6 +212,26 @@ function isEvidenceContainment(value: unknown): value is EvidenceContainment {
   return isRecord(value) && typeof value.requested === "boolean" && isShortString(value.result, 32) &&
     isShortString(value.method, 128) && isShortString(value.target_identity, 256) &&
     isShortString(value.original_action_result, 32);
+}
+
+function isPolicyData(value: unknown): value is PolicyData {
+  if (!isRecord(value) || value.schema_version !== "1" || !isRFC3339(value.generated_at) ||
+      typeof value.configured !== "boolean" || !isRecord(value.generation) ||
+      typeof value.generation.revision !== "string" || typeof value.generation.bank !== "string" ||
+      !Array.isArray(value.policies) || value.policies.length > 256 || !value.policies.every(isPolicySummary)) {
+    return false;
+  }
+  return value.configured ? isDecimalString(value.generation.revision) && value.generation.revision !== "0" &&
+    (value.generation.bank === "A" || value.generation.bank === "B") :
+    value.generation.revision === "" && value.generation.bank === "" && value.policies.length === 0;
+}
+
+function isPolicySummary(value: unknown): value is PolicySummary {
+  return isRecord(value) && isShortString(value.id, 128) && isShortString(value.name, 256) &&
+    (value.description === undefined || isBoundedString(value.description, 2048)) && typeof value.enabled === "boolean" &&
+    isShortString(value.scope, 1024) && isShortString(value.decision, 32) && isShortString(value.requested_action, 32) &&
+    isShortString(value.severity, 32) && (value.condition === "file" || value.condition === "exec" || value.condition === "network") &&
+    typeof value.priority === "number" && Number.isSafeInteger(value.priority);
 }
 
 export function controlPlaneConfiguration():

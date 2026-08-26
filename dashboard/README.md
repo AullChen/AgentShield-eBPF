@@ -34,5 +34,6 @@ connects to `/api/v1/stream`. Set `AGENTSHIELD_STREAM_URL` only when the public
 WebSocket URL differs from the API URL; non-loopback URLs must use `wss://`.
 History links known Runs to `/evidence/{run_id}`. Evidence detail uses the same
 server-only token and clearly identifies its five-minute recovery window;
-durable history is not implied. Policies and Diagnostics are implemented in
-later P5 days.
+durable history is not implied. Policies reads the configured bundle from
+`/api/v1/policies`; its refresh control does not mutate runtime state.
+Diagnostics is implemented in a later P5 day.
