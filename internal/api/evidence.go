@@ -2,14 +2,11 @@ package api
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/agentshield/agentshield-ebpf/internal/evidence"
 	"github.com/agentshield/agentshield-ebpf/internal/stream"
@@ -189,15 +186,19 @@ type EvidenceHandlerOptions struct {
 }
 
 type EvidenceHandler struct {
-	provider  EvidenceProvider
-	tokenHash [sha256.Size]byte
+	provider EvidenceProvider
+	auth     readAuthorizer
 }
 
 func NewEvidenceHandler(provider EvidenceProvider, options EvidenceHandlerOptions) (*EvidenceHandler, error) {
-	if provider == nil || len(options.ReadToken) < 24 || len(options.ReadToken) > 512 {
-		return nil, errors.New("evidence requires a provider and a 24-512 byte read token")
+	if provider == nil {
+		return nil, errors.New("evidence provider is required")
 	}
-	return &EvidenceHandler{provider: provider, tokenHash: sha256.Sum256([]byte(options.ReadToken))}, nil
+	auth, err := newReadAuthorizer(options.ReadToken)
+	if err != nil {
+		return nil, fmt.Errorf("evidence authentication: %w", err)
+	}
+	return &EvidenceHandler{provider: provider, auth: auth}, nil
 }
 
 func (handler *EvidenceHandler) Routes() http.Handler {
@@ -207,7 +208,7 @@ func (handler *EvidenceHandler) Routes() http.Handler {
 }
 
 func (handler *EvidenceHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	if !handler.authorized(request.Header.Get("Authorization")) {
+	if !handler.auth.authorized(request.Header.Get("Authorization")) {
 		response.Header().Set("WWW-Authenticate", "Bearer")
 		http.Error(response, "unauthorized", http.StatusUnauthorized)
 		return
@@ -225,13 +226,4 @@ func (handler *EvidenceHandler) ServeHTTP(response http.ResponseWriter, request 
 	response.Header().Set("Cache-Control", "no-store")
 	response.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(response).Encode(timeline)
-}
-
-func (handler *EvidenceHandler) authorized(header string) bool {
-	scheme, token, ok := strings.Cut(header, " ")
-	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || len(token) > 512 || strings.ContainsAny(token, " \t\r\n") {
-		return false
-	}
-	digest := sha256.Sum256([]byte(token))
-	return subtle.ConstantTimeCompare(digest[:], handler.tokenHash[:]) == 1
 }

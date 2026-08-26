@@ -2,15 +2,13 @@ package api
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -245,15 +243,19 @@ type OverviewHandlerOptions struct {
 }
 
 type OverviewHandler struct {
-	provider  OverviewProvider
-	tokenHash [sha256.Size]byte
+	provider OverviewProvider
+	auth     readAuthorizer
 }
 
 func NewOverviewHandler(provider OverviewProvider, options OverviewHandlerOptions) (*OverviewHandler, error) {
-	if provider == nil || len(options.ReadToken) < 24 || len(options.ReadToken) > 512 {
-		return nil, errors.New("overview requires a provider and a 24-512 byte read token")
+	if provider == nil {
+		return nil, errors.New("overview provider is required")
 	}
-	return &OverviewHandler{provider: provider, tokenHash: sha256.Sum256([]byte(options.ReadToken))}, nil
+	auth, err := newReadAuthorizer(options.ReadToken)
+	if err != nil {
+		return nil, fmt.Errorf("overview authentication: %w", err)
+	}
+	return &OverviewHandler{provider: provider, auth: auth}, nil
 }
 
 func (handler *OverviewHandler) Routes() http.Handler {
@@ -263,7 +265,7 @@ func (handler *OverviewHandler) Routes() http.Handler {
 }
 
 func (handler *OverviewHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	if !handler.authorized(request.Header.Get("Authorization")) {
+	if !handler.auth.authorized(request.Header.Get("Authorization")) {
 		response.Header().Set("WWW-Authenticate", "Bearer")
 		http.Error(response, "unauthorized", http.StatusUnauthorized)
 		return
@@ -276,13 +278,4 @@ func (handler *OverviewHandler) ServeHTTP(response http.ResponseWriter, request 
 	response.Header().Set("Cache-Control", "no-store")
 	response.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(response).Encode(snapshot)
-}
-
-func (handler *OverviewHandler) authorized(header string) bool {
-	scheme, token, ok := strings.Cut(header, " ")
-	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || len(token) > 512 || strings.ContainsAny(token, " \t\r\n") {
-		return false
-	}
-	digest := sha256.Sum256([]byte(token))
-	return subtle.ConstantTimeCompare(digest[:], handler.tokenHash[:]) == 1
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/agentshield/agentshield-ebpf/internal/api"
+	"github.com/agentshield/agentshield-ebpf/internal/policy"
 	streamapi "github.com/agentshield/agentshield-ebpf/internal/stream"
 )
 
@@ -21,6 +22,8 @@ type liveAPIOptions struct {
 	listenAddress string
 	readTokenFile string
 	runID         string
+	policyBundle  *policy.Bundle
+	generation    policy.Generation
 }
 
 func (options liveAPIOptions) enabled() bool {
@@ -85,6 +88,14 @@ func startLiveAPI(ctx context.Context, cancel context.CancelFunc, options liveAP
 	if err != nil {
 		return nil, err
 	}
+	policyCatalog, err := api.NewPolicyCatalog(options.policyBundle, options.generation, api.PolicyCatalogOptions{})
+	if err != nil {
+		return nil, err
+	}
+	policyHandler, err := api.NewPolicyHandler(policyCatalog, api.PolicyHandlerOptions{ReadToken: readToken})
+	if err != nil {
+		return nil, err
+	}
 	sink, err := streamapi.NewJSONLineSink(hub, streamapi.JSONLineSinkOptions{
 		RunID: options.runID, SensitiveValues: []string{readToken},
 		OnPublished: func(record streamapi.PublishedRecord) {
@@ -110,6 +121,7 @@ func startLiveAPI(ctx context.Context, cancel context.CancelFunc, options liveAP
 	routes := http.NewServeMux()
 	routes.Handle("/api/v1/overview", overviewHandler.Routes())
 	routes.Handle("/api/v1/evidence/", evidenceHandler.Routes())
+	routes.Handle("/api/v1/policies", policyHandler.Routes())
 	routes.Handle("/api/v1/stream", streamHandler.Routes())
 	routes.Handle("/api/v1/stream-ticket", streamHandler.Routes())
 	listener, err := net.Listen("tcp", options.listenAddress)

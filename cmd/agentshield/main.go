@@ -163,6 +163,8 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policy
 			return 1
 		}
 		policyBundle = loaded.Bundle
+		liveOptions.policyBundle = &policyBundle
+		liveOptions.generation = policy.Generation{Revision: 1, Bank: policy.BankA}
 		policyEngine, _, err = policy.NewEngine(
 			loaded.Bundle,
 			policy.Generation{Revision: 1, Bank: policy.BankA},
