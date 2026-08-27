@@ -277,6 +277,9 @@ func runAudit(cfg config.Config, objectPath, cgroupPath, scopeCgroupPath, policy
 	}
 	err = bpfmgr.RunAudit(ctx, options, output)
 	if live != nil {
+		if err != nil {
+			live.hooksFailed(err)
+		}
 		status := "finished"
 		if err != nil {
 			status = "failed"

@@ -76,3 +76,17 @@ func TestJSONLineSinkPublishesPolicyDecision(t *testing.T) {
 		t.Fatalf("message=%#v published=%#v", message, published)
 	}
 }
+
+func TestJSONLineSinkPublishesDiagnosticDropCountWithoutKernelFact(t *testing.T) {
+	hub, _ := NewHub(HubOptions{})
+	_, client, _ := hub.subscribe(0, false, Filter{IncludeAudit: true})
+	defer hub.unsubscribe(client)
+	var published PublishedRecord
+	sink, _ := NewJSONLineSink(hub, JSONLineSinkOptions{RunID: "run-1", OnPublished: func(record PublishedRecord) { published = record }})
+	line := `{"schema_version":2,"event_type_name":"drop_notice","action_name":"audit","action_result_name":"none","server_received_monotonic_ns":"12","server_received_unix_ns":"13","dropped_event_type_name":"file_open","dropped_count":"4"}` + "\n"
+	_, _ = sink.Write([]byte(line))
+	message := <-client.messages
+	if message.Source != "diagnostic" || published.KernelFact || published.DroppedType != "file_open" || published.DroppedCount != 4 {
+		t.Fatalf("message=%#v published=%#v", message, published)
+	}
+}

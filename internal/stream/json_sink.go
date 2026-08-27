@@ -23,6 +23,8 @@ type PublishedRecord struct {
 	KernelFact     bool
 	PolicyDecision bool
 	Blocked        bool
+	DroppedType    string
+	DroppedCount   uint64
 }
 
 type JSONLineSinkOptions struct {
@@ -48,6 +50,8 @@ type recordHeader struct {
 	ActionResultName          string `json:"action_result_name"`
 	ServerReceivedMonotonicNS string `json:"server_received_monotonic_ns"`
 	ServerReceivedUnixNS      string `json:"server_received_unix_ns"`
+	DroppedEventTypeName      string `json:"dropped_event_type_name"`
+	DroppedCount              string `json:"dropped_count"`
 }
 
 func NewJSONLineSink(hub *Hub, options JSONLineSinkOptions) (*JSONLineSink, error) {
@@ -144,6 +148,14 @@ func (sink *JSONLineSink) publishLine(line []byte) {
 	if eventType == "" {
 		eventType = recordType
 	}
+	var droppedCount uint64
+	if eventType == "drop_notice" {
+		droppedCount, err = strconv.ParseUint(header.DroppedCount, 10, 64)
+		if err != nil || droppedCount == 0 || header.DroppedEventTypeName == "" {
+			sink.report(errors.New("drop notice is missing a valid per-type count"))
+			return
+		}
+	}
 	severity := "info"
 	if header.ActionResultName == "blocked" {
 		severity = "high"
@@ -165,6 +177,7 @@ func (sink *JSONLineSink) publishLine(line []byte) {
 		sink.options.OnPublished(PublishedRecord{
 			RunID: sink.options.RunID, KernelFact: kernelFact,
 			PolicyDecision: header.RecordType == "policy_decision", Blocked: header.ActionResultName == "blocked",
+			DroppedType: header.DroppedEventTypeName, DroppedCount: droppedCount,
 		})
 	}
 }

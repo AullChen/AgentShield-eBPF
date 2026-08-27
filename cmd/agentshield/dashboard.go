@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/agentshield/agentshield-ebpf/internal/api"
+	"github.com/agentshield/agentshield-ebpf/internal/envcheck"
 	"github.com/agentshield/agentshield-ebpf/internal/policy"
 	streamapi "github.com/agentshield/agentshield-ebpf/internal/stream"
 )
@@ -31,14 +32,15 @@ func (options liveAPIOptions) enabled() bool {
 }
 
 type liveAPI struct {
-	server    *http.Server
-	address   string
-	hub       *streamapi.Hub
-	sink      io.Writer
-	state     *api.OverviewState
-	runID     string
-	startedAt time.Time
-	failure   chan error
+	server      *http.Server
+	address     string
+	hub         *streamapi.Hub
+	sink        io.Writer
+	state       *api.OverviewState
+	diagnostics *api.DiagnosticsState
+	runID       string
+	startedAt   time.Time
+	failure     chan error
 }
 
 func startLiveAPI(ctx context.Context, cancel context.CancelFunc, options liveAPIOptions, logger *slog.Logger) (*liveAPI, error) {
@@ -96,6 +98,14 @@ func startLiveAPI(ctx context.Context, cancel context.CancelFunc, options liveAP
 	if err != nil {
 		return nil, err
 	}
+	diagnostics, err := api.NewDiagnosticsState(envcheck.Run(ctx), options.generation, api.DiagnosticsStateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	diagnosticsHandler, err := api.NewDiagnosticsHandler(diagnostics, api.DiagnosticsHandlerOptions{ReadToken: readToken})
+	if err != nil {
+		return nil, err
+	}
 	sink, err := streamapi.NewJSONLineSink(hub, streamapi.JSONLineSinkOptions{
 		RunID: options.runID, SensitiveValues: []string{readToken},
 		OnPublished: func(record streamapi.PublishedRecord) {
@@ -107,6 +117,11 @@ func startLiveAPI(ctx context.Context, cancel context.CancelFunc, options liveAP
 			if record.PolicyDecision {
 				if err := state.ObservePolicyHit(record.RunID); err != nil {
 					logger.WarnContext(ctx, "overview policy update failed", slog.Any("error", err))
+				}
+			}
+			if record.DroppedCount != 0 {
+				if err := diagnostics.ObserveDrop(record.DroppedType, record.DroppedCount); err != nil {
+					logger.WarnContext(ctx, "diagnostic drop count update failed", slog.Any("error", err))
 				}
 			}
 		},
@@ -122,6 +137,7 @@ func startLiveAPI(ctx context.Context, cancel context.CancelFunc, options liveAP
 	routes.Handle("/api/v1/overview", overviewHandler.Routes())
 	routes.Handle("/api/v1/evidence/", evidenceHandler.Routes())
 	routes.Handle("/api/v1/policies", policyHandler.Routes())
+	routes.Handle("/api/v1/diagnostics", diagnosticsHandler.Routes())
 	routes.Handle("/api/v1/stream", streamHandler.Routes())
 	routes.Handle("/api/v1/stream-ticket", streamHandler.Routes())
 	listener, err := net.Listen("tcp", options.listenAddress)
@@ -133,7 +149,7 @@ func startLiveAPI(ctx context.Context, cancel context.CancelFunc, options liveAP
 			Handler: routes, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second,
 			MaxHeaderBytes: 16 << 10,
 		},
-		address: listener.Addr().String(), hub: hub, sink: sink, state: state, runID: options.runID,
+		address: listener.Addr().String(), hub: hub, sink: sink, state: state, diagnostics: diagnostics, runID: options.runID,
 		startedAt: startedAt, failure: make(chan error, 1),
 	}
 	go func() {
@@ -150,11 +166,16 @@ func (live *liveAPI) output(standard io.Writer) io.Writer {
 }
 
 func (live *liveAPI) hooksReady() {
+	live.diagnostics.MarkHooksReady()
 	_ = live.state.SetCapabilities([]api.OverviewCapability{
 		{Name: "bpf_hooks", Status: "available", Detail: "audit hooks loaded and attached"},
 		{Name: "cgroup_v2", Status: "available", Detail: "trusted exact leaf resolved"},
 		{Name: "realtime_api", Status: "available", Detail: "bounded WebSocket fan-out active"},
 	})
+}
+
+func (live *liveAPI) hooksFailed(err error) {
+	live.diagnostics.MarkLoadAttachFailed(err)
 }
 
 func (live *liveAPI) close(status string) error {
