@@ -25,6 +25,8 @@ Current notes:
   separation, and attempt-versus-outcome wording rules.
 - `dashboard-policies.md`: Day 45 loaded policy catalog, generation and enabled
   state, and read-only refresh boundary.
+- `dashboard-diagnostics.md`: Day 46 environment evidence, actual load/attach
+  result, hook state, generation, and per-type event loss.
 - `checkpoint-ingest.md`: Day 36 isolated Run-scoped checkpoint ingestion,
   token binding, dual-clock receipts, replay semantics, and lifecycle limits.
 - `../sdk/python/README.md` and `../sandbox/README.md`: Day 37 checkpoint-only

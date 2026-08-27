@@ -277,6 +277,10 @@ select:focus-visible {
   border-left: 3px solid var(--signal);
 }
 
+.probe-notice {
+  border-left: 3px solid var(--circuit);
+}
+
 .table-scroll {
   overflow-x: auto;
 }
@@ -302,6 +306,19 @@ select:focus-visible {
 .table td strong,
 .subtle-code {
   display: block;
+}
+
+.diagnostic-details {
+  color: #66706c;
+  display: block;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 10px;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.diagnostics-grid {
+  margin-top: 18px;
 }
 
 .subtle-code {

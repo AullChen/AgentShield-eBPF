@@ -36,4 +36,5 @@ History links known Runs to `/evidence/{run_id}`. Evidence detail uses the same
 server-only token and clearly identifies its five-minute recovery window;
 durable history is not implied. Policies reads the configured bundle from
 `/api/v1/policies`; its refresh control does not mutate runtime state.
-Diagnostics is implemented in a later P5 day.
+Diagnostics reads `/api/v1/diagnostics` and keeps environment file checks
+separate from the Go loader's actual load/attach result.

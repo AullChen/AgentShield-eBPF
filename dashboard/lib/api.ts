@@ -111,6 +111,26 @@ export type PolicyData = {
   policies: PolicySummary[];
 };
 
+export type DiagnosticCheck = {
+  name: string;
+  status: "pass" | "warn" | "fail" | "unknown";
+  message: string;
+  details?: Record<string, string>;
+};
+
+export type DiagnosticsData = {
+  schema_version: "1";
+  generated_at: string;
+  os: string;
+  arch: string;
+  byte_order: "little-endian" | "big-endian";
+  checks: DiagnosticCheck[];
+  load_attach: { status: "available" | "unavailable" | "unknown"; detail: string };
+  hooks: { name: string; status: "attached" | "pending" | "not_attached"; detail: string }[];
+  policy_generation: { revision: string; bank: string };
+  drops: { event_type: string; count: string }[];
+};
+
 export type APIResult<T> = { data: T; error: null } | { data: null; error: string };
 
 const decimalString = /^(0|[1-9][0-9]*)$/;
@@ -129,6 +149,10 @@ export async function loadEvidence(runID: string): Promise<APIResult<EvidenceDat
 
 export async function loadPolicies(): Promise<APIResult<PolicyData>> {
   return loadControlPlane("/api/v1/policies", isPolicyData, "policy");
+}
+
+export async function loadDiagnostics(): Promise<APIResult<DiagnosticsData>> {
+  return loadControlPlane("/api/v1/diagnostics", isDiagnosticsData, "diagnostics");
 }
 
 async function loadControlPlane<T>(path: string, validate: (value: unknown) => value is T, schemaName: string): Promise<APIResult<T>> {
@@ -232,6 +256,41 @@ function isPolicySummary(value: unknown): value is PolicySummary {
     isShortString(value.scope, 1024) && isShortString(value.decision, 32) && isShortString(value.requested_action, 32) &&
     isShortString(value.severity, 32) && (value.condition === "file" || value.condition === "exec" || value.condition === "network") &&
     typeof value.priority === "number" && Number.isSafeInteger(value.priority);
+}
+
+function isDiagnosticsData(value: unknown): value is DiagnosticsData {
+  return isRecord(value) && value.schema_version === "1" && isRFC3339(value.generated_at) &&
+    isShortString(value.os, 32) && isShortString(value.arch, 32) &&
+    (value.byte_order === "little-endian" || value.byte_order === "big-endian") &&
+    Array.isArray(value.checks) && value.checks.length <= 64 && value.checks.every(isDiagnosticCheck) &&
+    isRecord(value.load_attach) && (value.load_attach.status === "available" || value.load_attach.status === "unavailable" || value.load_attach.status === "unknown") &&
+    isBoundedString(value.load_attach.detail, 512) && Array.isArray(value.hooks) && value.hooks.length <= 64 && value.hooks.every(isHookStatus) &&
+    isRecord(value.policy_generation) && typeof value.policy_generation.revision === "string" && typeof value.policy_generation.bank === "string" &&
+    ((value.policy_generation.revision === "" && value.policy_generation.bank === "") ||
+      (isDecimalString(value.policy_generation.revision) && value.policy_generation.revision !== "0" && (value.policy_generation.bank === "A" || value.policy_generation.bank === "B"))) &&
+    Array.isArray(value.drops) && value.drops.length <= 64 && value.drops.every(isDropCount);
+}
+
+function isDiagnosticCheck(value: unknown): value is DiagnosticCheck {
+  return isRecord(value) && isShortString(value.name, 64) &&
+    (value.status === "pass" || value.status === "warn" || value.status === "fail" || value.status === "unknown") &&
+    isBoundedString(value.message, 512) && (value.details === undefined || isStringRecord(value.details, 64, 512));
+}
+
+function isHookStatus(value: unknown): value is DiagnosticsData["hooks"][number] {
+  return isRecord(value) && isShortString(value.name, 128) &&
+    (value.status === "attached" || value.status === "pending" || value.status === "not_attached") &&
+    isBoundedString(value.detail, 512);
+}
+
+function isDropCount(value: unknown): value is DiagnosticsData["drops"][number] {
+  return isRecord(value) && isShortString(value.event_type, 64) && isDecimalString(value.count);
+}
+
+function isStringRecord(value: unknown, maximumEntries: number, maximumValueLength: number): value is Record<string, string> {
+  if (!isRecord(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length <= maximumEntries && entries.every(([key, entry]) => key.length > 0 && key.length <= 64 && isBoundedString(entry, maximumValueLength));
 }
 
 export function controlPlaneConfiguration():
