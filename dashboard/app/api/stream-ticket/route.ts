@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const origin = request.headers.get("origin");
   const fetchSite = request.headers.get("sec-fetch-site");
-  if ((origin && origin !== new URL(request.url).origin) || fetchSite === "cross-site") {
+  if ((origin && !isSameOrigin(request, origin)) || fetchSite === "cross-site") {
     return Response.json({ error: "cross_origin_request" }, { status: 403, headers: noStoreHeaders() });
   }
   const configuration = controlPlaneConfiguration();
@@ -38,6 +38,19 @@ export async function POST(request: Request) {
     });
   } catch {
     return Response.json({ error: "ticket_unavailable" }, { status: 503, headers: noStoreHeaders() });
+  }
+}
+
+function isSameOrigin(request: Request, origin: string) {
+  try {
+    const host = request.headers.get("host");
+    if (!host) return false;
+    const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",", 1)[0]?.trim();
+    const protocol = forwardedProtocol || new URL(request.url).protocol.replace(":", "");
+    if (protocol !== "http" && protocol !== "https") return false;
+    return new URL(origin).origin === new URL(`${protocol}://${host}`).origin;
+  } catch {
+    return false;
   }
 }
 
