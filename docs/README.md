@@ -52,6 +52,8 @@ Current notes:
   limits.
 - `p4-acceptance.md`: Day 40 source evidence timeline, provenance boundaries,
   correlation rationale, and block/containment result separation.
+- `p5-dashboard-integration.md`: Day 47 deterministic full-dashboard browser
+  flow, responsive gate, and explicit non-kernel-fixture boundary.
 - `realtime-stream.md`: Day 41 authenticated WebSocket, resume window,
   browser ticket bootstrap, filters, and slow-client isolation.
 

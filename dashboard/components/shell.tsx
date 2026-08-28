@@ -17,9 +17,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className="nav" aria-label="Main navigation">
           {navigation.map((item) => {
-            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+            const active = item.href === "/" ? pathname === "/" :
+              pathname.startsWith(item.href) || (item.href === "/history" && pathname.startsWith("/evidence/"));
             return (
-              <Link key={item.href} className={`nav-link${active ? " active" : ""}`} href={item.href}>
+              <Link key={item.href} aria-current={active ? "page" : undefined} className={`nav-link${active ? " active" : ""}`} href={item.href}>
                 <span>{item.label}</span>
                 <span>{item.code}</span>
               </Link>

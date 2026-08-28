@@ -43,11 +43,11 @@ export default async function EvidencePage({ params }: { params: Promise<{ runId
               <span className={`pill ${item.operation?.action_result === "blocked" ? "danger" : ""}`}>{item.type}</span>
             </header>
             <div className="evidence-grid">
-              <EvidenceCell label="Agent claim" content={agentClaim(item)} />
-              <EvidenceCell label="Kernel fact" content={kernelFact(item)} />
+              <EvidenceCell empty={item.source !== "agent_claim"} label="Agent claim" content={agentClaim(item)} />
+              <EvidenceCell empty={!item.operation} label="Kernel fact" content={kernelFact(item)} />
               <EvidenceCell label="Attribution / correlation" content={attribution(item)} />
-              <EvidenceCell label="Policy decision" content={policyDecision(item)} />
-              <EvidenceCell label="Block / containment" content={containment(item)} />
+              <EvidenceCell empty={!item.decision} label="Policy decision" content={policyDecision(item)} />
+              <EvidenceCell empty={!hasContainmentEvidence(item)} label="Block / containment" content={containment(item)} />
             </div>
           </article>
         )) : (
@@ -58,8 +58,8 @@ export default async function EvidencePage({ params }: { params: Promise<{ runId
   );
 }
 
-function EvidenceCell({ label, content }: { label: string; content: React.ReactNode }) {
-  return <div className="evidence-cell"><h4>{label}</h4><div>{content}</div></div>;
+function EvidenceCell({ label, content, empty = false }: { label: string; content: React.ReactNode; empty?: boolean }) {
+  return <div className={`evidence-cell${empty ? " empty-cell" : ""}`}><h4>{label}</h4><div>{content}</div></div>;
 }
 
 function agentClaim(item: EvidenceItem) {
@@ -98,6 +98,11 @@ function containment(item: EvidenceItem) {
     return <><strong>{item.decision.enforced ? "Enforcement evidenced" : "Decision only"}</strong><p>{item.decision.enforced ? "The decision record reports enforcement." : "No block or containment result is attached to this row."}</p></>;
   }
   return <span className="unavailable">No block or containment evidence on this row.</span>;
+}
+
+function hasContainmentEvidence(item: EvidenceItem) {
+  return Boolean(item.containment || item.operation?.action_result === "blocked" ||
+    item.decision?.requested_action === "block" || item.decision?.requested_action === "contain");
 }
 
 function sourceLabel(source: EvidenceItem["source"]) {

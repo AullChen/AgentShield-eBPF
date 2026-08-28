@@ -642,6 +642,20 @@ select:focus-visible {
     min-height: 0;
   }
 
+  .evidence-cell.empty-cell {
+    display: none;
+  }
+
+  .evidence-cell h4 {
+    font-size: 11px;
+  }
+
+  .evidence-cell p,
+  .evidence-cell small,
+  .unavailable {
+    font-size: 12px;
+  }
+
   .evidence-cell:last-child {
     border-bottom: 0;
   }

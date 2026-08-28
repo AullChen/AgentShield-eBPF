@@ -38,3 +38,8 @@ durable history is not implied. Policies reads the configured bundle from
 `/api/v1/policies`; its refresh control does not mutate runtime state.
 Diagnostics reads `/api/v1/diagnostics` and keeps environment file checks
 separate from the Go loader's actual load/attach result.
+
+For the complete non-privileged P5 browser gate, run `cmd/dashboardcheck` and
+`scripts/check-dashboard.mjs` as documented in
+`../docs/p5-dashboard-integration.md`. The deterministic replay is labeled as
+an acceptance fixture and is not kernel evidence.

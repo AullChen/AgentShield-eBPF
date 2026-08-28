@@ -20,6 +20,8 @@ Current files:
   the Linux audit loop.
 - `test-network.sh`: triggers TCP IPv4 and IPv6 connection attempts from the
   caller's current cgroup; connection refusal is an acceptable fixture result.
+- `check-dashboard.mjs`: runs the P5 Playwright navigation, evidence semantics,
+  live stream, policy, diagnostics, and mobile-overflow acceptance assertions.
 
 The trigger scripts only produce syscalls; they do not build or load BPF.
 Run them from the exact cgroup registered by the trusted audit supervisor.

@@ -2,7 +2,7 @@
 
 AgentShield-eBPF is a Linux eBPF based runtime security and audit system for AI Agent sandboxes.
 
-The project is currently in early MVP development. The repository contains the Go control-plane skeleton, exact-leaf cgroup filtering and registration, file/process/network audit probes, a strict policy loader and compile preview, a minimal demo sandbox, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard. Kernel load/attach evidence, broader policy enforcement, live containment dispatch, and full evidence detail/history remain under development.
+The project is currently in early MVP development. The repository contains the Go control-plane skeleton, exact-leaf cgroup filtering and registration, file/process/network audit probes, a strict policy loader and compile preview, a minimal demo sandbox, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard. Kernel load/attach evidence, broader policy enforcement, live containment dispatch, and durable evidence history remain under development.
 
 ## Current Status
 
@@ -15,7 +15,7 @@ The project is currently in early MVP development. The repository contains the G
 | Process audit probe | Started | `tracepoint/syscalls/sys_enter_execve` captures executable and bounded argv summaries. |
 | Network audit/enforcement | Source complete, Linux evidence pending | Explicit-cgroup `connect4/connect6` hooks audit TCP and can synchronously block tuples absent from one exact-host/port default-deny profile. |
 | BPF build flow | Implemented, Linux evidence pending | `make bpf-object` compiles a CO-RE ELF and records object/BTF hashes, exact tool versions, and parsed program/map specs. |
-| Dashboard | Overview/Live Trace source connected, Linux evidence pending | Overview and filtered Live Trace read the authenticated audit API without mock fallback; Policies, History, and Diagnostics remain scaffolds. |
+| Dashboard | P5 source complete, Linux evidence pending | Overview, Live Trace, evidence detail, loaded policies, and actual-process diagnostics use authenticated read APIs without mock fallback; durable history remains pending. |
 | Runtime BPF loading | Started | `agentshield audit` loads a compiled BPF object and attaches file/exec probes on Linux. |
 | Ring buffer consumption | Started | `audit` decodes file, process, and network ring-buffer events and emits Go-synthesized loss notices as JSON schema v2 Lines. |
 | Audit reliability | Source complete, Linux saturation pending | Per-type per-CPU reserve failures become Go-synthesized `drop_notice` records; SIGINT/SIGTERM close and join the reader/monitor path. |
@@ -48,6 +48,7 @@ The current codebase has only the first pieces of that path. It is not yet a usa
 ```text
 bpf/                 eBPF programs, maps, and shared event definitions
 cmd/agentshield/     Go control-plane CLI entrypoint
+cmd/dashboardcheck/  Deterministic non-kernel P5 browser acceptance fixture
 cmd/bpfgen/          Local BPF source binding generator
 internal/            Go internal packages
 dashboard/           Next.js dashboard scaffold
@@ -157,6 +158,7 @@ go test ./internal/store
 go test ./internal/correlator
 go test ./internal/evidence -run '^TestP4Acceptance$'
 go test ./internal/stream
+go test ./cmd/dashboardcheck
 go vet ./...
 make build
 ```
@@ -217,12 +219,14 @@ The dashboard exposes these App Router pages:
 - History
 - Diagnostics
 
-Overview reads `GET /api/v1/overview` and Live Trace uses the authenticated
-`/api/v1/stream` through server-only
-`AGENTSHIELD_API_URL` and `AGENTSHIELD_READ_TOKEN` settings. The remaining
-pages are still scaffolds or use mock data. See
-[docs/dashboard-overview.md](docs/dashboard-overview.md) and
-[docs/dashboard-live-trace.md](docs/dashboard-live-trace.md).
+Overview, evidence detail, Policies, and Diagnostics read authenticated
+control-plane snapshots. Live Trace obtains a same-origin one-time ticket and
+connects to `/api/v1/stream`; the bearer token remains server-only in
+`AGENTSHIELD_READ_TOKEN`. History currently indexes Runs in the bounded live
+recovery window and does not claim durable SQLite queries. See
+[docs/dashboard-overview.md](docs/dashboard-overview.md),
+[docs/dashboard-live-trace.md](docs/dashboard-live-trace.md), and
+[docs/p5-dashboard-integration.md](docs/p5-dashboard-integration.md).
 
 Start it locally with:
 
@@ -283,6 +287,14 @@ Additional source milestones:
   capability rendering without mock fallback
 - Day 43: redacted audit-to-WebSocket bridge and bounded Live Trace with
   run/severity/type filters and string-safe `u64` formatting
+- Day 44: bounded evidence detail API and five-column provenance UI with
+  explicit attempt-versus-outcome and correlation limits
+- Day 45: loaded policy catalog and read-only refresh with generation and
+  enabled-state visibility
+- Day 46: process diagnostics with architecture/byte order, environment checks,
+  actual Go load/attach state, hooks, generation, and per-type drops
+- Day 47: deterministic P5 replay plus production-mode desktop/mobile browser
+  acceptance across the complete dashboard flow
 
 Current gate:
 
@@ -325,9 +337,10 @@ Subsequent work:
   verify registration identity, and observe the root workload exit plus an
   empty leaf before management finish.
 - The source enforces exact-leaf cgroup capture, but supported-Linux runtime evidence is still pending.
-- Dashboard Overview and Live Trace have an optional audit listener/fan-in, but
-  supported-Linux runtime evidence and durable resync snapshots remain pending;
-  Policies, History, and Diagnostics are still scaffolds.
+- Dashboard read APIs and P5 browser integration are source-complete, but
+  supported-Linux runtime evidence and durable resync/history snapshots remain
+  pending. The deterministic `dashboardcheck` replay is explicitly not kernel
+  proof.
 - The generated Go source binding embeds source text only; `make bpf-object` is the separate real ELF build.
 
 ## License
