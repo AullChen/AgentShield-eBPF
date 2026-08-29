@@ -181,6 +181,18 @@ func TestRedactorUsesStructuredLabelKeysAndCredentialForms(t *testing.T) {
 	}
 }
 
+func TestRecordValidationRejectsNULBeforeQueueing(t *testing.T) {
+	record := testRecord("nul", "safe\x00truncated")
+	if _, err := NewRedactor(nil).Apply(record); err == nil {
+		t.Fatal("record containing NUL was accepted")
+	}
+	record = testRecord("nul-label", "safe")
+	record.Labels["tool"] = "safe\x00truncated"
+	if _, err := NewRedactor(nil).Apply(record); err == nil {
+		t.Fatal("label containing NUL was accepted")
+	}
+}
+
 func testRecord(id, summary string) Record {
 	return Record{ID: id, RecordType: "kernel_event", RunID: "run-1", Source: SourceKernelFact,
 		ServerMonotonicNS: 100, ServerUnixNS: 200, InstanceID: 11, ScopeCookie: 22,

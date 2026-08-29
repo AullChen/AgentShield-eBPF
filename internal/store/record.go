@@ -36,6 +36,11 @@ func (record Record) validate() error {
 	if record.ID == "" || len(record.ID) > 128 || record.RecordType == "" || len(record.RecordType) > 64 {
 		return errors.New("record identity is invalid")
 	}
+	for _, value := range []string{record.ID, record.RecordType, record.RunID, record.Severity, record.Summary} {
+		if strings.IndexByte(value, 0) >= 0 {
+			return errors.New("record text contains a NUL byte")
+		}
+	}
 	switch record.Source {
 	case SourceAgentClaim, SourceKernelFact, SourcePolicyDecision, SourceContainmentResult, SourceDiagnostic:
 	default:
@@ -45,7 +50,7 @@ func (record Record) validate() error {
 		return errors.New("record exceeds limits")
 	}
 	for key, value := range record.Labels {
-		if key == "" || len(key) > 128 || len(value) > 1024 {
+		if key == "" || len(key) > 128 || len(value) > 1024 || strings.IndexByte(key, 0) >= 0 || strings.IndexByte(value, 0) >= 0 {
 			return errors.New("record labels exceed limits")
 		}
 	}

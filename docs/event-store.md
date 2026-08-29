@@ -24,6 +24,8 @@ summary/labels. Arbitrary raw payloads are not accepted. Redaction occurs before
 records enter any queue, recent buffer, log, or database. Label names are
 normalized before sensitive-key matching, and common API-key, token, cookie,
 authorization, password, and cloud-secret assignments are removed from text.
+Text fields containing NUL bytes are rejected before queueing because the
+SQLite execution boundary accepts text rather than binary strings.
 Capacity maintenance is retried before a later transaction and during close.
 Failure after a successful commit never reports that committed batch as failed,
 which prevents duplicate retries from poisoning the writer circuit.
