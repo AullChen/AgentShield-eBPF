@@ -55,6 +55,30 @@ func TestSQLitePersistsSanitizedRecordsInWALDatabase(t *testing.T) {
 	}
 }
 
+func TestSQLiteDoesNotReportCommittedBatchAsFailedWhenMaintenanceFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "full.db")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database := &maintenanceFailNative{path: path}
+	store := &SQLite{database: database, path: path, softLimit: 1, hardLimit: 2}
+	if err := store.AppendBatch([]Record{testRecord("committed", "safe")}); err != nil {
+		t.Fatalf("committed batch reported failure: %v", err)
+	}
+	if database.transactions != 1 {
+		t.Fatalf("transactions = %d, want 1", database.transactions)
+	}
+	if err := store.AppendBatch([]Record{testRecord("next", "safe")}); err == nil {
+		t.Fatal("next batch ignored unresolved capacity maintenance failure")
+	}
+	if database.transactions != 1 {
+		t.Fatalf("failed maintenance allowed another transaction: %d", database.transactions)
+	}
+	if err := store.Close(); err == nil {
+		t.Fatal("Close ignored unresolved capacity maintenance failure")
+	}
+}
+
 func TestWriterCircuitBreakerDoesNotBlockAndReportsGap(t *testing.T) {
 	backend := &flakyBackend{failures: 2}
 	var diagnostics bytes.Buffer
@@ -187,6 +211,25 @@ type blockingBackend struct {
 	release chan struct{}
 	records []Record
 }
+
+type maintenanceFailNative struct {
+	transactions int
+	path         string
+}
+
+func (database *maintenanceFailNative) Exec(statement string) error {
+	if strings.HasPrefix(statement, "BEGIN IMMEDIATE;") {
+		database.transactions++
+		return os.WriteFile(database.path, []byte("over limit"), 0o600)
+	}
+	if strings.HasPrefix(statement, "DELETE FROM evidence_records") {
+		return errors.New("maintenance failed")
+	}
+	return nil
+}
+
+func (*maintenanceFailNative) ScalarInt64(string) (int64, error) { return 0, nil }
+func (*maintenanceFailNative) Close() error                      { return nil }
 
 func (backend *blockingBackend) AppendBatch(records []Record) error {
 	close(backend.started)

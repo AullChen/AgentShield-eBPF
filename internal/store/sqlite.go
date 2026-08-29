@@ -91,6 +91,14 @@ func (store *SQLite) AppendBatch(records []Record) error {
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	// Capacity maintenance can fail independently of a prior successful
+	// transaction. Retry it before accepting another batch so callers never
+	// retry records that were already committed.
+	if store.sizeLocked() > store.softLimit {
+		if err := store.pruneLocked(); err != nil {
+			return err
+		}
+	}
 	var statement strings.Builder
 	statement.WriteString("BEGIN IMMEDIATE;")
 	for _, record := range records {
@@ -118,9 +126,10 @@ func (store *SQLite) AppendBatch(records []Record) error {
 		return err
 	}
 	if size := store.sizeLocked(); size > store.softLimit {
-		if err := store.pruneLocked(); err != nil {
-			return err
-		}
+		// The records above are durable regardless of maintenance outcome.
+		// A failed prune is retried and reported before the next transaction,
+		// or by Close when no further writes arrive.
+		_ = store.pruneLocked()
 	}
 	return nil
 }
@@ -137,10 +146,14 @@ func (store *SQLite) Close() error {
 	if store.database == nil {
 		return nil
 	}
+	var maintenanceErr error
+	if store.sizeLocked() > store.softLimit {
+		maintenanceErr = store.pruneLocked()
+	}
 	_ = store.database.Exec("PRAGMA wal_checkpoint(TRUNCATE);")
-	err := store.database.Close()
+	closeErr := store.database.Close()
 	store.database = nil
-	return err
+	return errors.Join(maintenanceErr, closeErr)
 }
 
 func (store *SQLite) pruneLocked() error {

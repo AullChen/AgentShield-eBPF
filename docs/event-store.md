@@ -24,6 +24,9 @@ summary/labels. Arbitrary raw payloads are not accepted. Redaction occurs before
 records enter any queue, recent buffer, log, or database. Label names are
 normalized before sensitive-key matching, and common API-key, token, cookie,
 authorization, password, and cloud-secret assignments are removed from text.
+Capacity maintenance is retried before a later transaction and during close.
+Failure after a successful commit never reports that committed batch as failed,
+which prevents duplicate retries from poisoning the writer circuit.
 
 ## Reader isolation and degradation
 
