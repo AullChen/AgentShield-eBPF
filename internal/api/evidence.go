@@ -70,6 +70,10 @@ func (provider *StreamEvidenceProvider) Evidence(ctx context.Context, runID stri
 			return evidence.Timeline{}, err
 		}
 		if include {
+			// Content-addressed source IDs can legitimately repeat when the
+			// same record is emitted twice. Bind the projected ID to the hub
+			// sequence so one duplicate cannot invalidate the whole timeline.
+			event.ID = fmt.Sprintf("%s@stream-%s", event.ID, message.Sequence)
 			events = append(events, event)
 		}
 	}

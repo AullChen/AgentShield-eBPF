@@ -55,6 +55,31 @@ func TestStreamEvidenceProviderPreservesSourceBoundaries(t *testing.T) {
 	}
 }
 
+func TestStreamEvidenceProviderAcceptsRepeatedSourceRecords(t *testing.T) {
+	hub, err := stream.NewHub(stream.HubOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := stream.Event{
+		ID: "kernel-repeated", Type: "kernel_event", Source: "kernel_fact", RunID: "run-1", EventType: "exec_attempt",
+		ServerMonotonicNS: 10, ServerUnixNS: 20,
+		Payload: json.RawMessage(`{"event_type_name":"exec_attempt","action_result_name":"none","data":"/bin/sh"}`),
+	}
+	publishEvidenceTestEvent(t, hub, event)
+	publishEvidenceTestEvent(t, hub, event)
+	provider, err := NewStreamEvidenceProvider(hub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timeline, err := provider.Evidence(t.Context(), "run-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(timeline.Items) != 2 || timeline.Items[0].ID == timeline.Items[1].ID {
+		t.Fatalf("repeated record projection = %#v", timeline.Items)
+	}
+}
+
 func TestEvidenceHandlerRequiresTokenAndReturnsRun(t *testing.T) {
 	timeline, err := evidence.Build("run-1", nil)
 	if err != nil {

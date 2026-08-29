@@ -6,7 +6,9 @@ authenticated WebSocket recovery buffer into evidence schema v1; it is bounded
 to the newest 1,000 records, 4 MiB of payload, and five minutes and is not
 durable history. At most four snapshots are projected concurrently. Request
 cancellation stops selection, copying, and decoding, and payload allocation is
-performed after releasing the live publisher lock.
+performed after releasing the live publisher lock. Projected item IDs combine
+the source record ID with the stream sequence, so repeated source records remain
+separate timeline entries instead of invalidating the Run.
 
 The page keeps five concepts visually separate:
 
