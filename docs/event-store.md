@@ -21,7 +21,9 @@ The initial schema contains the design tables plus a normalized
 `evidence_records` ingestion table. Every record stores decimal-string
 monotonic/Unix and scope identities, an explicit source, and bounded redacted
 summary/labels. Arbitrary raw payloads are not accepted. Redaction occurs before
-records enter any queue, recent buffer, log, or database.
+records enter any queue, recent buffer, log, or database. Label names are
+normalized before sensitive-key matching, and common API-key, token, cookie,
+authorization, password, and cloud-secret assignments are removed from text.
 
 ## Reader isolation and degradation
 

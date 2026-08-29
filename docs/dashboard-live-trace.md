@@ -29,8 +29,10 @@ window requires resynchronization. All `u64` clocks, sequences, and cgroup IDs
 are validated and formatted from strings/`BigInt`, never JavaScript `number`.
 
 Before fan-out, the JSON Lines sink caps each record at 64 KiB, removes Prompt
-and credential fields, redacts configured/token-like values, and rejects deep
-or trailing JSON. The sink always consumes its input and Hub publishing never
+and normalized credential fields, understands adjacent `--token value` argv
+pairs and common environment/header assignments, and suppresses captured argv
+when the kernel marked it truncated. It also redacts configured values and
+rejects deep or trailing JSON. The sink always consumes its input and publishing never
 waits for a browser client. The owner-only stdout audit stream remains raw and
 retains the existing sensitive-data warning.
 

@@ -58,6 +58,29 @@ func TestJSONLineSinkDropsOversizedLineWithoutBackpressure(t *testing.T) {
 	}
 }
 
+func TestJSONLineSinkRedactsStructuredCredentialForms(t *testing.T) {
+	tests := []string{
+		`{"argv":["tool","--token","abcd1234"]}`,
+		`{"argv":["curl","--api-key=sk_live_123456"]}`,
+		`{"argv":["env","AWS_SECRET_ACCESS_KEY=abcd1234"]}`,
+		`{"headers":{"X-Api-Key":"abcd1234"}}`,
+		`{"client_secret":"abcd1234"}`,
+		`{"arguments_truncated":true,"argv":["--token","partial-secret-prefix"]}`,
+	}
+	for _, fields := range tests {
+		input := `{"server_received_monotonic_ns":"12","server_received_unix_ns":"13",` + strings.TrimPrefix(fields, "{")
+		redacted, err := redactJSON([]byte(input), nil)
+		if err != nil {
+			t.Fatalf("redactJSON(%s): %v", fields, err)
+		}
+		for _, secret := range []string{"abcd1234", "sk_live_123456", "partial-secret-prefix"} {
+			if bytes.Contains(redacted, []byte(secret)) {
+				t.Fatalf("credential %q remained in %s", secret, redacted)
+			}
+		}
+	}
+}
+
 func TestJSONLineSinkPublishesPolicyDecision(t *testing.T) {
 	hub, _ := NewHub(HubOptions{})
 	_, client, _ := hub.subscribe(0, false, Filter{IncludeAudit: true})

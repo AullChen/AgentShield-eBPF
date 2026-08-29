@@ -103,6 +103,28 @@ func TestWriterRecoveryFlushesBoundedRecentBuffer(t *testing.T) {
 	}
 }
 
+func TestRedactorUsesStructuredLabelKeysAndCredentialForms(t *testing.T) {
+	record := testRecord("redaction", "AWS_SECRET_ACCESS_KEY=abcd1234 --api-key=sk_live_123")
+	record.Labels = map[string]string{
+		"password":  "hunter2",
+		"X-Api-Key": "key-value",
+		"tool":      "safe",
+	}
+	redacted, err := NewRedactor(nil).Apply(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(redacted.Summary, "abcd1234") || strings.Contains(redacted.Summary, "sk_live_123") {
+		t.Fatalf("summary retained credentials: %q", redacted.Summary)
+	}
+	if redacted.Labels["password"] != "[REDACTED]" || redacted.Labels["X-Api-Key"] != "[REDACTED]" {
+		t.Fatalf("sensitive labels = %#v", redacted.Labels)
+	}
+	if redacted.Labels["tool"] != "safe" {
+		t.Fatalf("safe label changed: %#v", redacted.Labels)
+	}
+}
+
 func testRecord(id, summary string) Record {
 	return Record{ID: id, RecordType: "kernel_event", RunID: "run-1", Source: SourceKernelFact,
 		ServerMonotonicNS: 100, ServerUnixNS: 200, InstanceID: 11, ScopeCookie: 22,

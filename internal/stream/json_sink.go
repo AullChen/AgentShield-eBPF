@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,7 +17,7 @@ import (
 
 const maxJSONLineBytes = maxPayloadBytes
 
-var textCredentialPattern = regexp.MustCompile(`(?i)(bearer\s+|token[=:]\s*|secret[=:]\s*|password[=:]\s*)[^\s,;]{4,}`)
+var textCredentialPattern = regexp.MustCompile(`(?i)(bearer\s+|(?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|secret|authorization|cookie|aws_secret_access_key)\s*[=:]\s*)[^\s,;]{4,}`)
 
 type PublishedRecord struct {
 	RunID          string
@@ -64,6 +65,7 @@ func NewJSONLineSink(hub *Hub, options JSONLineSinkOptions) (*JSONLineSink, erro
 			secrets = append(secrets, secret)
 		}
 	}
+	slices.SortFunc(secrets, func(left, right string) int { return len(right) - len(left) })
 	return &JSONLineSink{hub: hub, options: options, secrets: secrets}, nil
 }
 
@@ -215,10 +217,21 @@ func redactValue(value any, secrets []string, depth int) (any, error) {
 	}
 	switch typed := value.(type) {
 	case map[string]any:
+		argumentsTruncated, _ := typed["arguments_truncated"].(bool)
 		for key, child := range typed {
 			if sensitiveKey(key) {
 				typed[key] = "[REDACTED]"
 				continue
+			}
+			if normalizedKey(key) == "argv" {
+				if argumentsTruncated {
+					typed[key] = []any{"[REDACTED]"}
+					continue
+				}
+				if arguments, ok := child.([]any); ok {
+					typed[key] = redactArguments(arguments, secrets)
+					continue
+				}
 			}
 			redacted, err := redactValue(child, secrets, depth+1)
 			if err != nil {
@@ -237,22 +250,54 @@ func redactValue(value any, secrets []string, depth int) (any, error) {
 		}
 		return typed, nil
 	case string:
-		redacted := textCredentialPattern.ReplaceAllString(typed, "[REDACTED]")
-		for _, secret := range secrets {
-			redacted = strings.ReplaceAll(redacted, secret, "[REDACTED]")
-		}
-		return redacted, nil
+		return redactText(typed, secrets), nil
 	default:
 		return value, nil
 	}
 }
 
 func sensitiveKey(key string) bool {
-	normalized := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
-	switch normalized {
-	case "prompt", "token", "access_token", "refresh_token", "authorization", "password", "secret", "api_key", "apikey":
-		return true
-	default:
-		return false
+	normalized := normalizedKey(key)
+	for _, suffix := range []string{"prompt", "token", "authorization", "password", "passwd", "secret", "apikey", "accesskey", "clientsecret", "cookie", "privatekey", "credential", "credentials"} {
+		if strings.HasSuffix(normalized, suffix) {
+			return true
+		}
 	}
+	return false
+}
+
+func normalizedKey(key string) string {
+	key = strings.ToLower(strings.TrimLeft(key, "-"))
+	return strings.NewReplacer("-", "", "_", "", ".", "").Replace(key)
+}
+
+func redactArguments(arguments []any, secrets []string) []any {
+	redacted := make([]any, len(arguments))
+	redactNext := false
+	for index, argument := range arguments {
+		text, ok := argument.(string)
+		if !ok {
+			redacted[index] = argument
+			redactNext = false
+			continue
+		}
+		if redactNext {
+			redacted[index] = "[REDACTED]"
+			redactNext = false
+			continue
+		}
+		redacted[index] = redactText(text, secrets)
+		if sensitiveKey(text) && !strings.Contains(text, "=") {
+			redactNext = true
+		}
+	}
+	return redacted
+}
+
+func redactText(value string, secrets []string) string {
+	value = textCredentialPattern.ReplaceAllString(value, "[REDACTED]")
+	for _, secret := range secrets {
+		value = strings.ReplaceAll(value, secret, "[REDACTED]")
+	}
+	return value
 }

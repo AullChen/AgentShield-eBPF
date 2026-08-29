@@ -52,7 +52,7 @@ func (record Record) validate() error {
 	return nil
 }
 
-var credentialPattern = regexp.MustCompile(`(?i)(bearer\s+|token[=:]\s*|secret[=:]\s*|password[=:]\s*)[^\s,;]{4,}`)
+var credentialPattern = regexp.MustCompile(`(?i)(bearer\s+|(?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|secret|authorization|cookie|aws_secret_access_key)\s*[=:]\s*)[^\s,;]{4,}`)
 
 type Redactor struct {
 	values []string
@@ -77,11 +77,26 @@ func (redactor Redactor) Apply(record Record) (Record, error) {
 	if record.Labels != nil {
 		labels := make(map[string]string, len(record.Labels))
 		for key, value := range record.Labels {
-			labels[key] = redactor.text(value)
+			if sensitiveLabelKey(key) {
+				labels[key] = "[REDACTED]"
+			} else {
+				labels[key] = redactor.text(value)
+			}
 		}
 		record.Labels = labels
 	}
 	return record, nil
+}
+
+func sensitiveLabelKey(key string) bool {
+	normalized := strings.ToLower(key)
+	normalized = strings.NewReplacer("-", "", "_", "", ".", "").Replace(normalized)
+	for _, suffix := range []string{"prompt", "token", "authorization", "password", "passwd", "secret", "apikey", "accesskey", "clientsecret", "cookie", "privatekey", "credential", "credentials"} {
+		if strings.HasSuffix(normalized, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (redactor Redactor) text(value string) string {
