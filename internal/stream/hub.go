@@ -1,9 +1,11 @@
 package stream
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -180,37 +182,41 @@ func (hub *Hub) Publish(event Event) (Message, error) {
 	return published, nil
 }
 
-// Snapshot returns a bounded copy of the newest retained messages matching the
-// filter. It is intentionally backed by the same recovery window as the live
-// stream; callers must not present it as durable history.
-func (hub *Hub) Snapshot(filter Filter, limit int) ([]Message, error) {
-	if limit < 1 || limit > defaultCapacity {
-		return nil, errors.New("invalid stream snapshot limit")
+// Snapshot returns the newest retained messages within independent count and
+// byte budgets. The hub lock protects only selection of immutable message
+// references; payload copies happen after release so readers cannot stall
+// Publish while allocating large snapshots.
+func (hub *Hub) Snapshot(ctx context.Context, filter Filter, limit, maxBytes int) ([]Message, error) {
+	if ctx == nil || limit < 1 || limit > defaultCapacity || maxBytes < maxPayloadBytes || maxBytes > 16<<20 {
+		return nil, errors.New("invalid stream snapshot options")
 	}
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-	hub.pruneLocked(hub.now())
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
-	start := 0
-	matched := 0
-	for index := len(hub.history) - 1; index >= 0; index-- {
-		if !matches(filter, hub.history[index]) {
-			continue
-		}
-		matched++
-		start = index
-		if matched == limit {
-			break
-		}
-	}
-	messages := make([]Message, 0, matched)
-	for index := start; index < len(hub.history); index++ {
+	hub.mu.Lock()
+	hub.pruneLocked(hub.now())
+	messages := make([]Message, 0, min(limit, len(hub.history)))
+	payloadBytes := 0
+	for index := len(hub.history) - 1; index >= 0 && len(messages) < limit; index-- {
 		message := hub.history[index]
 		if !matches(filter, message) {
 			continue
 		}
-		message.Payload = append(json.RawMessage(nil), message.Payload...)
+		if payloadBytes+len(message.Payload) > maxBytes {
+			break
+		}
+		payloadBytes += len(message.Payload)
 		messages = append(messages, message)
+	}
+	hub.mu.Unlock()
+
+	slices.Reverse(messages)
+	for index := range messages {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		messages[index].Payload = append(json.RawMessage(nil), messages[index].Payload...)
 	}
 	return messages, nil
 }

@@ -3,7 +3,10 @@
 The dashboard evidence page reads `GET /api/v1/evidence/{run_id}` with the
 same server-side read token used by Overview. The endpoint projects the
 authenticated WebSocket recovery buffer into evidence schema v1; it is bounded
-to 10,000 records and five minutes and is not durable history.
+to the newest 1,000 records, 4 MiB of payload, and five minutes and is not
+durable history. At most four snapshots are projected concurrently. Request
+cancellation stops selection, copying, and decoding, and payload allocation is
+performed after releasing the live publisher lock.
 
 The page keeps five concepts visually separate:
 

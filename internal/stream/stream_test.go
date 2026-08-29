@@ -2,8 +2,10 @@ package stream
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -55,7 +57,7 @@ func TestSnapshotReturnsNewestMatchingMessagesWithoutSharingPayload(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	messages, err := hub.Snapshot(Filter{RunID: "run-1", IncludeAudit: true}, 2)
+	messages, err := hub.Snapshot(context.Background(), Filter{RunID: "run-1", IncludeAudit: true}, 2, maxPayloadBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,12 +65,40 @@ func TestSnapshotReturnsNewestMatchingMessagesWithoutSharingPayload(t *testing.T
 		t.Fatalf("snapshot = %#v", messages)
 	}
 	messages[0].Payload[0] = '['
-	again, err := hub.Snapshot(Filter{RunID: "run-1", IncludeAudit: true}, 2)
+	again, err := hub.Snapshot(context.Background(), Filter{RunID: "run-1", IncludeAudit: true}, 2, maxPayloadBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(again[0].Payload) != `{"summary":"redacted"}` {
 		t.Fatalf("snapshot payload shared backing storage: %q", again[0].Payload)
+	}
+}
+
+func TestSnapshotHonorsByteBudgetAndCancellation(t *testing.T) {
+	hub, err := NewHub(HubOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := json.RawMessage(`{"value":"` + strings.Repeat("x", maxPayloadBytes/2) + `"}`)
+	for _, id := range []string{"first", "second", "third"} {
+		event := testEvent(id, "run-1", "high")
+		event.Payload = payload
+		if _, err := hub.Publish(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	messages, err := hub.Snapshot(context.Background(), Filter{RunID: "run-1", IncludeAudit: true}, 10, maxPayloadBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || messages[0].ID != "third" {
+		t.Fatalf("byte-bounded snapshot = %#v", messages)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := hub.Snapshot(ctx, Filter{IncludeAudit: true}, 1, maxPayloadBytes); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled snapshot error = %v", err)
 	}
 }
 

@@ -12,7 +12,11 @@ import (
 	"github.com/agentshield/agentshield-ebpf/internal/stream"
 )
 
-const evidenceSnapshotLimit = 10_000
+const (
+	evidenceSnapshotLimit       = 1_000
+	evidenceSnapshotBytes       = 4 << 20
+	evidenceSnapshotConcurrency = 4
+)
 
 type EvidenceProvider interface {
 	Evidence(context.Context, string) (evidence.Timeline, error)
@@ -23,26 +27,44 @@ type EvidenceProvider interface {
 // correlation, or exact attribution that the standalone audit process does not
 // possess.
 type StreamEvidenceProvider struct {
-	hub *stream.Hub
+	hub       *stream.Hub
+	snapshots chan struct{}
 }
 
 func NewStreamEvidenceProvider(hub *stream.Hub) (*StreamEvidenceProvider, error) {
 	if hub == nil {
 		return nil, errors.New("evidence stream hub is required")
 	}
-	return &StreamEvidenceProvider{hub: hub}, nil
+	return &StreamEvidenceProvider{hub: hub, snapshots: make(chan struct{}, evidenceSnapshotConcurrency)}, nil
 }
 
-func (provider *StreamEvidenceProvider) Evidence(_ context.Context, runID string) (evidence.Timeline, error) {
+func (provider *StreamEvidenceProvider) Evidence(ctx context.Context, runID string) (evidence.Timeline, error) {
 	if runID == "" || len(runID) > 128 {
 		return evidence.Timeline{}, errors.New("evidence Run ID is invalid")
 	}
-	messages, err := provider.hub.Snapshot(stream.Filter{RunID: runID, IncludeAudit: true}, evidenceSnapshotLimit)
+	if ctx == nil {
+		return evidence.Timeline{}, errors.New("evidence context is required")
+	}
+	select {
+	case provider.snapshots <- struct{}{}:
+		defer func() { <-provider.snapshots }()
+	case <-ctx.Done():
+		return evidence.Timeline{}, ctx.Err()
+	}
+	messages, err := provider.hub.Snapshot(
+		ctx,
+		stream.Filter{RunID: runID, IncludeAudit: true},
+		evidenceSnapshotLimit,
+		evidenceSnapshotBytes,
+	)
 	if err != nil {
 		return evidence.Timeline{}, err
 	}
 	events := make([]evidence.Event, 0, len(messages))
 	for _, message := range messages {
+		if err := ctx.Err(); err != nil {
+			return evidence.Timeline{}, err
+		}
 		event, include, err := evidenceEvent(message)
 		if err != nil {
 			return evidence.Timeline{}, err
