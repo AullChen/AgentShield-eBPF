@@ -118,7 +118,7 @@ func (store *SQLite) AppendBatch(records []Record) error {
 			}
 			statement.WriteString(sqlQuote(value))
 		}
-		statement.WriteString(");")
+		statement.WriteString(") ON CONFLICT(id) DO NOTHING;")
 	}
 	statement.WriteString("COMMIT;")
 	if err := store.database.Exec(statement.String()); err != nil {

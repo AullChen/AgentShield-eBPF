@@ -79,6 +79,33 @@ func TestSQLiteDoesNotReportCommittedBatchAsFailedWhenMaintenanceFails(t *testin
 	}
 }
 
+func TestSQLiteTreatsRecordIDsAsIdempotencyKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "idempotent.db")
+	database, err := OpenSQLite(path, SQLiteOptions{SoftLimitBytes: 1 << 20, HardLimitBytes: 2 << 20})
+	if errors.Is(err, ErrSQLiteUnavailable) {
+		t.Skip(err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	first := testRecord("same-id", "first")
+	second := testRecord("same-id", "must not replace first")
+	if err := database.AppendBatch([]Record{first, second}); err != nil {
+		t.Fatalf("duplicate batch: %v", err)
+	}
+	if err := database.AppendBatch([]Record{second}); err != nil {
+		t.Fatalf("duplicate retry: %v", err)
+	}
+	count, err := database.Count()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("record count = %d, want 1", count)
+	}
+}
+
 func TestWriterCircuitBreakerDoesNotBlockAndReportsGap(t *testing.T) {
 	backend := &flakyBackend{failures: 2}
 	var diagnostics bytes.Buffer

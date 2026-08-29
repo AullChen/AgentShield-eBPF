@@ -24,6 +24,8 @@ summary/labels. Arbitrary raw payloads are not accepted. Redaction occurs before
 records enter any queue, recent buffer, log, or database. Label names are
 normalized before sensitive-key matching, and common API-key, token, cookie,
 authorization, password, and cloud-secret assignments are removed from text.
+Record IDs are idempotency keys: the first stored value is retained and later
+copies do not overwrite it or roll back unrelated records in the same batch.
 Text fields containing NUL bytes are rejected before queueing because the
 SQLite execution boundary accepts text rather than binary strings.
 Capacity maintenance is retried before a later transaction and during close.
