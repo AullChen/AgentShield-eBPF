@@ -180,6 +180,67 @@ func TestStreamRejectsMissingAuthentication(t *testing.T) {
 	}
 }
 
+func TestStreamLimitsActiveConnections(t *testing.T) {
+	hub, err := NewHub(HubOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := NewHandler(hub, HandlerOptions{
+		ReadToken: testReadToken, MaxConnections: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler.Routes())
+	defer server.Close()
+
+	first, _ := dialWebSocket(t, server.URL, "/api/v1/stream", "Bearer "+testReadToken)
+	if status := dialStatus(t, server.URL, "/api/v1/stream", "Bearer "+testReadToken); status != http.StatusServiceUnavailable {
+		first.Close()
+		t.Fatalf("connection over capacity status = %d, want 503", status)
+	}
+	first.Close()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		handler.connectionMu.Lock()
+		active := handler.activeConnections
+		handler.connectionMu.Unlock()
+		if active == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("closed stream did not release connection capacity")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestStreamClosesAtConnectionLifetime(t *testing.T) {
+	hub, err := NewHub(HubOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := NewHandler(hub, HandlerOptions{
+		ReadToken: testReadToken, ConnectionTTL: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler.Routes())
+	defer server.Close()
+	connection, reader := dialWebSocket(t, server.URL, "/api/v1/stream", "Bearer "+testReadToken)
+	defer connection.Close()
+	_ = connection.SetReadDeadline(time.Now().Add(2 * time.Second))
+	first, err := reader.ReadByte()
+	if err != nil {
+		t.Fatalf("read lifetime close frame: %v", err)
+	}
+	if first&0x0f != 0x8 {
+		t.Fatalf("lifetime frame opcode = %d, want close", first&0x0f)
+	}
+}
+
 func TestHubCloseRejectsPublishAndSignalsSubscribers(t *testing.T) {
 	hub, _ := NewHub(HubOptions{})
 	_, client, _ := hub.subscribe(0, false, Filter{IncludeAudit: true})

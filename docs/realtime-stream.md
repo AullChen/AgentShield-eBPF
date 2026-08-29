@@ -22,6 +22,13 @@ writer; a slow subscriber is detached and receives a best-effort
 `resync_required` message. Payloads must already be redacted and valid JSON and
 are capped at 64 KiB before entering the hub.
 
+The handler also limits active connections to 128 by default and closes each
+connection after five minutes, so consuming tickets cannot create an unbounded
+set of idle sockets. Both values are bounded server-side options. Browser
+clients send no application data; text, binary, and fragmented client frames
+are rejected before their payload is allocated, while bounded close/ping/pong
+control frames remain supported.
+
 Run the source gate with:
 
 ```sh

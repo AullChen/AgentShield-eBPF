@@ -22,16 +22,19 @@ import (
 )
 
 const (
-	websocketGUID    = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-	defaultTicketTTL = 30 * time.Second
-	maxTickets       = 1024
-	maxClientFrame   = 1 << 20
+	websocketGUID         = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+	defaultTicketTTL      = 30 * time.Second
+	defaultConnectionTTL  = 5 * time.Minute
+	defaultMaxConnections = 128
+	maxTickets            = 1024
 )
 
 type HandlerOptions struct {
-	ReadToken string
-	TicketTTL time.Duration
-	Now       func() time.Time
+	ReadToken      string
+	TicketTTL      time.Duration
+	ConnectionTTL  time.Duration
+	MaxConnections int
+	Now            func() time.Time
 }
 
 type Handler struct {
@@ -40,8 +43,12 @@ type Handler struct {
 	ticketTTL time.Duration
 	now       func() time.Time
 
-	ticketMu sync.Mutex
-	tickets  map[[sha256.Size]byte]time.Time
+	ticketMu          sync.Mutex
+	tickets           map[[sha256.Size]byte]time.Time
+	connectionMu      sync.Mutex
+	activeConnections int
+	maxConnections    int
+	connectionTTL     time.Duration
 }
 
 func NewHandler(hub *Hub, options HandlerOptions) (*Handler, error) {
@@ -54,15 +61,29 @@ func NewHandler(hub *Hub, options HandlerOptions) (*Handler, error) {
 	if options.TicketTTL < time.Second || options.TicketTTL > time.Minute {
 		return nil, errors.New("stream ticket TTL must be between one second and one minute")
 	}
+	if options.ConnectionTTL == 0 {
+		options.ConnectionTTL = defaultConnectionTTL
+	}
+	if options.ConnectionTTL < time.Second || options.ConnectionTTL > time.Hour {
+		return nil, errors.New("stream connection TTL must be between one second and one hour")
+	}
+	if options.MaxConnections == 0 {
+		options.MaxConnections = defaultMaxConnections
+	}
+	if options.MaxConnections < 1 || options.MaxConnections > 1024 {
+		return nil, errors.New("stream connection maximum must be between one and 1024")
+	}
 	if options.Now == nil {
 		options.Now = time.Now
 	}
 	return &Handler{
-		hub:       hub,
-		tokenHash: sha256.Sum256([]byte(options.ReadToken)),
-		ticketTTL: options.TicketTTL,
-		now:       options.Now,
-		tickets:   make(map[[sha256.Size]byte]time.Time),
+		hub:            hub,
+		tokenHash:      sha256.Sum256([]byte(options.ReadToken)),
+		ticketTTL:      options.TicketTTL,
+		now:            options.Now,
+		tickets:        make(map[[sha256.Size]byte]time.Time),
+		maxConnections: options.MaxConnections,
+		connectionTTL:  options.ConnectionTTL,
 	}, nil
 }
 
@@ -122,6 +143,11 @@ func (handler *Handler) serveStream(response http.ResponseWriter, request *http.
 		http.Error(response, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if !handler.acquireConnection() {
+		http.Error(response, "stream connection capacity reached", http.StatusServiceUnavailable)
+		return
+	}
+	defer handler.releaseConnection()
 
 	hijacker, ok := response.(http.Hijacker)
 	if !ok {
@@ -133,6 +159,7 @@ func (handler *Handler) serveStream(response http.ResponseWriter, request *http.
 		return
 	}
 	defer connection.Close()
+	_ = connection.SetReadDeadline(time.Now().Add(handler.connectionTTL))
 	if err := writeUpgrade(buffered, key); err != nil {
 		return
 	}
@@ -156,6 +183,8 @@ func (handler *Handler) serveStream(response http.ResponseWriter, request *http.
 		readClientFrames(connection, &writeMu)
 		close(done)
 	}()
+	connectionTimer := time.NewTimer(handler.connectionTTL)
+	defer connectionTimer.Stop()
 	for {
 		select {
 		case <-client.overflow:
@@ -176,6 +205,9 @@ func (handler *Handler) serveStream(response http.ResponseWriter, request *http.
 		case <-handler.hub.done:
 			_ = writeCloseFrame(connection, &writeMu, 1001, "server shutdown")
 			return
+		case <-connectionTimer.C:
+			_ = writeCloseFrame(connection, &writeMu, 1001, "connection lifetime reached")
+			return
 		case message := <-client.messages:
 			if err := writeJSONFrame(connection, &writeMu, message); err != nil {
 				return
@@ -183,6 +215,22 @@ func (handler *Handler) serveStream(response http.ResponseWriter, request *http.
 			cursor, _ = strconv.ParseUint(message.ResumeCursor, 10, 64)
 		}
 	}
+}
+
+func (handler *Handler) acquireConnection() bool {
+	handler.connectionMu.Lock()
+	defer handler.connectionMu.Unlock()
+	if handler.activeConnections >= handler.maxConnections {
+		return false
+	}
+	handler.activeConnections++
+	return true
+}
+
+func (handler *Handler) releaseConnection() {
+	handler.connectionMu.Lock()
+	handler.activeConnections--
+	handler.connectionMu.Unlock()
 }
 
 func (handler *Handler) authorizeBearer(header string) bool {
@@ -332,6 +380,9 @@ func readClientFrames(connection net.Conn, writeMu *sync.Mutex) {
 			return
 		}
 		opcode := header[0] & 0x0f
+		if opcode != 0x8 && opcode != 0x9 && opcode != 0xA {
+			return
+		}
 		length := uint64(header[1] & 0x7f)
 		if length == 126 {
 			var value uint16
@@ -344,7 +395,7 @@ func readClientFrames(connection net.Conn, writeMu *sync.Mutex) {
 				return
 			}
 		}
-		if length > maxClientFrame || (opcode >= 0x8 && length > 125) {
+		if length > 125 {
 			return
 		}
 		mask := make([]byte, 4)
