@@ -29,15 +29,20 @@ go run ./cmd/dashboardcheck --listen 127.0.0.1:18080
 
 ```powershell
 $env:AGENTSHIELD_READ_TOKEN = 'dashboard-fixture-token-123456789'
+$env:AGENTSHIELD_DASHBOARD_TOKEN = 'dashboard-browser-token-123456789'
 $env:AGENTSHIELD_API_URL = 'http://127.0.0.1:18080'
 $env:AGENTSHIELD_STREAM_URL = 'ws://127.0.0.1:18080/api/v1/stream'
 npm --prefix dashboard run build
-npm --prefix dashboard run start -- --hostname 127.0.0.1 --port 3000
+npm --prefix dashboard run start -- --port 3000
 ```
 
 ```powershell
 node scripts/check-dashboard.mjs http://127.0.0.1:3000
 ```
+
+Manual browser access uses the Basic-auth username `agentshield` and the
+dashboard token as its password. The token is deliberately separate from the
+control-plane read token, which remains server-only.
 
 The browser gate checks all five pages, the six-row evidence chain, explicit
 attempt-versus-outcome wording, WebSocket delivery, and a 390 px layout without

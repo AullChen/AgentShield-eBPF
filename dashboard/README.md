@@ -23,9 +23,17 @@ The Overview page reads the control plane from server-side environment values:
 ```sh
 AGENTSHIELD_API_URL=http://127.0.0.1:8080
 AGENTSHIELD_READ_TOKEN=replace-with-a-random-read-only-token
+AGENTSHIELD_DASHBOARD_TOKEN=replace-with-a-separate-random-dashboard-token
 ```
 
-Only loopback development endpoints may use plain HTTP. If either value is
+The dashboard challenges every page and route with HTTP Basic authentication;
+use the fixed username `agentshield` and `AGENTSHIELD_DASHBOARD_TOKEN` as the
+password. The dashboard token must be 24–512 bytes and must be different from
+the server-only control-plane read token. A missing or invalid dashboard token
+fails closed with HTTP 503. The production start command binds loopback by
+default; expose it remotely only through an authenticated TLS reverse proxy.
+
+Only loopback development endpoints may use plain HTTP. If an API value is
 missing or the API is unavailable, Overview shows an explicit unavailable state
 instead of mock metrics.
 

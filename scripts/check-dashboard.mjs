@@ -8,6 +8,8 @@ const { chromium } = require("playwright");
 
 const baseURL = process.argv[2] ?? "http://127.0.0.1:3000";
 const outputDirectory = resolve(process.argv[3] ?? "tmp/p5-dashboard");
+const dashboardToken = process.env.AGENTSHIELD_DASHBOARD_TOKEN;
+if (!dashboardToken) throw new Error("AGENTSHIELD_DASHBOARD_TOKEN is required");
 await mkdir(outputDirectory, { recursive: true });
 
 const executablePath = [
@@ -16,7 +18,11 @@ const executablePath = [
   process.env["ProgramFiles(x86)"] ? join(process.env["ProgramFiles(x86)"], "Microsoft", "Edge", "Application", "msedge.exe") : undefined,
 ].find((candidate) => candidate && existsSync(candidate));
 const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({
+  viewport: { width: 1440, height: 1000 },
+  deviceScaleFactor: 1,
+  httpCredentials: { username: "agentshield", password: dashboardToken },
+});
 const pageErrors = [];
 page.on("pageerror", (error) => pageErrors.push(error.message));
 
