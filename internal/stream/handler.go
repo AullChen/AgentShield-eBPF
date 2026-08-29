@@ -159,7 +159,10 @@ func (handler *Handler) serveStream(response http.ResponseWriter, request *http.
 		return
 	}
 	defer connection.Close()
-	_ = connection.SetReadDeadline(time.Now().Add(handler.connectionTTL))
+	// Let the lifetime timer send a close frame before the read deadline
+	// interrupts the reader. The deferred Close still bounds the connection at
+	// connectionTTL even when a client leaves a partial frame unread.
+	_ = connection.SetReadDeadline(time.Now().Add(handler.connectionTTL + time.Second))
 	if err := writeUpgrade(buffered, key); err != nil {
 		return
 	}
