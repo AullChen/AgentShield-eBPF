@@ -81,8 +81,8 @@ func TestWriterCircuitBreakerDoesNotBlockAndReportsGap(t *testing.T) {
 	if strings.Contains(diagnostics.String(), "do-not-log") {
 		t.Fatal("diagnostic leaked record content")
 	}
-	if err := writer.Close(context.Background()); err != nil {
-		t.Fatalf("Close: %v", err)
+	if err := writer.Close(context.Background()); err == nil {
+		t.Fatal("Close reported success with unpersisted records")
 	}
 }
 
@@ -100,6 +100,38 @@ func TestWriterRecoveryFlushesBoundedRecentBuffer(t *testing.T) {
 	waitFor(t, func() bool { return !writer.Diagnostics().CircuitOpen })
 	if err := writer.Close(context.Background()); err != nil {
 		t.Fatalf("Close: %v", err)
+	}
+}
+
+func TestWriterCloseRejectsNewRecordsAndDrainsAcceptedRecords(t *testing.T) {
+	backend := &blockingBackend{started: make(chan struct{}), release: make(chan struct{})}
+	writer, err := NewWriter(backend, WriterOptions{
+		QueueCapacity: 8, RecentCapacity: 8, RecentBytes: 32 << 10, BatchSize: 1,
+		FlushInterval: time.Millisecond, RetryInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !writer.Submit(testRecord("accepted", "safe")) {
+		t.Fatal("initial Submit rejected")
+	}
+	<-backend.started
+	closed := make(chan error, 1)
+	go func() { closed <- writer.Close(context.Background()) }()
+	waitFor(t, func() bool {
+		writer.submitMu.RLock()
+		defer writer.submitMu.RUnlock()
+		return writer.closing
+	})
+	if writer.Submit(testRecord("late", "safe")) {
+		t.Fatal("Submit accepted after Close began")
+	}
+	close(backend.release)
+	if err := <-closed; err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if backend.count() != 1 {
+		t.Fatalf("persisted records = %d, want 1", backend.count())
 	}
 }
 
@@ -147,6 +179,28 @@ type flakyBackend struct {
 	mu       sync.Mutex
 	failures int
 	records  []Record
+}
+
+type blockingBackend struct {
+	mu      sync.Mutex
+	started chan struct{}
+	release chan struct{}
+	records []Record
+}
+
+func (backend *blockingBackend) AppendBatch(records []Record) error {
+	close(backend.started)
+	<-backend.release
+	backend.mu.Lock()
+	backend.records = append(backend.records, records...)
+	backend.mu.Unlock()
+	return nil
+}
+
+func (backend *blockingBackend) count() int {
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	return len(backend.records)
 }
 
 func (backend *flakyBackend) AppendBatch(records []Record) error {

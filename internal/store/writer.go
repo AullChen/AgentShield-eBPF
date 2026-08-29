@@ -42,10 +42,13 @@ type Writer struct {
 	queue       chan Record
 	done        chan struct{}
 	cancel      context.CancelFunc
+	submitMu    sync.RWMutex
+	closing     bool
 	mu          sync.RWMutex
 	recent      []Record
 	recentBytes int64
 	diagnostics Diagnostics
+	closeErr    error
 }
 
 func NewWriter(backend BatchStore, options WriterOptions) (*Writer, error) {
@@ -85,6 +88,11 @@ func NewWriter(backend BatchStore, options WriterOptions) (*Writer, error) {
 }
 
 func (writer *Writer) Submit(record Record) bool {
+	writer.submitMu.RLock()
+	defer writer.submitMu.RUnlock()
+	if writer.closing {
+		return false
+	}
 	sanitized, err := writer.options.Redactor.Apply(record)
 	if err != nil {
 		writer.drop(record.ID, true)
@@ -108,10 +116,20 @@ func (writer *Writer) Diagnostics() Diagnostics {
 }
 
 func (writer *Writer) Close(ctx context.Context) error {
-	writer.cancel()
+	if ctx == nil {
+		return errors.New("store close context is required")
+	}
+	writer.submitMu.Lock()
+	if !writer.closing {
+		writer.closing = true
+		writer.cancel()
+	}
+	writer.submitMu.Unlock()
 	select {
 	case <-writer.done:
-		return nil
+		writer.mu.RLock()
+		defer writer.mu.RUnlock()
+		return writer.closeErr
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -145,9 +163,15 @@ func (writer *Writer) run(ctx context.Context) {
 				case record := <-writer.queue:
 					batch = append(batch, record)
 				default:
+					writer.probe()
 					if len(batch) != 0 {
 						writer.flush(batch)
 					}
+					writer.mu.Lock()
+					if len(writer.recent) != 0 {
+						writer.closeErr = errors.New("store closed with unpersisted records")
+					}
+					writer.mu.Unlock()
 					return
 				}
 			}
