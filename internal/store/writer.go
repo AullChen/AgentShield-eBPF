@@ -13,6 +13,8 @@ type BatchStore interface {
 	AppendBatch([]Record) error
 }
 
+const maximumBatchSize = 256
+
 type WriterOptions struct {
 	QueueCapacity  int
 	RecentCapacity int
@@ -77,7 +79,7 @@ func NewWriter(backend BatchStore, options WriterOptions) (*Writer, error) {
 		options.Diagnostics = io.Discard
 	}
 	if options.QueueCapacity < 1 || options.QueueCapacity > 100_000 || options.RecentCapacity < 1 ||
-		options.RecentBytes < 1 || options.BatchSize < 1 || options.BatchSize > options.QueueCapacity ||
+		options.RecentBytes < 1 || options.BatchSize < 1 || options.BatchSize > options.QueueCapacity || options.BatchSize > maximumBatchSize ||
 		options.FlushInterval < time.Millisecond || options.RetryInterval < time.Millisecond {
 		return nil, errors.New("store writer limits are invalid")
 	}

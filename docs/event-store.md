@@ -39,6 +39,8 @@ which prevents duplicate retries from poisoning the writer circuit.
 
 `Writer.Submit` is non-blocking. A full queue drops only the store copy and
 updates an in-memory gap diagnostic. Batches are written on a separate goroutine.
+Both the writer configuration and SQLite entry point cap a batch at 256 records
+before constructing SQL, bounding transient serialization memory.
 On a SQLite error the writer opens a circuit breaker and moves already-sanitized
 records into a count-and-byte-bounded recent buffer. Further overflow increments
 `store_drops`; it never blocks the ring reader, changes a policy generation,

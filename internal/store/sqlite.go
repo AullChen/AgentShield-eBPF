@@ -130,6 +130,9 @@ func (store *SQLite) AppendBatch(records []Record) error {
 	if len(records) == 0 {
 		return nil
 	}
+	if len(records) > maximumBatchSize {
+		return fmt.Errorf("SQLite batch exceeds %d records", maximumBatchSize)
+	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	// Capacity maintenance can fail independently of a prior successful

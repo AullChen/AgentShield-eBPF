@@ -211,6 +211,18 @@ func TestWriterRecoveryFlushesBoundedRecentBuffer(t *testing.T) {
 	}
 }
 
+func TestStoreRejectsOversizedBatchBeforeBackendWork(t *testing.T) {
+	if _, err := NewWriter(&flakyBackend{}, WriterOptions{
+		QueueCapacity: maximumBatchSize + 1, BatchSize: maximumBatchSize + 1,
+	}); err == nil {
+		t.Fatal("writer accepted oversized batch configuration")
+	}
+	store := &SQLite{}
+	if err := store.AppendBatch(make([]Record, maximumBatchSize+1)); err == nil {
+		t.Fatal("SQLite accepted oversized batch")
+	}
+}
+
 func TestWriterCloseRejectsNewRecordsAndDrainsAcceptedRecords(t *testing.T) {
 	backend := &blockingBackend{started: make(chan struct{}), release: make(chan struct{})}
 	writer, err := NewWriter(backend, WriterOptions{
