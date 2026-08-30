@@ -103,7 +103,9 @@ func TestP3Acceptance(t *testing.T) {
 		result := records[1].(PolicyContainmentRecord)
 		if result.RunID != run.RunID || result.PolicyID != decision.Final.PolicyID ||
 			result.RuleID != decision.Final.RuleID || result.EnforcementMethod != killer.MethodCgroupKill ||
-			result.EnforcementResult != killer.ResultKilled || result.SyscallResult != killer.SyscallNotObserved {
+			result.EnforcementResult != killer.ResultKilled || result.SyscallResult != killer.SyscallNotObserved ||
+			result.ServerReceivedMonotonicNS != event.ServerReceivedMonotonicNS ||
+			result.ServerReceivedUnixNS != event.ServerReceivedUnixNS {
 			t.Fatalf("containment result = %+v", result)
 		}
 		if event.ActionResult != events.ActionResultNone || len(containment.calls) != 1 {
@@ -404,12 +406,14 @@ func p3NetworkPolicy(id string, action policy.Action) policy.Policy {
 
 func p3Event(run AgentRun) events.KernelEvent {
 	return events.KernelEvent{
-		KernelMonotonicNS: 500,
-		CgroupID:          run.CgroupID,
-		InstanceID:        run.InstanceID,
-		ScopeCookie:       run.ScopeCookie,
-		PID:               123,
-		TGID:              123,
+		KernelMonotonicNS:         500,
+		ServerReceivedMonotonicNS: 600,
+		ServerReceivedUnixNS:      700,
+		CgroupID:                  run.CgroupID,
+		InstanceID:                run.InstanceID,
+		ScopeCookie:               run.ScopeCookie,
+		PID:                       123,
+		TGID:                      123,
 	}
 }
 

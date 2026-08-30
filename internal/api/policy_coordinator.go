@@ -25,14 +25,16 @@ type ContainmentExecutor interface {
 // containment results orthogonal.
 type PolicyContainmentRecord struct {
 	killer.Outcome
-	RunID           string            `json:"run_id"`
-	Generation      policy.Generation `json:"generation"`
-	PolicyID        string            `json:"policy_id"`
-	RuleID          uint32            `json:"rule_id"`
-	EventType       uint16            `json:"event_type"`
-	EventTypeName   string            `json:"event_type_name"`
-	PolicyDecision  policy.Decision   `json:"policy_decision"`
-	RequestedAction policy.Action     `json:"requested_action"`
+	RunID                     string            `json:"run_id"`
+	Generation                policy.Generation `json:"generation"`
+	PolicyID                  string            `json:"policy_id"`
+	RuleID                    uint32            `json:"rule_id"`
+	EventType                 uint16            `json:"event_type"`
+	EventTypeName             string            `json:"event_type_name"`
+	ServerReceivedMonotonicNS uint64            `json:"server_received_monotonic_ns,string"`
+	ServerReceivedUnixNS      uint64            `json:"server_received_unix_ns,string"`
+	PolicyDecision            policy.Decision   `json:"policy_decision"`
+	RequestedAction           policy.Action     `json:"requested_action"`
 }
 
 // PolicyCoordinator evaluates events only after exact active-Run attribution.
@@ -109,15 +111,17 @@ func (coordinator *PolicyCoordinator) ProcessAuditEvent(ctx context.Context, eve
 	final := decision.Final
 	records[0] = decision
 	records = append(records, PolicyContainmentRecord{
-		Outcome:         outcome,
-		RunID:           run.RunID,
-		Generation:      decision.Generation,
-		PolicyID:        final.PolicyID,
-		RuleID:          final.RuleID,
-		EventType:       event.EventType,
-		EventTypeName:   event.EventTypeName,
-		PolicyDecision:  final.Decision,
-		RequestedAction: final.RequestedAction,
+		Outcome:                   outcome,
+		RunID:                     run.RunID,
+		Generation:                decision.Generation,
+		PolicyID:                  final.PolicyID,
+		RuleID:                    final.RuleID,
+		EventType:                 event.EventType,
+		EventTypeName:             event.EventTypeName,
+		ServerReceivedMonotonicNS: event.ServerReceivedMonotonicNS,
+		ServerReceivedUnixNS:      event.ServerReceivedUnixNS,
+		PolicyDecision:            final.Decision,
+		RequestedAction:           final.RequestedAction,
 	})
 	return records, nil
 }

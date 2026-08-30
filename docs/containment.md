@@ -6,7 +6,9 @@ AgentShield's fallback containment is an independent user-space action. It does
 not make the triggering syscall blocked and does not mutate the raw kernel
 event. A `containment_result` retains the original `syscall_result` and records
 `enforcement_method: cgroup_kill` with `enforcement_result` equal to
-`not_attempted`, `killed`, or `failed`.
+`not_attempted`, `killed`, or `failed`. It copies the triggering event's trusted
+server receipt clocks so the derived result remains ingestible and ordered in
+the live evidence stream.
 
 ## Authorization and execution boundary
 
