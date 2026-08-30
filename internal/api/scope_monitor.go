@@ -40,11 +40,11 @@ func MonitorScopesOnce(manager *scope.Manager, inspector scope.Inspector, store 
 		if len(violations) == 0 {
 			continue
 		}
-		run, transitioned, exists := store.FailScope(cgroupID, violations[0].Reason)
+		run, active, exists := store.monitoredRunForCgroup(cgroupID)
 		if !exists {
 			return fmt.Errorf("active cgroup %d has no Agent Run", cgroupID)
 		}
-		if !transitioned {
+		if !active {
 			continue
 		}
 		for _, violation := range violations {
@@ -61,6 +61,11 @@ func MonitorScopesOnce(manager *scope.Manager, inspector scope.Inspector, store 
 			if err := emit(event); err != nil {
 				return fmt.Errorf("emit scope violation: %w", err)
 			}
+		}
+		if _, transitioned, exists := store.FailScope(cgroupID, violations[0].Reason); !exists {
+			return fmt.Errorf("active cgroup %d lost its Agent Run", cgroupID)
+		} else if !transitioned {
+			continue
 		}
 	}
 	return nil

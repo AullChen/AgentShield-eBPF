@@ -144,3 +144,45 @@ func TestMonitorScopesFailsClosedWhenInspectionErrors(t *testing.T) {
 		t.Fatalf("run status = %q/%q, want failed inspection", run.Status, run.StatusReason)
 	}
 }
+
+func TestMonitorScopesRetriesWhenViolationEmissionFails(t *testing.T) {
+	scopeMap := &testScopeMap{}
+	manager, err := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{"/agent/leaf": 42}}, testProbe{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registration, err := manager.Register(context.Background(), scope.Target{Path: "/agent/leaf", RootPID: 42}, scope.Value{
+		InstanceID: 1, ScopeCookie: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewRunStore()
+	if err := store.Add(AgentRun{
+		RunID: "run-1", CgroupID: registration.CgroupID, InstanceID: 1, ScopeCookie: 2, Status: "active",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	inspector := monitorInspector{state: scope.State{RootPIDPath: "/escaped"}}
+	if err := MonitorScopesOnce(manager, inspector, store, time.Now(), func(ScopeViolationEvent) error {
+		return errors.New("sink unavailable")
+	}); err == nil {
+		t.Fatal("emitter failure was ignored")
+	}
+	if run, _ := store.Get("run-1"); run.Status != "active" {
+		t.Fatalf("Run status after emitter failure = %q, want active for retry", run.Status)
+	}
+	emitted := 0
+	if err := MonitorScopesOnce(manager, inspector, store, time.Now(), func(ScopeViolationEvent) error {
+		emitted++
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if emitted != 1 {
+		t.Fatalf("retried events = %d, want 1", emitted)
+	}
+	if run, _ := store.Get("run-1"); run.Status != "failed" {
+		t.Fatalf("Run status after successful retry = %q", run.Status)
+	}
+}

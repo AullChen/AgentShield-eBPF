@@ -15,6 +15,8 @@ Automated source and Go tests verify:
 - a new child cgroup and root-PID migration produce `scope_violation`;
 - an inspection error fails the run closed with `inspection_failed`;
 - a violation changes the associated Agent Run status to `failed`.
+- a failed violation sink leaves the Run active so the next inspection can
+  retry delivery before changing lifecycle state.
 - sequential reuse of the same cgroup path and ID receives a new scope cookie,
   while delayed events keep their original Run attribution.
 

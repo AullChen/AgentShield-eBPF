@@ -154,6 +154,24 @@ func (store *RunStore) Len() int {
 	return len(store.runs)
 }
 
+func (store *RunStore) monitoredRunForCgroup(cgroupID uint64) (AgentRun, bool, bool) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	runID, exists := store.activeByCgroup[cgroupID]
+	if !exists {
+		runID, exists = store.latestByCgroup[cgroupID]
+		if !exists {
+			return AgentRun{}, false, false
+		}
+		run := store.runs[runID]
+		run.Labels = cloneLabels(run.Labels)
+		return run, false, true
+	}
+	run := store.runs[runID]
+	run.Labels = cloneLabels(run.Labels)
+	return run, true, true
+}
+
 func (store *RunStore) FailScope(cgroupID uint64, reason string) (AgentRun, bool, bool) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
