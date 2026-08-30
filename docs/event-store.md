@@ -7,9 +7,10 @@ a non-blocking, bounded writer.
 
 The store creates a real SQLite database, enables WAL, uses `synchronous=NORMAL`
 and a bounded busy timeout, and caps page growth. Capacity accounting includes
-the database, WAL, and shared-memory files. Above the soft limit it removes the
-oldest low-severity records first and checkpoints the WAL; high and critical
-records are preferred but remain bounded by the hard limit.
+live database pages plus the WAL and shared-memory files; reusable free pages
+are not mistaken for retained evidence. Above the soft limit it truncates the
+WAL and removes a proportional number of the oldest low-severity records;
+high and critical records are preferred but remain bounded by the hard limit.
 
 No downloaded Go driver is required. Windows uses the system
 `winsqlite3.dll`; supported Unix cgo builds link the system `libsqlite3`.

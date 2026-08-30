@@ -94,7 +94,11 @@ func (store *SQLite) AppendBatch(records []Record) error {
 	// Capacity maintenance can fail independently of a prior successful
 	// transaction. Retry it before accepting another batch so callers never
 	// retry records that were already committed.
-	if store.sizeLocked() > store.softLimit {
+	usage, err := store.usageLocked()
+	if err != nil {
+		return fmt.Errorf("measure SQLite capacity: %w", err)
+	}
+	if usage > store.softLimit {
 		if err := store.pruneLocked(); err != nil {
 			return err
 		}
@@ -125,7 +129,8 @@ func (store *SQLite) AppendBatch(records []Record) error {
 		_ = store.database.Exec("ROLLBACK;")
 		return err
 	}
-	if size := store.sizeLocked(); size > store.softLimit {
+	usage, err = store.usageLocked()
+	if err == nil && usage > store.softLimit {
 		// The records above are durable regardless of maintenance outcome.
 		// A failed prune is retried and reported before the next transaction,
 		// or by Close when no further writes arrive.
@@ -147,7 +152,9 @@ func (store *SQLite) Close() error {
 		return nil
 	}
 	var maintenanceErr error
-	if store.sizeLocked() > store.softLimit {
+	if usage, err := store.usageLocked(); err != nil {
+		maintenanceErr = fmt.Errorf("measure SQLite capacity: %w", err)
+	} else if usage > store.softLimit {
 		maintenanceErr = store.pruneLocked()
 	}
 	_ = store.database.Exec("PRAGMA wal_checkpoint(TRUNCATE);")
@@ -157,31 +164,71 @@ func (store *SQLite) Close() error {
 }
 
 func (store *SQLite) pruneLocked() error {
-	for attempts := 0; attempts < 20 && store.sizeLocked() > store.softLimit; attempts++ {
-		if err := store.database.Exec(`DELETE FROM evidence_records WHERE id IN (
+	if err := store.database.Exec("PRAGMA wal_checkpoint(TRUNCATE);"); err != nil {
+		return fmt.Errorf("checkpoint SQLite WAL: %w", err)
+	}
+	for attempts := 0; attempts < 20; attempts++ {
+		usage, err := store.usageLocked()
+		if err != nil {
+			return fmt.Errorf("measure SQLite capacity: %w", err)
+		}
+		if usage <= store.softLimit {
+			return nil
+		}
+		count, err := store.database.ScalarInt64("SELECT count(*) FROM evidence_records;")
+		if err != nil {
+			return fmt.Errorf("count SQLite records: %w", err)
+		}
+		if count == 0 {
+			break
+		}
+		averageBytes := max(int64(1), usage/count)
+		deleteCount := (usage - store.softLimit + averageBytes - 1) / averageBytes
+		deleteCount = min(max(int64(1), deleteCount), min(count, int64(256)))
+		statement := `DELETE FROM evidence_records WHERE id IN (
 SELECT id FROM evidence_records ORDER BY
 CASE severity WHEN 'critical' THEN 3 WHEN 'high' THEN 2 ELSE 1 END ASC,
-CAST(server_monotonic_ns AS INTEGER) ASC LIMIT 256);`); err != nil {
+CAST(server_monotonic_ns AS INTEGER) ASC LIMIT ` + strconv.FormatInt(deleteCount, 10) + `);`
+		if err := store.database.Exec(statement); err != nil {
 			return fmt.Errorf("prune SQLite: %w", err)
 		}
-		if err := store.database.Exec("PRAGMA wal_checkpoint(PASSIVE);"); err != nil {
+		if err := store.database.Exec("PRAGMA wal_checkpoint(TRUNCATE);"); err != nil {
 			return fmt.Errorf("checkpoint SQLite WAL: %w", err)
 		}
 	}
-	if store.sizeLocked() > store.hardLimit {
+	usage, err := store.usageLocked()
+	if err != nil {
+		return fmt.Errorf("measure SQLite capacity: %w", err)
+	}
+	if usage > store.hardLimit {
 		return errors.New("SQLite hard capacity remains exceeded after pruning")
 	}
 	return nil
 }
 
-func (store *SQLite) sizeLocked() int64 {
-	var total int64
-	for _, path := range []string{store.path, store.path + "-wal", store.path + "-shm"} {
+func (store *SQLite) usageLocked() (int64, error) {
+	pageCount, err := store.database.ScalarInt64("PRAGMA page_count;")
+	if err != nil {
+		return 0, err
+	}
+	freePages, err := store.database.ScalarInt64("PRAGMA freelist_count;")
+	if err != nil {
+		return 0, err
+	}
+	pageSize, err := store.database.ScalarInt64("PRAGMA page_size;")
+	if err != nil {
+		return 0, err
+	}
+	if pageCount < 0 || freePages < 0 || freePages > pageCount || pageSize < 1 {
+		return 0, errors.New("SQLite returned invalid page accounting")
+	}
+	total := (pageCount - freePages) * pageSize
+	for _, path := range []string{store.path + "-wal", store.path + "-shm"} {
 		if info, err := os.Stat(path); err == nil {
 			total += info.Size()
 		}
 	}
-	return total
+	return total, nil
 }
 
 func sqlQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }

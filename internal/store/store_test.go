@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,6 +104,46 @@ func TestSQLiteTreatsRecordIDsAsIdempotencyKeys(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("record count = %d, want 1", count)
+	}
+}
+
+func TestSQLiteCapacityPruningRetainsRecordsNearSoftLimit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "capacity.db")
+	database, err := OpenSQLite(path, SQLiteOptions{SoftLimitBytes: 1 << 20, HardLimitBytes: 2 << 20})
+	if errors.Is(err, ErrSQLiteUnavailable) {
+		t.Skip(err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for start := 0; start < 300; start += 25 {
+		records := make([]Record, 0, 25)
+		for index := start; index < start+25; index++ {
+			record := testRecord(fmt.Sprintf("capacity-%03d", index), strings.Repeat("x", 4096))
+			record.ServerMonotonicNS = uint64(index + 1)
+			record.Labels = map[string]string{"payload": strings.Repeat("y", 1024)}
+			records = append(records, record)
+		}
+		if err := database.AppendBatch(records); err != nil {
+			t.Fatalf("AppendBatch %d: %v", start, err)
+		}
+	}
+	count, err := database.Count()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count < 128 || count >= 300 {
+		t.Fatalf("retained records = %d, want bounded history near the soft limit", count)
+	}
+	database.mu.Lock()
+	usage, err := database.usageLocked()
+	database.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage > database.hardLimit {
+		t.Fatalf("capacity usage = %d, hard limit = %d", usage, database.hardLimit)
 	}
 }
 
@@ -267,8 +308,22 @@ func (database *maintenanceFailNative) Exec(statement string) error {
 	return nil
 }
 
-func (*maintenanceFailNative) ScalarInt64(string) (int64, error) { return 0, nil }
-func (*maintenanceFailNative) Close() error                      { return nil }
+func (database *maintenanceFailNative) ScalarInt64(query string) (int64, error) {
+	switch query {
+	case "PRAGMA page_count;", "SELECT count(*) FROM evidence_records;":
+		if database.transactions == 0 {
+			return 0, nil
+		}
+		return 1, nil
+	case "PRAGMA page_size;":
+		return 10, nil
+	case "PRAGMA freelist_count;":
+		return 0, nil
+	default:
+		return 0, errors.New("unexpected scalar query")
+	}
+}
+func (*maintenanceFailNative) Close() error { return nil }
 
 func (backend *blockingBackend) AppendBatch(records []Record) error {
 	close(backend.started)
