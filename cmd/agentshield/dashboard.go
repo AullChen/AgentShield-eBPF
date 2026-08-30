@@ -207,6 +207,13 @@ func validateLoopbackListen(address string) error {
 }
 
 func loadReadToken(path string) (string, error) {
+	expected, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("inspect read token file: %w", err)
+	}
+	if expected.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("read token file must not be a symbolic link")
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("open read token file: %w", err)
@@ -219,8 +226,14 @@ func loadReadToken(path string) (string, error) {
 	if !info.Mode().IsRegular() {
 		return "", errors.New("read token file must be a regular file")
 	}
+	if !os.SameFile(expected, info) {
+		return "", errors.New("read token file changed while opening")
+	}
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
 		return "", errors.New("read token file must not be accessible by group or other users")
+	}
+	if err := validateReadTokenOwner(info); err != nil {
+		return "", err
 	}
 	contents, err := io.ReadAll(io.LimitReader(file, 514))
 	if err != nil {

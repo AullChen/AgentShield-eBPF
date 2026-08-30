@@ -17,6 +17,8 @@ clock fields. The legacy `audit-openat` spelling remains an alias for now.
 Supplying `--api-listen`, `--read-token-file`, and `--run-id` together also
 serves the authenticated Overview and WebSocket endpoints. Plain HTTP may bind
 only an explicit loopback IP. Records sent to browsers pass through the bounded
-redacting JSON sink; stdout remains the raw owner-only audit stream.
+redacting JSON sink; stdout remains the raw owner-only audit stream. The token
+path must be a stable regular file rather than a symbolic link; on Linux it
+must also be owned by the Core effective user.
 
 Scoped path/argv fragments may still be sensitive and must remain owner-only.

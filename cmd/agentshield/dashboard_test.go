@@ -67,3 +67,17 @@ func TestValidateLoopbackListenRejectsExposure(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadReadTokenRejectsSymbolicLink(t *testing.T) {
+	tokenPath := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenPath, []byte(liveAPITestToken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(t.TempDir(), "token-link")
+	if err := os.Symlink(tokenPath, linkPath); err != nil {
+		t.Skipf("symbolic links unavailable: %v", err)
+	}
+	if _, err := loadReadToken(linkPath); err == nil {
+		t.Fatal("symbolic-link token file was accepted")
+	}
+}
