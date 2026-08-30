@@ -92,7 +92,7 @@ func (store *RunStore) abortTermination(runID string) {
 	delete(store.terminating, runID)
 }
 
-func (store *RunStore) completeTermination(runID, terminalStatus string, endedAt time.Time, ttl time.Duration, maxEntries int) (AgentRun, error) {
+func (store *RunStore) completeTermination(runID, terminalStatus, terminalReason string, endedAt time.Time, ttl time.Duration, maxEntries int) (AgentRun, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	run, exists := store.runs[runID]
@@ -106,6 +106,9 @@ func (store *RunStore) completeTermination(runID, terminalStatus string, endedAt
 	identity := run.scopeIdentity()
 	if terminalStatus == "expired" || run.Status == "active" {
 		run.Status = terminalStatus
+	}
+	if terminalReason != "" {
+		run.StatusReason = terminalReason
 	}
 	run.EndedAt = endedAt.UTC()
 	store.runs[runID] = run
@@ -194,14 +197,21 @@ func (store *RunStore) evictOldestTombstoneLocked() {
 }
 
 func (handler *RegistrationHandler) FinishRun(runID string) (AgentRun, error) {
-	return handler.terminateRun(strings.TrimSpace(runID), "finished", handler.now().UTC())
+	return handler.terminateRun(strings.TrimSpace(runID), "finished", "", handler.now().UTC())
+}
+
+func (handler *RegistrationHandler) FailRunScope(runID, reason string, endedAt time.Time) (AgentRun, error) {
+	if strings.TrimSpace(reason) == "" || endedAt.IsZero() {
+		return AgentRun{}, errors.New("scope failure reason and end time are required")
+	}
+	return handler.terminateRun(strings.TrimSpace(runID), "failed", reason, endedAt.UTC())
 }
 
 func (handler *RegistrationHandler) CleanupExpiredRuns() error {
 	now := handler.now().UTC()
 	var cleanupErrors []error
 	for _, runID := range handler.store.expiredActiveRunIDs(now) {
-		if _, err := handler.terminateRun(runID, "expired", now); err != nil {
+		if _, err := handler.terminateRun(runID, "expired", "", now); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("expire Run %s: %w", runID, err))
 		}
 	}
@@ -219,7 +229,7 @@ func (handler *RegistrationHandler) AttributeEvent(instanceID, scopeCookie uint6
 	)
 }
 
-func (handler *RegistrationHandler) terminateRun(runID, status string, endedAt time.Time) (AgentRun, error) {
+func (handler *RegistrationHandler) terminateRun(runID, status, reason string, endedAt time.Time) (AgentRun, error) {
 	run, unregister, err := handler.store.beginTermination(runID)
 	if err != nil || !unregister {
 		return run, err
@@ -231,6 +241,7 @@ func (handler *RegistrationHandler) terminateRun(runID, status string, endedAt t
 	finished, err := handler.store.completeTermination(
 		runID,
 		status,
+		reason,
 		endedAt,
 		handler.tombstoneTTL,
 		handler.tombstoneMaxEntries,

@@ -14,7 +14,8 @@ Automated source and Go tests verify:
   PID/subtree scope selection;
 - a new child cgroup and root-PID migration produce `scope_violation`;
 - an inspection error fails the run closed with `inspection_failed`;
-- a violation changes the associated Agent Run status to `failed`.
+- a delivered violation removes the kernel scope and terminates the associated
+  Agent Run as `failed`, retaining a tombstone for delayed event attribution;
 - a failed violation sink leaves the Run active so the next inspection can
   retry delivery before changing lifecycle state.
 - sequential reuse of the same cgroup path and ID receives a new scope cookie,

@@ -20,10 +20,11 @@ type ScopeViolationEvent struct {
 	ObservedAt  string `json:"observed_at"`
 }
 
-func MonitorScopesOnce(manager *scope.Manager, inspector scope.Inspector, store *RunStore, now time.Time, emit func(ScopeViolationEvent) error) error {
-	if manager == nil || inspector == nil || store == nil || emit == nil {
-		return fmt.Errorf("scope manager, inspector, run store, and emitter are required")
+func MonitorScopesOnce(manager *scope.Manager, inspector scope.Inspector, handler *RegistrationHandler, now time.Time, emit func(ScopeViolationEvent) error) error {
+	if manager == nil || inspector == nil || handler == nil || emit == nil || now.IsZero() {
+		return fmt.Errorf("scope manager, inspector, registration handler, observation time, and emitter are required")
 	}
+	store := handler.store
 	for _, cgroupID := range manager.ActiveIDs() {
 		violations, err := manager.Check(cgroupID, inspector)
 		if err != nil {
@@ -62,10 +63,8 @@ func MonitorScopesOnce(manager *scope.Manager, inspector scope.Inspector, store 
 				return fmt.Errorf("emit scope violation: %w", err)
 			}
 		}
-		if _, transitioned, exists := store.FailScope(cgroupID, violations[0].Reason); !exists {
-			return fmt.Errorf("active cgroup %d lost its Agent Run", cgroupID)
-		} else if !transitioned {
-			continue
+		if _, err := handler.FailRunScope(run.RunID, violations[0].Reason, now); err != nil {
+			return fmt.Errorf("terminate violated scope: %w", err)
 		}
 	}
 	return nil

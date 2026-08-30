@@ -260,7 +260,7 @@ func TestCompletingOldRunPreservesReplacementCgroupIndex(t *testing.T) {
 	if err := store.Add(replacement); err != nil {
 		t.Fatalf("add replacement Run: %v", err)
 	}
-	if _, err := store.completeTermination(old.RunID, "finished", now.Add(2*time.Second), time.Minute, 10); err != nil {
+	if _, err := store.completeTermination(old.RunID, "finished", "", now.Add(2*time.Second), time.Minute, 10); err != nil {
 		t.Fatalf("complete old termination: %v", err)
 	}
 

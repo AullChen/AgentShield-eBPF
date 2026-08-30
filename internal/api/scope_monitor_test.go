@@ -47,12 +47,14 @@ func TestMonitorScopesEmitsViolationAndFailsRun(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("store.Add: %v", err)
 	}
+	handler := newScopeMonitorHandler(t, manager, store)
 
 	var events []ScopeViolationEvent
+	observedAt := time.Date(2026, 7, 24, 13, 0, 0, 0, time.UTC)
 	err = MonitorScopesOnce(manager, monitorInspector{state: scope.State{
 		ChildCgroups: []string{registration.Path + "/child"},
 		RootPIDPath:  "/escaped",
-	}}, store, time.Date(2026, 7, 24, 13, 0, 0, 0, time.UTC), func(event ScopeViolationEvent) error {
+	}}, handler, observedAt, func(event ScopeViolationEvent) error {
 		events = append(events, event)
 		return nil
 	})
@@ -75,14 +77,21 @@ func TestMonitorScopesEmitsViolationAndFailsRun(t *testing.T) {
 		t.Fatal("scope violation did not encode")
 	}
 	run, _ := store.Get("run-1")
-	if run.Status != "failed" || run.StatusReason == "" {
+	if run.Status != "failed" || run.StatusReason == "" || !run.EndedAt.Equal(observedAt) {
 		t.Fatalf("run status = %q/%q, want failed with reason", run.Status, run.StatusReason)
+	}
+	if len(manager.ActiveIDs()) != 0 {
+		t.Fatalf("violated scope remained active: %v", manager.ActiveIDs())
+	}
+	if attribution := store.attribute(run.scopeIdentity(), handler.instanceID, observedAt); attribution.Status != AttributionExact ||
+		attribution.RunID != run.RunID || attribution.RunStatus != "failed" {
+		t.Fatalf("delayed violation attribution = %+v", attribution)
 	}
 
 	if err := MonitorScopesOnce(manager, monitorInspector{state: scope.State{
 		ChildCgroups: []string{registration.Path + "/child"},
 		RootPIDPath:  "/escaped",
-	}}, store, time.Date(2026, 7, 24, 13, 0, 1, 0, time.UTC), func(event ScopeViolationEvent) error {
+	}}, handler, time.Date(2026, 7, 24, 13, 0, 1, 0, time.UTC), func(event ScopeViolationEvent) error {
 		events = append(events, event)
 		return nil
 	}); err != nil {
@@ -121,12 +130,13 @@ func TestMonitorScopesFailsClosedWhenInspectionErrors(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("store.Add: %v", err)
 	}
+	handler := newScopeMonitorHandler(t, manager, store)
 
 	var events []ScopeViolationEvent
 	err = MonitorScopesOnce(
 		manager,
 		monitorInspector{err: errors.New("root PID disappeared")},
-		store,
+		handler,
 		time.Date(2026, 7, 26, 1, 0, 0, 0, time.UTC),
 		func(event ScopeViolationEvent) error {
 			events = append(events, event)
@@ -163,8 +173,9 @@ func TestMonitorScopesRetriesWhenViolationEmissionFails(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	handler := newScopeMonitorHandler(t, manager, store)
 	inspector := monitorInspector{state: scope.State{RootPIDPath: "/escaped"}}
-	if err := MonitorScopesOnce(manager, inspector, store, time.Now(), func(ScopeViolationEvent) error {
+	if err := MonitorScopesOnce(manager, inspector, handler, time.Now(), func(ScopeViolationEvent) error {
 		return errors.New("sink unavailable")
 	}); err == nil {
 		t.Fatal("emitter failure was ignored")
@@ -173,7 +184,7 @@ func TestMonitorScopesRetriesWhenViolationEmissionFails(t *testing.T) {
 		t.Fatalf("Run status after emitter failure = %q, want active for retry", run.Status)
 	}
 	emitted := 0
-	if err := MonitorScopesOnce(manager, inspector, store, time.Now(), func(ScopeViolationEvent) error {
+	if err := MonitorScopesOnce(manager, inspector, handler, time.Now(), func(ScopeViolationEvent) error {
 		emitted++
 		return nil
 	}); err != nil {
@@ -185,4 +196,13 @@ func TestMonitorScopesRetriesWhenViolationEmissionFails(t *testing.T) {
 	if run, _ := store.Get("run-1"); run.Status != "failed" {
 		t.Fatalf("Run status after successful retry = %q", run.Status)
 	}
+}
+
+func newScopeMonitorHandler(t *testing.T, manager *scope.Manager, store *RunStore) *RegistrationHandler {
+	t.Helper()
+	handler, err := NewRegistrationHandler(manager, store, RegistrationOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handler
 }
