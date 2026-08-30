@@ -5,11 +5,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -171,6 +173,43 @@ func TestRegisterRejectsOverlappingActiveBinding(t *testing.T) {
 	}
 	if len(scopeMap.values) != 1 {
 		t.Fatalf("scope map entries = %d, want 1", len(scopeMap.values))
+	}
+}
+
+func TestRegisterRequestIDReplaysOriginalRegistration(t *testing.T) {
+	scopeMap := &testScopeMap{}
+	manager, err := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{"/agent/leaf": 42}}, testProbe{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewRunStore()
+	handler, err := NewRegistrationHandler(manager, store, RegistrationOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := map[string]any{
+		"request_id": "supervisor-request-0001", "agent_name": "agent", "cgroup_path": "/agent/leaf",
+	}
+	first := postJSON(t, handler, input)
+	replay := postJSON(t, handler, input)
+	if first.Code != http.StatusCreated || replay.Code != http.StatusOK {
+		t.Fatalf("registration statuses = %d/%d", first.Code, replay.Code)
+	}
+	var firstOutput, replayOutput RegisterResponse
+	if err := json.Unmarshal(first.Body.Bytes(), &firstOutput); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(replay.Body.Bytes(), &replayOutput); err != nil {
+		t.Fatal(err)
+	}
+	if firstOutput != replayOutput || store.Len() != 1 || len(scopeMap.values) != 1 {
+		t.Fatalf("replay changed registration: first=%+v replay=%+v runs=%d scopes=%d", firstOutput, replayOutput, store.Len(), len(scopeMap.values))
+	}
+	conflictInput := map[string]any{
+		"request_id": "supervisor-request-0001", "agent_name": "different", "cgroup_path": "/agent/leaf",
+	}
+	if conflict := postJSON(t, handler, conflictInput); conflict.Code != http.StatusConflict {
+		t.Fatalf("request ID conflict status = %d", conflict.Code)
 	}
 }
 
@@ -340,8 +379,20 @@ func TestRunStoreZeroValueCanAdd(t *testing.T) {
 	}
 }
 
+var registrationTestRequestID atomic.Uint64
+
 func postJSON(t *testing.T, handler http.Handler, input any) *httptest.ResponseRecorder {
 	t.Helper()
+	if values, ok := input.(map[string]any); ok {
+		copy := make(map[string]any, len(values)+1)
+		for key, value := range values {
+			copy[key] = value
+		}
+		if _, exists := copy["request_id"]; !exists {
+			copy["request_id"] = fmt.Sprintf("test-request-%016d", registrationTestRequestID.Add(1))
+		}
+		input = copy
+	}
 	payload, err := json.Marshal(input)
 	if err != nil {
 		t.Fatalf("json.Marshal: %v", err)

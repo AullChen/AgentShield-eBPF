@@ -11,6 +11,7 @@ The request selects exactly one trusted lookup input:
 
 ```json
 {
+  "request_id": "supervisor-task-0001",
   "agent_name": "demo-agent",
   "container_id": "container-1",
   "cgroup_path": "/sys/fs/cgroup/agentshield/demo/leaf",
@@ -29,6 +30,12 @@ trusted scope manager resolves and opens the leaf, compares its filesystem
 identity with an independent `bpf_get_current_cgroup_id()` observation, and
 only then writes the scope map.
 
+`request_id` is a 16-128 byte supervisor-generated idempotency key. While its
+initial ingest token remains active, replaying the same normalized
+request returns the original response with HTTP 200. Reusing the key with
+different content returns HTTP 409. The replay cache is bounded to 10,000
+entries and never extends either the token or Run lifetime.
+
 A successful response uses decimal strings for all 64-bit identities:
 
 ```json
@@ -45,7 +52,9 @@ A successful response uses decimal strings for all 64-bit identities:
 ```
 
 Core generates the run and scope identities. The ingest token is HMAC-signed,
-expires after 15 minutes by default, and is stored only as a SHA-256 hash.
+expires after 15 minutes by default, and the Run store retains only its SHA-256
+hash. The bounded in-memory registration replay entry retains the one-time
+response only until the Run or initial token ceases to be active.
 The credential lifetime is independent from the Run lifetime: token expiry
 stops checkpoint writes but never removes a live cgroup scope. A separate
 server-owned Run TTL defaults to 24 hours as a bounded cleanup fallback.

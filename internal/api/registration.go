@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	RegisterPath    = "/api/v1/agents/register"
-	defaultTokenTTL = 15 * time.Minute
-	defaultRunTTL   = 24 * time.Hour
-	maxRequestBytes = 64 << 10
-	maxTokenBytes   = 512
+	RegisterPath           = "/api/v1/agents/register"
+	defaultTokenTTL        = 15 * time.Minute
+	defaultRunTTL          = 24 * time.Hour
+	maxRequestBytes        = 64 << 10
+	maxTokenBytes          = 512
+	maxRegistrationReplays = 10_000
 )
 
 type Registrar interface {
@@ -34,6 +35,7 @@ type Registrar interface {
 }
 
 type RegisterRequest struct {
+	RequestID   string            `json:"request_id"`
 	AgentName   string            `json:"agent_name"`
 	ContainerID string            `json:"container_id,omitempty"`
 	CgroupPath  string            `json:"cgroup_path,omitempty"`
@@ -206,6 +208,15 @@ type RegistrationHandler struct {
 	tombstoneMaxEntries int
 	instanceID          uint64
 	signingKey          [sha256.Size]byte
+	registrationMu      sync.Mutex
+	registrationReplays map[string]registrationReplay
+}
+
+type registrationReplay struct {
+	fingerprint [sha256.Size]byte
+	response    RegisterResponse
+	tokenExpiry time.Time
+	expiresAt   time.Time
 }
 
 type RegistrationOptions struct {
@@ -269,6 +280,7 @@ func NewRegistrationHandler(registrar Registrar, store *RunStore, options Regist
 		tombstoneTTL:        options.TombstoneTTL,
 		tombstoneMaxEntries: options.TombstoneMaxEntries,
 		instanceID:          instanceID,
+		registrationReplays: make(map[string]registrationReplay),
 	}
 	if _, err := io.ReadFull(options.Random, handler.signingKey[:]); err != nil {
 		return nil, fmt.Errorf("generate ingest signing key: %w", err)
@@ -302,6 +314,11 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 		return
 	}
 	input.AgentName = strings.TrimSpace(input.AgentName)
+	input.RequestID = strings.TrimSpace(input.RequestID)
+	if !validRegistrationRequestID(input.RequestID) {
+		http.Error(response, "request_id must contain 16-128 letters, digits, dots, underscores, or hyphens", http.StatusBadRequest)
+		return
+	}
 	if input.AgentName == "" || len(input.AgentName) > 128 {
 		http.Error(response, "agent_name is required and must not exceed 128 bytes", http.StatusBadRequest)
 		return
@@ -317,6 +334,32 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 		http.Error(response, "only leaf_exact scope_mode is supported", http.StatusBadRequest)
 		return
 	}
+	fingerprint, err := registrationFingerprint(input)
+	if err != nil {
+		http.Error(response, "invalid registration request", http.StatusBadRequest)
+		return
+	}
+	now := handler.now().UTC()
+	handler.registrationMu.Lock()
+	defer handler.registrationMu.Unlock()
+	handler.pruneRegistrationReplays(now)
+	if replay, exists := handler.registrationReplays[input.RequestID]; exists {
+		if replay.fingerprint != fingerprint {
+			http.Error(response, "registration request ID conflict", http.StatusConflict)
+			return
+		}
+		run, active := handler.store.Get(replay.response.RunID)
+		if !active || run.Status != "active" || !now.Before(replay.tokenExpiry) {
+			http.Error(response, "registration replay is no longer active", http.StatusConflict)
+			return
+		}
+		writeRegisterResponse(response, http.StatusOK, replay.response)
+		return
+	}
+	if len(handler.registrationReplays) >= maxRegistrationReplays {
+		http.Error(response, "registration replay capacity reached", http.StatusServiceUnavailable)
+		return
+	}
 
 	runID, err := randomHex(handler.random, 16)
 	if err != nil {
@@ -328,7 +371,6 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 		http.Error(response, "could not allocate scope identity", http.StatusInternalServerError)
 		return
 	}
-	now := handler.now().UTC()
 	expiry := now.Add(handler.tokenTTL)
 	token, err := handler.signToken(runID, expiry)
 	if err != nil {
@@ -391,9 +433,46 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 		IngestToken: token,
 		TokenExpiry: expiry.Format(time.RFC3339Nano),
 	}
+	handler.registrationReplays[input.RequestID] = registrationReplay{
+		fingerprint: fingerprint, response: output, tokenExpiry: expiry, expiresAt: expiry,
+	}
+	writeRegisterResponse(response, http.StatusCreated, output)
+}
+
+func validRegistrationRequestID(value string) bool {
+	if len(value) < 16 || len(value) > 128 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' ||
+			character >= '0' && character <= '9' || character == '-' || character == '_' || character == '.' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func registrationFingerprint(input RegisterRequest) ([sha256.Size]byte, error) {
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	return sha256.Sum256(encoded), nil
+}
+
+func (handler *RegistrationHandler) pruneRegistrationReplays(now time.Time) {
+	for requestID, replay := range handler.registrationReplays {
+		if !now.Before(replay.expiresAt) {
+			delete(handler.registrationReplays, requestID)
+		}
+	}
+}
+
+func writeRegisterResponse(response http.ResponseWriter, status int, output RegisterResponse) {
 	response.Header().Set("Content-Type", "application/json")
 	response.Header().Set("Cache-Control", "no-store")
-	response.WriteHeader(http.StatusCreated)
+	response.WriteHeader(status)
 	_ = json.NewEncoder(response).Encode(output)
 }
 
