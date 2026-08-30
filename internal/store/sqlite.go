@@ -97,7 +97,12 @@ func OpenSQLite(path string, options SQLiteOptions) (*SQLite, error) {
 		return nil, fmt.Errorf("restrict SQLite permissions: %w", err)
 	}
 	store := &SQLite{database: database, path: cleaned, softLimit: options.SoftLimitBytes, hardLimit: options.HardLimitBytes}
-	pageLimit := options.HardLimitBytes / 4096
+	pageSize, err := database.ScalarInt64("PRAGMA page_size;")
+	if err != nil || pageSize < 1 {
+		_ = database.Close()
+		return nil, errors.New("read SQLite page size")
+	}
+	pageLimit := options.HardLimitBytes / pageSize
 	if err := database.Exec(schema + "\nPRAGMA max_page_count=" + strconv.FormatInt(pageLimit, 10) + ";"); err != nil {
 		_ = database.Close()
 		return nil, fmt.Errorf("initialize SQLite: %w", err)

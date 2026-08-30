@@ -72,6 +72,40 @@ func TestSQLiteRejectsSymbolicLinkPath(t *testing.T) {
 	}
 }
 
+func TestSQLitePageLimitUsesExistingDatabasePageSize(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large-pages.db")
+	native, err := openNative(path)
+	if errors.Is(err, ErrSQLiteUnavailable) {
+		t.Skip(err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := native.Exec("PRAGMA page_size=8192; VACUUM;"); err != nil {
+		native.Close()
+		t.Fatal(err)
+	}
+	if err := native.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := OpenSQLite(path, SQLiteOptions{SoftLimitBytes: 1 << 20, HardLimitBytes: 2 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	pageSize, err := database.database.ScalarInt64("PRAGMA page_size;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pageLimit, err := database.database.ScalarInt64("PRAGMA max_page_count;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pageSize != 8192 || pageLimit != database.hardLimit/pageSize {
+		t.Fatalf("page size/limit = %d/%d, want 8192/%d", pageSize, pageLimit, database.hardLimit/pageSize)
+	}
+}
+
 func TestSQLiteDoesNotReportCommittedBatchAsFailedWhenMaintenanceFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "full.db")
 	if err := os.WriteFile(path, nil, 0o600); err != nil {

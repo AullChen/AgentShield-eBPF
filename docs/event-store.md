@@ -13,6 +13,8 @@ live database pages plus the WAL and shared-memory files; reusable free pages
 are not mistaken for retained evidence. Above the soft limit it truncates the
 WAL and removes a proportional number of the oldest low-severity records;
 high and critical records are preferred but remain bounded by the hard limit.
+The hard page count is derived from the database's actual page size, including
+when an existing database does not use SQLite's usual 4 KiB pages.
 
 No downloaded Go driver is required. Windows uses the system
 `winsqlite3.dll`; supported Unix cgo builds link the system `libsqlite3`.
