@@ -121,14 +121,26 @@ func evidenceEvent(message stream.Message) (evidence.Event, bool, error) {
 	case string(evidence.ContainmentResult):
 		event.Source = evidence.ContainmentResult
 		event.Containment = &evidence.Containment{
-			Requested: boolField(payload, "requested"), Result: stringField(payload, "result", "unknown"),
-			Method: stringField(payload, "method", "unknown"), TargetIdentity: stringField(payload, "target_identity", "unknown"),
-			OriginalActionResult: stringField(payload, "original_action_result", "unknown"),
+			Requested:            stringField(payload, "requested_action", "") == "contain",
+			Result:               stringField(payload, "enforcement_result", "unknown"),
+			Method:               stringField(payload, "enforcement_method", "unknown"),
+			TargetIdentity:       containmentTargetIdentity(payload),
+			OriginalActionResult: stringField(payload, "syscall_result", "unknown"),
 		}
 	default:
 		return evidence.Event{}, false, nil
 	}
 	return event, true, nil
+}
+
+func containmentTargetIdentity(payload map[string]any) string {
+	cgroupID := decimalField(payload, "cgroup_id")
+	instanceID := decimalField(payload, "instance_id")
+	scopeCookie := decimalField(payload, "scope_cookie")
+	if cgroupID == "0" || instanceID == "0" || scopeCookie == "0" {
+		return "unknown"
+	}
+	return "cgroup_id=" + cgroupID + ",instance_id=" + instanceID + ",scope_cookie=" + scopeCookie
 }
 
 func evidenceSummary(message stream.Message, payload map[string]any) string {

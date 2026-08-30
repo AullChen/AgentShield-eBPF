@@ -18,7 +18,8 @@ The page keeps five concepts visually separate:
 - `policy_decision`: requested action, final decision, enforcement flag, and
   mechanism;
 - block or containment: displayed only from an explicit kernel action result,
-  enforced decision, or containment result.
+  enforced decision, or containment result. Containment fields come directly
+  from the production result schema, including the exact scope identity tuple.
 
 Standalone `agentshield audit --run-id ...` supplies a stream label but does
 not by itself establish exact causal attribution. Consequently the live

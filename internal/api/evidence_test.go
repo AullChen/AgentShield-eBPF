@@ -32,6 +32,11 @@ func TestStreamEvidenceProviderPreservesSourceBoundaries(t *testing.T) {
 		ServerMonotonicNS: 12, ServerUnixNS: 22,
 		Payload: json.RawMessage(`{"event_type_name":"exec_attempt","final":{"policy_id":"deny-shell","rule_id":7,"policy_decision":"deny","requested_action":"contain","enforced":false}}`),
 	})
+	publishEvidenceTestEvent(t, hub, stream.Event{
+		ID: "containment-1", Type: "containment_result", Source: "containment_result", RunID: "run-1", EventType: "containment_result",
+		ServerMonotonicNS: 13, ServerUnixNS: 23,
+		Payload: json.RawMessage(`{"requested_action":"contain","enforcement_result":"killed","enforcement_method":"cgroup_kill","cgroup_id":"42","instance_id":"1001","scope_cookie":"2002","syscall_result":"not_observed"}`),
+	})
 	provider, err := NewStreamEvidenceProvider(hub)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +45,7 @@ func TestStreamEvidenceProviderPreservesSourceBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(timeline.Items) != 2 {
+	if len(timeline.Items) != 3 {
 		t.Fatalf("items = %#v", timeline.Items)
 	}
 	kernel := timeline.Items[0]
@@ -52,6 +57,13 @@ func TestStreamEvidenceProviderPreservesSourceBoundaries(t *testing.T) {
 	if decision.Source != evidence.PolicyDecision || decision.Decision == nil || decision.Decision.PolicyID != "deny-shell" ||
 		decision.Decision.Enforced || decision.Decision.Mechanism != "post_event evaluation" {
 		t.Fatalf("policy evidence = %#v", decision)
+	}
+	containment := timeline.Items[2]
+	if containment.Source != evidence.ContainmentResult || containment.Containment == nil ||
+		!containment.Containment.Requested || containment.Containment.Result != "killed" ||
+		containment.Containment.Method != "cgroup_kill" || containment.Containment.OriginalActionResult != "not_observed" ||
+		containment.Containment.TargetIdentity != "cgroup_id=42,instance_id=1001,scope_cookie=2002" {
+		t.Fatalf("containment evidence = %#v", containment)
 	}
 }
 
