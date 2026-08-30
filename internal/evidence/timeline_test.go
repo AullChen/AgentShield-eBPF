@@ -71,3 +71,40 @@ func TestTimelineRejectsSourceConfusion(t *testing.T) {
 		}
 	}
 }
+
+func TestTimelineRejectsCrossRunAndCrossSourceReferences(t *testing.T) {
+	claim := Event{ID: "checkpoint", Type: "tool_started", Source: AgentClaim, ServerMonotonicNS: 1, ServerUnixNS: 2, Summary: "claim"}
+	kernel := Event{
+		ID: "kernel", Type: "exec_attempt", Source: KernelFact, ServerMonotonicNS: 2, ServerUnixNS: 3,
+		Summary: "observed", Operation: &OperationResult{AttemptObserved: true, ActionResult: "none", Mechanism: "tracepoint"},
+	}
+	tests := []struct {
+		name   string
+		mutate func(*Event)
+	}{
+		{name: "attribution Run", mutate: func(event *Event) {
+			event.Attribution = &Attribution{Status: "exact", RunID: "other-run"}
+		}},
+		{name: "correlation event", mutate: func(event *Event) {
+			event.Correlation = &correlator.Result{EventID: "other-event"}
+		}},
+		{name: "correlation Run", mutate: func(event *Event) {
+			event.Correlation = &correlator.Result{EventID: event.ID, Attribution: correlator.Attribution{RunID: "other-run"}}
+		}},
+		{name: "selected non-claim", mutate: func(event *Event) {
+			event.Correlation = &correlator.Result{EventID: event.ID, SelectedCheckpoint: event.ID}
+		}},
+		{name: "missing candidate", mutate: func(event *Event) {
+			event.Correlation = &correlator.Result{EventID: event.ID, Candidates: []correlator.Candidate{{CheckpointID: "missing"}}}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := kernel
+			test.mutate(&candidate)
+			if _, err := Build("run", []Event{claim, candidate}); err == nil {
+				t.Fatal("invalid evidence reference was accepted")
+			}
+		})
+	}
+}

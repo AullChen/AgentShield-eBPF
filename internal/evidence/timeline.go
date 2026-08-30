@@ -90,16 +90,21 @@ func Build(runID string, events []Event) (Timeline, error) {
 		return Timeline{}, errors.New("timeline input is invalid")
 	}
 	items := make([]Item, 0, len(events))
-	seen := make(map[string]struct{}, len(events))
+	sources := make(map[string]Source, len(events))
 	for _, event := range events {
 		if event.ID == "" || event.Type == "" || event.ServerMonotonicNS == 0 || event.ServerUnixNS == 0 || len(event.Summary) > 4096 {
 			return Timeline{}, errors.New("timeline event is invalid")
 		}
-		if _, exists := seen[event.ID]; exists {
+		if _, exists := sources[event.ID]; exists {
 			return Timeline{}, errors.New("timeline event ID is duplicated")
 		}
-		seen[event.ID] = struct{}{}
+		sources[event.ID] = event.Source
+	}
+	for _, event := range events {
 		if err := validateSource(event); err != nil {
+			return Timeline{}, err
+		}
+		if err := validateReferences(runID, event, sources); err != nil {
 			return Timeline{}, err
 		}
 		items = append(items, Item{ID: event.ID, Type: event.Type, Source: event.Source,
@@ -118,6 +123,31 @@ func Build(runID string, events []Event) (Timeline, error) {
 		items[index].monotonicNS = 0
 	}
 	return Timeline{SchemaVersion: SchemaVersion, RunID: runID, Items: items}, nil
+}
+
+func validateReferences(runID string, event Event, sources map[string]Source) error {
+	if event.Attribution != nil && event.Attribution.RunID != "" && event.Attribution.RunID != runID {
+		return errors.New("event attribution references another Run")
+	}
+	if event.Correlation == nil {
+		return nil
+	}
+	correlation := event.Correlation
+	if correlation.EventID != event.ID {
+		return errors.New("correlation references another event")
+	}
+	if correlation.Attribution.RunID != "" && correlation.Attribution.RunID != runID {
+		return errors.New("correlation attribution references another Run")
+	}
+	if correlation.SelectedCheckpoint != "" && sources[correlation.SelectedCheckpoint] != AgentClaim {
+		return errors.New("correlation selected checkpoint is not an Agent claim")
+	}
+	for _, candidate := range correlation.Candidates {
+		if candidate.CheckpointID == "" || sources[candidate.CheckpointID] != AgentClaim {
+			return errors.New("correlation candidate is not an Agent claim")
+		}
+	}
+	return nil
 }
 
 func validateSource(event Event) error {

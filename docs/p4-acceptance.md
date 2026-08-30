@@ -21,7 +21,9 @@ are accepted only on the server-derived source that owns them.
 Attribution states their `{instance_id,scope_cookie}` basis. Correlation embeds
 the selected checkpoint, confidence, authoritative server-monotonic clock, and
 all score factors. Confidence describes association strength, not truth or
-causality.
+causality. Timeline construction rejects attribution to another Run,
+correlation to another event, and checkpoint references that do not resolve to
+an `agent_claim` in the same timeline.
 
 Reproduce and verify the source sample with:
 
