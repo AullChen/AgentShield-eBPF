@@ -14,6 +14,9 @@ success. Its later cgroup containment is recorded independently as `killed`.
 The network example is different: `cgroup/connect4` synchronously returned a
 deny and therefore records `action_result=blocked` and an enforced block
 decision. These meanings must not be collapsed in storage, APIs, or the UI.
+The schema enforces a mutually exclusive source-field matrix: Agent claims
+cannot carry attribution, correlation, or authoritative results; those fields
+are accepted only on the server-derived source that owns them.
 
 Attribution states their `{instance_id,scope_cookie}` basis. Correlation embeds
 the selected checkpoint, confidence, authoritative server-monotonic clock, and

@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/agentshield/agentshield-ebpf/internal/correlator"
 )
 
 func TestP4Acceptance(t *testing.T) {
@@ -53,8 +55,19 @@ func TestP4Acceptance(t *testing.T) {
 }
 
 func TestTimelineRejectsSourceConfusion(t *testing.T) {
-	_, err := Build("run", []Event{{ID: "claim", Type: "run_finished", Source: AgentClaim, ServerMonotonicNS: 1, ServerUnixNS: 2, Summary: "claim", Operation: &OperationResult{ActionResult: "success"}}})
-	if err == nil {
-		t.Fatal("Agent claim supplied authoritative result")
+	tests := []Event{
+		{ID: "claim-operation", Type: "claim", Source: AgentClaim, Operation: &OperationResult{}},
+		{ID: "claim-attribution", Type: "claim", Source: AgentClaim, Attribution: &Attribution{Status: "exact"}},
+		{ID: "claim-correlation", Type: "claim", Source: AgentClaim, Correlation: &correlator.Result{}},
+		{ID: "decision-operation", Type: "decision", Source: PolicyDecision, Decision: &Decision{}, Operation: &OperationResult{}},
+		{ID: "containment-attribution", Type: "containment", Source: ContainmentResult, Containment: &Containment{}, Attribution: &Attribution{}},
+	}
+	for _, event := range tests {
+		event.ServerMonotonicNS = 1
+		event.ServerUnixNS = 2
+		event.Summary = "confused source"
+		if _, err := Build("run", []Event{event}); err == nil {
+			t.Fatalf("source-confused event was accepted: %+v", event)
+		}
 	}
 }

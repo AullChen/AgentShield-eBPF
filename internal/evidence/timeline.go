@@ -123,7 +123,7 @@ func Build(runID string, events []Event) (Timeline, error) {
 func validateSource(event Event) error {
 	switch event.Source {
 	case AgentClaim:
-		if event.Operation != nil || event.Decision != nil || event.Containment != nil {
+		if event.Attribution != nil || event.Correlation != nil || event.Operation != nil || event.Decision != nil || event.Containment != nil {
 			return errors.New("agent claim contains authoritative result")
 		}
 	case KernelFact:
@@ -131,11 +131,11 @@ func validateSource(event Event) error {
 			return errors.New("kernel fact has invalid evidence fields")
 		}
 	case PolicyDecision:
-		if event.Decision == nil || event.Containment != nil {
+		if event.Attribution != nil || event.Correlation != nil || event.Operation != nil || event.Decision == nil || event.Containment != nil {
 			return errors.New("policy decision has invalid evidence fields")
 		}
 	case ContainmentResult:
-		if event.Containment == nil || event.Decision != nil || event.Operation != nil {
+		if event.Attribution != nil || event.Correlation != nil || event.Containment == nil || event.Decision != nil || event.Operation != nil {
 			return errors.New("containment result has invalid evidence fields")
 		}
 	default:
