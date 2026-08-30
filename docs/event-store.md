@@ -6,7 +6,9 @@ a non-blocking, bounded writer.
 ## SQLite boundary
 
 The store creates a real SQLite database, enables WAL, uses `synchronous=NORMAL`
-and a bounded busy timeout, and caps page growth. Capacity accounting includes
+and a bounded busy timeout, and caps page growth. Its owner-only directory and
+regular-file identity are verified before opening, symbolic links are rejected,
+and the database is restricted to `0600` before schema writes. Capacity accounting includes
 live database pages plus the WAL and shared-memory files; reusable free pages
 are not mistaken for retained evidence. Above the soft limit it truncates the
 WAL and removes a proportional number of the oldest low-severity records;

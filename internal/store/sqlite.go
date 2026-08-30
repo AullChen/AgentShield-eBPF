@@ -72,9 +72,29 @@ func OpenSQLite(path string, options SQLiteOptions) (*SQLite, error) {
 	if err := os.MkdirAll(filepath.Dir(cleaned), 0o700); err != nil {
 		return nil, fmt.Errorf("create SQLite directory: %w", err)
 	}
+	if err := validateSQLiteDirectory(filepath.Dir(cleaned)); err != nil {
+		return nil, err
+	}
+	expected, err := os.Lstat(cleaned)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("inspect SQLite path: %w", err)
+	}
+	if err == nil && (expected.Mode()&os.ModeSymlink != 0 || !expected.Mode().IsRegular()) {
+		return nil, errors.New("SQLite path must be a regular file, not a symbolic link")
+	}
 	database, err := openNative(cleaned)
 	if err != nil {
 		return nil, err
+	}
+	actual, err := os.Lstat(cleaned)
+	if err != nil || actual.Mode()&os.ModeSymlink != 0 || !actual.Mode().IsRegular() ||
+		(expected != nil && !os.SameFile(expected, actual)) {
+		_ = database.Close()
+		return nil, errors.New("SQLite file identity changed while opening")
+	}
+	if err := os.Chmod(cleaned, 0o600); err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("restrict SQLite permissions: %w", err)
 	}
 	store := &SQLite{database: database, path: cleaned, softLimit: options.SoftLimitBytes, hardLimit: options.HardLimitBytes}
 	pageLimit := options.HardLimitBytes / 4096
@@ -83,6 +103,27 @@ func OpenSQLite(path string, options SQLiteOptions) (*SQLite, error) {
 		return nil, fmt.Errorf("initialize SQLite: %w", err)
 	}
 	return store, nil
+}
+
+func validateSQLiteDirectory(path string) error {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return fmt.Errorf("resolve SQLite directory: %w", err)
+	}
+	if filepath.Clean(resolved) != filepath.Clean(path) {
+		return errors.New("SQLite directory must not contain symbolic links")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat SQLite directory: %w", err)
+	}
+	if !info.IsDir() {
+		return errors.New("SQLite parent is not a directory")
+	}
+	if err := validateSQLiteDirectoryOwner(info); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (store *SQLite) AppendBatch(records []Record) error {

@@ -56,6 +56,22 @@ func TestSQLitePersistsSanitizedRecordsInWALDatabase(t *testing.T) {
 	}
 }
 
+func TestSQLiteRejectsSymbolicLinkPath(t *testing.T) {
+	directory := t.TempDir()
+	target := filepath.Join(directory, "target.db")
+	if err := os.WriteFile(target, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(directory, "evidence.db")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symbolic links unavailable: %v", err)
+	}
+	if database, err := OpenSQLite(link, SQLiteOptions{SoftLimitBytes: 1 << 20, HardLimitBytes: 2 << 20}); err == nil {
+		database.Close()
+		t.Fatal("symbolic-link SQLite path was accepted")
+	}
+}
+
 func TestSQLiteDoesNotReportCommittedBatchAsFailedWhenMaintenanceFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "full.db")
 	if err := os.WriteFile(path, nil, 0o600); err != nil {
