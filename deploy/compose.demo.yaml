@@ -1,0 +1,48 @@
+services:
+  dashboard:
+    build:
+      context: ../dashboard
+    image: agentshield-dashboard-demo:local
+    network_mode: host
+    read_only: true
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+      - /app/dashboard/.next/cache:rw,noexec,nosuid,nodev,size=32m,uid=1000,gid=1000
+    environment:
+      AGENTSHIELD_API_URL: "http://127.0.0.1:8080"
+      AGENTSHIELD_STREAM_URL: "ws://127.0.0.1:8080/api/v1/stream"
+      AGENTSHIELD_READ_TOKEN: "${AGENTSHIELD_READ_TOKEN:?set by scripts/demo.sh}"
+      AGENTSHIELD_DASHBOARD_TOKEN: "${AGENTSHIELD_DASHBOARD_TOKEN:?set by scripts/demo.sh}"
+
+  agent:
+    build:
+      context: ../sandbox/agent
+    image: agentshield-sandbox-demo:local
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    environment:
+      EXPECTED_FIXTURE_SHA256: "${AGENTSHIELD_FIXTURE_SHA256:?set by scripts/demo.sh}"
+      AGENTSHIELD_START_GATE: "1"
+      AGENTSHIELD_GATE_TIMEOUT_SECONDS: "${AGENTSHIELD_GATE_TIMEOUT_SECONDS:-120}"
+    volumes:
+      - type: bind
+        source: ../sandbox/fixtures/demo-secrets/example-token
+        target: /demo-secrets/example-token
+        read_only: true
+    networks:
+      - sandbox
+
+networks:
+  sandbox:
+    enable_ipv6: true

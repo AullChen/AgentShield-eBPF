@@ -4,6 +4,30 @@ set -eu
 fixture=/demo-secrets/example-token
 expected_hash=${EXPECTED_FIXTURE_SHA256:-}
 
+if [ "${AGENTSHIELD_START_GATE:-0}" = "1" ]; then
+  gate_timeout=${AGENTSHIELD_GATE_TIMEOUT_SECONDS:-120}
+  case "$gate_timeout" in
+    ''|*[!0-9]*)
+      echo "AGENTSHIELD_GATE_TIMEOUT_SECONDS must be an integer" >&2
+      exit 1
+      ;;
+  esac
+  if [ "$gate_timeout" -lt 1 ] || [ "$gate_timeout" -gt 600 ]; then
+    echo "AGENTSHIELD_GATE_TIMEOUT_SECONDS must be between 1 and 600" >&2
+    exit 1
+  fi
+  elapsed=0
+  while [ ! -f /tmp/agentshield-start ]; do
+    if [ "$elapsed" -ge "$gate_timeout" ]; then
+      echo "timed out waiting for the trusted demo start gate" >&2
+      exit 1
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  echo "AGENTSHIELD_EVIDENCE trusted_start_gate=released"
+fi
+
 if [ ! -f "$fixture" ] || [ ! -r "$fixture" ]; then
   echo "fixture is not a readable regular file: $fixture" >&2
   exit 1
@@ -46,7 +70,9 @@ echo "AGENTSHIELD_EVIDENCE fixture_device_inode=$fixture_identity"
 cat -- "$fixture" >/dev/null
 echo "AGENTSHIELD_ACTION file_open=/demo-secrets/example-token"
 
-/bin/echo "agentshield-sandbox-command" >/dev/null
+/bin/echo "" "agentshield-sandbox-command" \
+  "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+  >/dev/null
 echo "AGENTSHIELD_ACTION exec=/bin/echo"
 
 curl --noproxy '*' --connect-timeout 1 --max-time 2 --silent --output /dev/null \
