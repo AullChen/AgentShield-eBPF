@@ -17,11 +17,22 @@ Run the reproducible Linux acceptance:
 ./scripts/accept-sandbox.sh
 ```
 
+The invoking user must be authorized to use the Docker socket. On the dedicated
+test VM, running this one acceptance command with `sudo` is preferable to
+granting a general-purpose account persistent membership in the Docker group.
+
 The command pulls the configured base image before building and records the
 resulting sandbox image ID alongside the repository fixture's host path and
 SHA-256. It then records the container mount namespace, mount ID/options, and
 device/inode without printing the fixture content. Raw evidence is owner-only under
 `tmp/acceptance/day20/` and must not be committed.
+
+The complete guarded host-Core/Dashboard/Sandbox flow is
+`sudo ./scripts/demo.sh --isolated-vm`; see `docs/demo-guide.md`. In that flow
+the container entrypoint waits on an owner-controlled file in its private
+`/tmp` until Core reports successful hook attachment. The gate prevents demo
+attack actions from running early. It is not a substitute for the stronger
+stopped-task production supervisor contract below.
 
 ## Trusted supervisor example
 
