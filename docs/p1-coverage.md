@@ -12,8 +12,8 @@ must not be labeled P1 runtime accepted.
 | --- | --- | --- | --- |
 | `openat` file attempt | Implemented; decoder/edge tests pass | Pending supported isolated Linux | No silent fallback |
 | `execve` process attempt | Implemented; empty argv/truncation tests pass | Pending supported isolated Linux | `execveat` Roadmap |
-| TCP IPv4 `connect4` | Implemented; Go IPv4 decode passes | Pending supported isolated Linux cgroup | Network verifier/attach failure falls back to file/exec only |
-| TCP IPv6 `connect6` | Implemented; Go IPv6 decode passes | Pending supported isolated Linux cgroup | Network verifier/attach failure falls back to file/exec only |
+| TCP IPv4 `connect4` | Implemented; Go IPv4 decode passes | Pending supported isolated Linux cgroup | A verifier, attach, or capture failure fails this combined gate |
+| TCP IPv6 `connect6` | Implemented; Go IPv6 decode passes | Pending supported isolated Linux cgroup | A verifier, attach, or capture failure fails this combined gate |
 | `openat2` | Not implemented | Not covered | Roadmap |
 | `execveat` | Not implemented | Not covered | Roadmap |
 | UDP / `AF_UNIX` | Not implemented | Not covered | Roadmap |
@@ -35,12 +35,14 @@ make bpf-object
 sudo ./scripts/accept-p1.sh
 ```
 
-The script first requests file/exec plus connect4/connect6. If network verifier
-or attachment fails, it preserves that failure and retries with the network
-programs removed from the collection so file/exec can still be evaluated. It
-then triggers file/exec/TCP IPv4/TCP IPv6, terminates the reader with SIGTERM,
-and validates attempt semantics, empty argv, truncation, exact destinations,
-JSON/wire schemas, and non-negative calibrated receipt timing.
+The script requests file/exec plus connect4/connect6 in one collection. A
+network verifier, attach, or capture failure fails the combined gate; it does
+not silently retry a narrower collection. Use `scripts/accept-file-exec.sh` to
+diagnose the narrower tracepoint path, without describing that result as P1 or
+network acceptance. The combined script triggers file/exec/TCP IPv4/TCP IPv6,
+terminates the reader with SIGTERM, and validates attempt semantics, empty argv,
+truncation, exact destinations, JSON/wire schemas, and non-negative calibrated
+receipt timing.
 
 Each invocation atomically creates a distinct owner-only directory under
 ignored `tmp/acceptance/day17/`, including for concurrent runs. Its evidence
@@ -53,9 +55,8 @@ includes:
 - raw exact-scope JSON Lines (never commit because paths/argv may be sensitive);
 - sanitized summary and coverage matrix.
 
-The concrete pre-M1 baseline is file + exec. Network is the optional third
-class and counts as stable only when both IPv4 and IPv6 pass; verifier, attach,
-or capture gaps are recorded as Roadmap. Forced ring-buffer saturation and
+The current combined gate passes only with file, exec, IPv4, and IPv6 evidence,
+reported as three stable event classes. Forced ring-buffer saturation and
 kernel drop aggregation are a separate pending Day 16 Linux reliability test,
 not implied by a Day 17 pass.
 

@@ -130,7 +130,6 @@ wait_for_ready() {
   return 1
 }
 
-network_attach_status=PASS
 start_audit --scope-cgroup "$cgroup_path"
 if ! wait_for_ready; then
   echo "exact-scope kernel load or attachment failed; see $runtime_log" >&2
@@ -168,11 +167,7 @@ if grep -E '"dst_port":18081([,}])' "$events_log" >/dev/null; then
   exit 1
 fi
 
-ipv4_status=$network_attach_status
-if [ "$network_attach_status" != PASS ]; then
-  echo "connect4/connect6 verifier or attachment failed; see network-attach.log" >"$strict_error"
-fi
-if [ "$ipv4_status" = PASS ] && ! go run ./cmd/auditcheck \
+if ! go run ./cmd/auditcheck \
   --input "$events_log" \
   --file-marker "$file_marker" \
   --exec-marker "$exec_marker" \
@@ -182,8 +177,7 @@ if [ "$ipv4_status" = PASS ] && ! go run ./cmd/auditcheck \
   echo "IPv4 exact-scope acceptance failed; see $strict_error" >&2
   exit 1
 fi
-ipv6_status=$network_attach_status
-if [ "$ipv6_status" = PASS ] && ! go run ./cmd/auditcheck \
+if ! go run ./cmd/auditcheck \
   --input "$events_log" \
   --file-marker "$file_marker" \
   --exec-marker "$exec_marker" \
@@ -194,25 +188,14 @@ if [ "$ipv6_status" = PASS ] && ! go run ./cmd/auditcheck \
   exit 1
 fi
 
-stable_types=2
-if [ "$ipv4_status" = PASS ] && [ "$ipv6_status" = PASS ]; then
-  stable_types=3
-  go run ./cmd/auditcheck \
-    --input "$events_log" \
-    --file-marker "$file_marker" \
-    --exec-marker "$exec_marker" \
-    --ipv4-destination 127.0.0.1:18080 \
-    --ipv6-destination '[::1]:18080' \
-    --require-receipt-clocks \
-    --require-scope-identity >"$summary"
-else
-  go run ./cmd/auditcheck \
-    --input "$events_log" \
-    --file-marker "$file_marker" \
-    --exec-marker "$exec_marker" \
-    --require-receipt-clocks \
-    --require-scope-identity >"$summary"
-fi
+go run ./cmd/auditcheck \
+  --input "$events_log" \
+  --file-marker "$file_marker" \
+  --exec-marker "$exec_marker" \
+  --ipv4-destination 127.0.0.1:18080 \
+  --ipv6-destination '[::1]:18080' \
+  --require-receipt-clocks \
+  --require-scope-identity >"$summary"
 
 cat >"$coverage" <<EOF
 # P1 pre-M1 coverage ($run_id)
@@ -221,16 +204,16 @@ cat >"$coverage" <<EOF
 | --- | --- | --- |
 | file/openat attempt | PASS | summary.sanitized.json |
 | exec/execve attempt | PASS | summary.sanitized.json |
-| TCP IPv4 connect4 | $ipv4_status | summary.sanitized.json / network-check.txt |
-| TCP IPv6 connect6 | $ipv6_status | summary.sanitized.json / network-check.txt |
+| TCP IPv4 connect4 | PASS | summary.sanitized.json / network-check.txt |
+| TCP IPv6 connect6 | PASS | summary.sanitized.json / network-check.txt |
 | openat2 | ROADMAP | not instrumented |
 | execveat | ROADMAP | not instrumented |
 | UDP and AF_UNIX | ROADMAP | not instrumented |
 
-Stable event classes: $stable_types/3. P1 pre-M1 requires file + exec (2/3); network counts as stable only when both IPv4 and IPv6 pass. Final MVP requires 3/3.
+Stable event classes: 3/3. The combined gate fails on any required file, exec, IPv4, or IPv6 verifier/attach/capture error.
 Object, environment, reproduction commands, ABI, and runtime evidence are stored in this owner-only directory.
 EOF
 
-echo "P1 pre-M1 acceptance passed with $stable_types/3 stable event classes."
+echo "P1 pre-M1 acceptance passed with 3/3 stable event classes."
 echo "Sanitized coverage: $coverage"
 echo "Raw exact-scope events remain owner-only and must not be committed."
