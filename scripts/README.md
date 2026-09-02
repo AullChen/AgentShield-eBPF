@@ -4,6 +4,12 @@ Developer, environment-check, and demo helper scripts live here.
 
 Current files:
 
+- `demo.sh`: guarded, dedicated-VM-only orchestration for the host eBPF Core,
+  Compose Dashboard, and gated unprivileged Sandbox. It requires all three
+  kernel event classes and stores owner-only evidence.
+- `release-check.sh`: clean-tree Ubuntu release gate for module integrity,
+  reachable Go vulnerabilities, source/unit checks, Dashboard build/audit, and
+  the non-interactive privileged demo. License and screenshot review stay manual.
 - `build-bpf.sh`: builds a real CO-RE ELF object on the supported Ubuntu
   toolchain and records object/BTF hashes and a parsed spec manifest.
 - `accept-file-exec.sh`: performs the Day 14 kernel load, verifier, tracepoint

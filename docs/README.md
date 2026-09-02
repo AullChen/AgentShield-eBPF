@@ -4,6 +4,14 @@ Public project documentation belongs here.
 
 Current notes:
 
+- `demo-guide.md`: Day 48 guarded host-Core/Compose-Dashboard/Sandbox demo,
+  evidence semantics, and explicit non-production boundary.
+- `troubleshooting.md`: preflight, BPF, event, Dashboard, and safe-cleanup
+  diagnosis without weakening exact-scope checks.
+- `support-matrix.md`: environment baseline plus source, runtime, degradation,
+  privacy, fail-open, block, and containment coverage.
+- `roadmap.md`: release blockers and ordered runtime, enforcement, and coverage
+  follow-up work.
 - `audit-reliability.md`: Day 16 per-type drop counters, Go-synthesized loss
   notices, double-clock receipt fields, and shutdown/failure semantics.
 - `agent-registration.md`: trusted Agent Run registration contract, identity

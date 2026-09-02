@@ -1,12 +1,13 @@
 BINARY := bin/agentshield
 BPF_OBJECT := bpf/agentshield.bpf.o
 BPF_MANIFEST := bpf/agentshield.bpf.manifest.json
+CLANG ?= clang-18
 
 ifeq ($(OS),Windows_NT)
 BINARY := bin/agentshield.exe
 endif
 
-.PHONY: generate verify-generated bpf-object verify-bpf-object accept-p1 accept-p2 accept-network-block accept-sandbox test-p2 test-p3 test-checkpoint test-sdk test-supervisor test-stream check-bpf-syntax check-linux-bpfmgr check-linux-killer check-linux-api test build check clean
+.PHONY: generate verify-generated bpf-object verify-bpf-object accept-p1 accept-p2 accept-network-block accept-sandbox release-check test-p2 test-p3 test-checkpoint test-sdk test-supervisor test-stream check-bpf-syntax check-linux-bpfmgr check-linux-killer check-linux-api test build check clean
 
 generate:
 	go generate ./internal/bpfmgr
@@ -51,8 +52,11 @@ accept-network-block: bpf-object build
 accept-sandbox:
 	./scripts/accept-sandbox.sh
 
+release-check:
+	./scripts/release-check.sh --isolated-vm
+
 check-bpf-syntax:
-	clang -DAGENTSHIELD_BPF_SYNTAX_CHECK -Wall -Wextra -Werror -Wno-unused-parameter -fsyntax-only bpf/agentshield.bpf.c
+	$(CLANG) -DAGENTSHIELD_BPF_SYNTAX_CHECK -Wall -Wextra -Werror -Wno-unused-parameter -fsyntax-only bpf/agentshield.bpf.c
 
 check-linux-bpfmgr: bin
 ifeq ($(OS),Windows_NT)

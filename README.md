@@ -29,6 +29,7 @@ The project is currently in early MVP development. The repository contains the G
 | Correlation | Source complete, integration pending | Captured instance/cookie identity resolves the Run first; only then are same-Run checkpoints scored by process, tool semantics, and server-monotonic proximity. Equal candidates remain explicitly ambiguous. |
 | Evidence timeline | P4 source gate complete, runtime pending | The tracked JSON separates agent claims, kernel facts, policy decisions, synchronous block, and post-event containment while preserving attribution and correlation rationale. Production fan-in remains pending. |
 | Realtime stream | Audit integration source complete, Linux evidence pending | The optional loopback audit API adds redacted JSON fan-out, decimal-string cursors, one-time browser tickets, bounded recovery, and slow-client isolation. Durable snapshot/history is pending. |
+| Isolated demo | Source complete, Linux evidence pending | `scripts/demo.sh` joins the host Core, loopback Compose Dashboard, and a gated unprivileged Sandbox using only the repository fake secret; a pass proves only the standalone audit path. |
 
 ## MVP Direction
 
@@ -41,7 +42,9 @@ The MVP is scoped around this path:
 5. Correlate Agent checkpoints with kernel events.
 6. Display live evidence chains in a web dashboard.
 
-The current codebase has only the first pieces of that path. It is not yet a usable sandbox or enforcement tool.
+The repository now has deterministic source gates and a guarded standalone
+audit demo harness, but no reviewed supported-Linux end-to-end evidence is
+checked in. It is not a production sandbox or complete enforcement tool.
 
 ## Repository Layout
 
@@ -54,11 +57,11 @@ internal/            Go internal packages
 dashboard/           Next.js dashboard scaffold
 sdk/python/          Checkpoint-only Python Agent adapter SDK
 sandbox/             Minimal hardened demo Agent and repository-owned fake secret
-deploy/              Future local deployment files
+deploy/              Isolated demo Compose assets (not production deployment)
 configs/             Runtime and policy configuration examples
 docs/                Public project documentation
-scripts/             Developer helpers; currently includes the audit trigger
-tests/               Future integration, security, and performance tests
+scripts/             Developer, acceptance, release, and demo helpers
+tests/               Integration, security, and performance test layout
 ```
 
 Local planning documents and proposal drafts are intentionally kept outside Git under `.local-docs/`.
@@ -84,6 +87,16 @@ The reproducible object build additionally fixes clang/llvm 18.x as its
 supported compiler baseline. See [docs/bpf-build.md](docs/bpf-build.md).
 
 Windows and macOS are fine for editing, Go unit tests, dashboard work, and the bootstrap syntax check. Real eBPF loading and runtime validation must happen on Linux.
+
+The complete standalone demo is intentionally separate from this
+cross-platform quick start. On a disposable supported Linux VM, follow
+[docs/demo-guide.md](docs/demo-guide.md) and run:
+
+```sh
+sudo ./scripts/demo.sh --isolated-vm
+```
+
+Do not run it on a workstation or with a real host secret.
 
 ## Quick Start
 
@@ -169,6 +182,11 @@ Or run the aggregate Go/BPF check:
 make check
 ```
 
+The Makefile defaults `CLANG=clang-18` to match the supported CO-RE baseline.
+On a non-Linux editing host where the same compiler is installed only as
+`clang`, use `make check CLANG=clang`; that remains a source/cross-build gate,
+not a real BPF object or kernel acceptance.
+
 `make check` is non-mutating: it verifies that the checked-in generated binding
 already matches the BPF source contents and SHA-256 values. Run `make generate`
 explicitly after an intentional BPF source change.
@@ -183,6 +201,17 @@ npm audit --audit-level=moderate --registry=https://registry.npmjs.org
 ```
 
 The current P0 integration status is recorded in [docs/p0-integration-check.md](docs/p0-integration-check.md).
+
+On a clean, disposable supported Ubuntu VM, the final automated source,
+dependency, build, and three-event demo gate is:
+
+```sh
+sudo make release-check
+```
+
+It requires `govulncheck` and network access to the official npm audit endpoint.
+A pass still does not choose a license, review raw evidence, or replace the
+manual real-Dashboard screenshot review described in the local test guide.
 
 ## Current eBPF Probe
 
@@ -235,7 +264,10 @@ cd dashboard
 npm run dev
 ```
 
-The dashboard does not yet connect to the Go control plane.
+Set the three server-side values documented in `dashboard/README.md` to connect
+to the optional loopback API exposed by `agentshield audit`. The guarded demo
+does this automatically. Durable history and production control-plane fan-in
+remain pending.
 
 ## Development Timeline
 
@@ -295,6 +327,11 @@ Additional source milestones:
   actual Go load/attach state, hooks, generation, and per-type drops
 - Day 47: deterministic P5 replay plus production-mode desktop/mobile browser
   acceptance across the complete dashboard flow
+- Day 48: guarded isolated demo orchestration for host Core, Compose Dashboard,
+  and a fake-secret Sandbox; supported-Linux execution remains pending
+- Day 49: demo, troubleshooting, support/coverage, and release-boundary docs
+- Day 50: reproducible release-check harness and Roadmap; clean Linux evidence,
+  screenshots, dependency review, and the owner-selected license remain gates
 
 Current gate:
 
@@ -304,15 +341,16 @@ Current gate:
   rebuilds the object and binary, then invokes `scripts/accept-p1.sh`; running
   `make bpf-object` followed by the script directly is the equivalent manual path.
 - Preserve environment/toolchain/object hashes and sanitized runtime evidence.
-- Require file and exec as the two P1 pre-M1 baseline classes. Network is the
-  optional third class and is stable only when both IPv4 and IPv6 pass. Final
-  MVP still requires all three classes.
+- The current P1 combined gate requires file, exec, IPv4, and IPv6 evidence;
+  use the narrower file/exec script only for diagnosis. Final MVP requires all
+  three event classes and must not turn a network failure into a partial pass.
 
 Subsequent work:
 
-- Obtain supported-Linux connect4/connect6 runtime evidence and later extend
-  network coverage beyond TCP IPv4/IPv6
-- Obtain supported-Linux exact-scope and Docker sandbox runtime evidence
+- Follow [docs/support-matrix.md](docs/support-matrix.md) for current claims and
+  [docs/roadmap.md](docs/roadmap.md) for the ordered release/runtime backlog.
+- Use [docs/troubleshooting.md](docs/troubleshooting.md) without weakening an
+  exact-scope, authentication, or evidence-integrity check to force a pass.
 
 ## Limitations
 
@@ -345,4 +383,7 @@ Subsequent work:
 
 ## License
 
-License information will be added before the first public release.
+No repository license has been selected. The eBPF program's `Dual MIT/GPL`
+kernel declaration does not license the repository as a whole. The repository
+owner must add an explicit license before public release or redistribution;
+this is a release blocker, not an implied license grant.
