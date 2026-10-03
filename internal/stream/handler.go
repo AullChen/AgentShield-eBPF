@@ -154,6 +154,10 @@ func (handler *Handler) serveStream(response http.ResponseWriter, request *http.
 		http.Error(response, "websocket transport unavailable", http.StatusInternalServerError)
 		return
 	}
+	// Register before sending 101: publishers can run as soon as the client
+	// sees the upgrade, including before the handshake flush returns.
+	initial, client, resync := handler.hub.subscribe(cursor, cursorSet, filter)
+	defer handler.hub.unsubscribe(client)
 	connection, buffered, err := hijacker.Hijack()
 	if err != nil {
 		return
@@ -168,13 +172,11 @@ func (handler *Handler) serveStream(response http.ResponseWriter, request *http.
 	}
 	var writeMu sync.Mutex
 
-	initial, client, resync := handler.hub.subscribe(cursor, cursorSet, filter)
 	if resync != nil {
 		_ = writeJSONFrame(connection, &writeMu, *resync)
 		_ = writeCloseFrame(connection, &writeMu, 1000, "resync required")
 		return
 	}
-	defer handler.hub.unsubscribe(client)
 	for _, message := range initial {
 		if err := writeJSONFrame(connection, &writeMu, message); err != nil {
 			return

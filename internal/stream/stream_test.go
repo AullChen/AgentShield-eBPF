@@ -19,6 +19,49 @@ import (
 
 const testReadToken = "read-only-test-token-123456789"
 
+type publishOnUpgrade struct {
+	http.ResponseWriter
+	hub *Hub
+}
+
+func (response publishOnUpgrade) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	connection, buffered, err := response.ResponseWriter.(http.Hijacker).Hijack()
+	if err != nil {
+		return nil, nil, err
+	}
+	writer := &upgradeWriter{Writer: connection, hub: response.hub}
+	return connection, bufio.NewReadWriter(buffered.Reader, bufio.NewWriter(writer)), nil
+}
+
+type upgradeWriter struct {
+	io.Writer
+	hub *Hub
+	written bool
+}
+
+func (writer *upgradeWriter) Write(contents []byte) (int, error) {
+	if !writer.written {
+		writer.written = true
+		if _, err := writer.hub.Publish(testEvent("during-upgrade", "run-1", "high")); err != nil {
+			return 0, err
+		}
+	}
+	return writer.Writer.Write(contents)
+}
+
+func TestFirstConnectionRetainsEventsDuringUpgrade(t *testing.T) {
+	hub, handler := testStream(t, HubOptions{})
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		handler.Routes().ServeHTTP(publishOnUpgrade{response, hub}, request)
+	}))
+	defer server.Close()
+	connection, reader := dialWebSocket(t, server.URL, "/api/v1/stream", "Bearer "+testReadToken)
+	defer connection.Close()
+	if got := readMessage(t, connection, reader); got.ID != "during-upgrade" {
+		t.Fatalf("upgrade event = %#v", got)
+	}
+}
+
 func TestAuthenticatedWebSocketReceivesFilteredEvent(t *testing.T) {
 	hub, handler := testStream(t, HubOptions{})
 	server := httptest.NewServer(handler.Routes())
