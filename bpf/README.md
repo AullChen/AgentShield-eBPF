@@ -8,6 +8,12 @@ Current files:
 - `events.h`
 - `maps.h`
 
+IPv4/IPv6 destination reads use volatile 32-bit `bpf_sock_addr` context loads.
+Do not replace them with a bulk context `memcpy`: LLVM can combine IPv6 words
+into wide loads that the kernel verifier rejects. Rebuild the object and its
+manifest after source changes; `sudo make accept-p1` must still pass both
+connect4 and connect6. A syntax check does not establish verifier acceptance.
+
 `agentshield.bpf.c` is prepared for Linux CO-RE builds with `vmlinux.h` and
 libbpf headers. During early repository initialization it can also be syntax
 checked without a Linux BPF sysroot:

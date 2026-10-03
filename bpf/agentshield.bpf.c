@@ -250,6 +250,31 @@ int agentshield_trace_openat(struct trace_event_raw_sys_enter *ctx)
 }
 
 static __always_inline void
+agentshield_copy_destination(__u8 destination[16],
+			     const volatile struct bpf_sock_addr *ctx,
+			     __u16 address_family)
+{
+	__u32 word;
+	int i;
+
+	/* sock_addr context accesses must remain 32-bit, including IPv6.
+	 * Volatile loads prevent LLVM from combining adjacent words into an
+	 * invalid 64/128-bit context access. Byte copies preserve network order.
+	 */
+	if (address_family == AGENTSHIELD_AF_INET) {
+		word = ctx->user_ip4;
+		__builtin_memcpy(destination, &word, sizeof(word));
+		return;
+	}
+#pragma unroll
+	for (i = 0; i < 4; i++) {
+		word = ctx->user_ip6[i];
+		__builtin_memcpy(destination + i * sizeof(word), &word,
+				 sizeof(word));
+	}
+}
+
+static __always_inline void
 agentshield_fill_network_key(struct agentshield_network_allow_key *key,
 			     const struct bpf_sock_addr *ctx,
 			     __u16 address_family, __u32 profile_id,
@@ -259,12 +284,8 @@ agentshield_fill_network_key(struct agentshield_network_allow_key *key,
 	key->generation = generation;
 	key->address_family = address_family;
 	key->destination_port = bpf_ntohs((__u16)ctx->user_port);
-	if (address_family == AGENTSHIELD_AF_INET)
-		__builtin_memcpy(key->destination_address, &ctx->user_ip4,
-				 sizeof(ctx->user_ip4));
-	else
-		__builtin_memcpy(key->destination_address, &ctx->user_ip6,
-				 sizeof(ctx->user_ip6));
+	agentshield_copy_destination(key->destination_address, ctx,
+				     address_family);
 }
 
 static __always_inline int
@@ -339,12 +360,8 @@ agentshield_audit_connect(struct bpf_sock_addr *ctx, __u16 address_family)
 	payload->destination_port = bpf_ntohs((__u16)ctx->user_port);
 	payload->address_family = address_family;
 	payload->protocol = AGENTSHIELD_IPPROTO_TCP;
-	if (address_family == AGENTSHIELD_AF_INET)
-		__builtin_memcpy(payload->destination_address, &ctx->user_ip4,
-				 sizeof(ctx->user_ip4));
-	else
-		__builtin_memcpy(payload->destination_address, &ctx->user_ip6,
-				 sizeof(ctx->user_ip6));
+	agentshield_copy_destination(payload->destination_address, ctx,
+				     address_family);
 
 	bpf_ringbuf_submit(event, 0);
 	return blocked ? 0 : 1;

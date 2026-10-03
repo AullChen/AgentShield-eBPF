@@ -103,6 +103,22 @@ func TestEmbeddedSourcesReturnsIndependentSlice(t *testing.T) {
 	}
 }
 
+func TestEmbeddedNetworkContextUsesWordLoads(t *testing.T) {
+	for _, source := range EmbeddedSources() {
+		if !strings.HasSuffix(source.Path, "agentshield.bpf.c") {
+			continue
+		}
+		if strings.Contains(source.Contents, "&ctx->user_ip") {
+			t.Fatal("bulk copy from sock_addr context can produce invalid wide loads")
+		}
+		for _, required := range []string{"const volatile struct bpf_sock_addr *ctx", "__u32 word;", "word = ctx->user_ip6[i];"} {
+			if !strings.Contains(source.Contents, required) {
+				t.Fatalf("word-sized network context copy is missing %q", required)
+			}
+		}
+	}
+}
+
 func TestEmbeddedSourcesMatchWorkingTree(t *testing.T) {
 	_, testFile, _, ok := runtime.Caller(0)
 	if !ok {
