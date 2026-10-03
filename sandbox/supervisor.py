@@ -14,6 +14,7 @@ import json
 import math
 import os
 import re
+import secrets
 import socket
 import stat
 import struct
@@ -23,6 +24,7 @@ from urllib.parse import quote, urlsplit
 
 _MAX_MANAGEMENT_RESPONSE = 64 << 10
 _RUN_ID = re.compile(r"^[0-9a-f]{32}$")
+_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{16,128}$")
 
 
 class ManagementError(RuntimeError):
@@ -41,9 +43,15 @@ class RegistrationRequest:
     root_pid: int = 0
     profile_id: int = 0
     labels: Mapping[str, str] = field(default_factory=dict)
+    request_id: str = field(default_factory=lambda: secrets.token_hex(16))
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.request_id, str) or not _REQUEST_ID.fullmatch(self.request_id):
+            raise ValueError("invalid registration request ID")
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
+            "request_id": self.request_id,
             "agent_name": self.agent_name,
             "cgroup_path": self.cgroup_path,
             "scope_mode": "leaf_exact",
@@ -258,7 +266,7 @@ class ManagementClient:
         method: str,
         path: str,
         payload: Mapping[str, object],
-        expected_status: int,
+        expected_status: int | tuple[int, ...],
     ) -> Mapping[str, object]:
         try:
             body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -288,7 +296,8 @@ class ManagementClient:
 
         if len(response_body) > _MAX_MANAGEMENT_RESPONSE:
             raise ManagementError("management API response exceeded the size limit")
-        if response.status != expected_status:
+        accepted_statuses = (expected_status,) if isinstance(expected_status, int) else expected_status
+        if response.status not in accepted_statuses:
             raise ManagementError(
                 f"management API returned HTTP {response.status}"
             )
@@ -304,7 +313,7 @@ class ManagementClient:
         if not isinstance(request, RegistrationRequest):
             raise TypeError("request must be a RegistrationRequest")
         output = self._request_json(
-            "POST", "/api/v1/agents/register", request.to_payload(), 201
+            "POST", "/api/v1/agents/register", request.to_payload(), (200, 201)
         )
         required = (
             "run_id",

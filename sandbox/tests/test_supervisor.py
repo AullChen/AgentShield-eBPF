@@ -346,6 +346,24 @@ class StubManagementClient(ManagementClient):
 
 
 class ManagementClientTests(unittest.TestCase):
+    def test_registration_request_id_is_stable_and_unique(self) -> None:
+        request = RegistrationRequest(agent_name="demo", cgroup_path="/agent/leaf")
+        other = RegistrationRequest(agent_name="demo", cgroup_path="/agent/leaf")
+        self.assertRegex(request.request_id, r"^[0-9a-f]{32}$")
+        self.assertEqual(request.to_payload()["request_id"], request.to_payload()["request_id"])
+        self.assertNotEqual(request.request_id, other.request_id)
+        for invalid in ("", "too-short", "x" * 129, "x" * 16 + "/"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                RegistrationRequest(agent_name="demo", cgroup_path="/agent/leaf", request_id=invalid)
+
+    def test_registration_accepts_idempotent_replay(self) -> None:
+        response = registration().__dict__
+        client = StubManagementClient(FakeResponse(200, json.dumps(response).encode()))
+        request = RegistrationRequest(agent_name="demo", cgroup_path=response["cgroup_path"])
+        self.assertEqual(client.register(request).run_id, RUN_ID)
+        sent = json.loads(client.connection.request_call[2])
+        self.assertEqual(sent["request_id"], request.request_id)
+
     def test_register_parses_response_and_redacts_capabilities(self) -> None:
         response = {
             "run_id": RUN_ID,
@@ -375,6 +393,7 @@ class ManagementClientTests(unittest.TestCase):
         self.assertEqual((method, path), ("POST", "/api/v1/agents/register"))
         self.assertNotIn("Authorization", headers)
         self.assertNotIn(TOKEN.encode(), body)
+        self.assertRegex(json.loads(body)["request_id"], r"^[0-9a-f]{32}$")
         self.assertTrue(client.connection.closed)
 
     def test_management_error_does_not_include_response_body(self) -> None:
