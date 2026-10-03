@@ -24,6 +24,9 @@ Current files:
 - `accept-p2.sh`: combines the Day 25 lifecycle integration test, exact-scope
   kernel/host-negative gate, and sandbox fixture gate into one owner-only
   evidence directory on the supported Linux host.
+- `accept-network-block.sh`: loads the full kernel collection and checks
+  synchronous rejection plus exact decoded tuples/correlated decisions for
+  IPv4, IPv6 loopback, a four-nonzero-word IPv6 address, and an alternate port.
 - `accept-sandbox.sh`: builds the minimal demo Agent, verifies its repository
   fixture origin/read-only mount metadata, and triggers all three event classes.
 - `test-audit.sh`: triggers one file-open action and one process execution for

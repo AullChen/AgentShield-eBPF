@@ -9,10 +9,14 @@ Current files:
 - `maps.h`
 
 IPv4/IPv6 destination reads use volatile 32-bit `bpf_sock_addr` context loads.
-Do not replace them with a bulk context `memcpy`: LLVM can combine IPv6 words
-into wide loads that the kernel verifier rejects. Rebuild the object and its
-manifest after source changes; `sudo make accept-p1` must still pass both
-connect4 and connect6. A syntax check does not establish verifier acceptance.
+IPv6 uses four explicit constant field indices: even an unrolled loop can
+produce a dereference of a modified context pointer, which the verifier rejects.
+Do not replace these reads with a loop or a bulk context `memcpy`; volatile
+alone only constrains the read width. Keep the field accesses for CO-RE and
+copy each word's bytes without changing network order. Rebuild the object and
+its manifest after source changes; `sudo make accept-p1` and
+`sudo make accept-network-block` must still pass both connect4 and connect6.
+A source, syntax, or ELF-spec check does not establish verifier acceptance.
 
 `agentshield.bpf.c` is prepared for Linux CO-RE builds with `vmlinux.h` and
 libbpf headers. During early repository initialization it can also be syntax

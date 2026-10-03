@@ -55,3 +55,40 @@ make verify-bpf-object
 
 Kernel acceptance still requires `ebpf.NewCollection` (verifier/map creation)
 and successful link attachment on an isolated supported Linux host.
+
+## IPv6 context-load regression
+
+`agentshield_copy_destination` deliberately reads `user_ip6[0]` through
+`user_ip6[3]` separately. Volatile 32-bit reads alone are insufficient: an
+unrolled array loop can still generate pointer arithmetic on `PTR_TO_CTX`,
+followed by a load from that modified pointer. The verifier rejects it before
+checking the context field; see the
+[Linux verifier context-access checks](https://github.com/torvalds/linux/blob/v6.8/kernel/bpf/verifier.c).
+Keep constant **field indices**, not hard-coded byte offsets from `ctx`, so
+each access retains CO-RE relocation. Both the allow-map key and event payload
+use this helper.
+
+After changing it, run on the isolated supported Linux host:
+
+```sh
+go generate ./internal/bpfmgr
+make verify-generated
+make bpf-object
+make verify-bpf-object
+CGO_ENABLED=1 make build
+llvm-objdump-18 --disassemble bpf/agentshield.bpf.o
+sudo make accept-p1
+sudo make accept-network-block
+```
+
+Inspect both network programs for word-sized loads from the original context
+base with instruction-local constant offsets. Retain the manifest, hashes,
+toolchain/kernel identity, and actual load/attach logs. The real-kernel gates
+must not skip connect6 or substitute a reduced collection just because a
+workload uses IPv4. A connect6 verifier failure prevents scoped `audit` and
+managed `serve` from loading their collection.
+
+Finally regress the original [managed runtime](managed-runtime.md), including
+four-hook startup, registration, checkpoint, stored evidence, and containment
+outcome. Do not label these runtime checks PASS from source tests or an
+object parse alone.

@@ -103,7 +103,7 @@ func TestEmbeddedSourcesReturnsIndependentSlice(t *testing.T) {
 	}
 }
 
-func TestEmbeddedNetworkContextUsesWordLoads(t *testing.T) {
+func TestEmbeddedNetworkContextUsesConstantWordLoads(t *testing.T) {
 	for _, source := range EmbeddedSources() {
 		if !strings.HasSuffix(source.Path, "agentshield.bpf.c") {
 			continue
@@ -111,12 +111,25 @@ func TestEmbeddedNetworkContextUsesWordLoads(t *testing.T) {
 		if strings.Contains(source.Contents, "&ctx->user_ip") {
 			t.Fatal("bulk copy from sock_addr context can produce invalid wide loads")
 		}
-		for _, required := range []string{"const volatile struct bpf_sock_addr *ctx", "__u32 word;", "word = ctx->user_ip6[i];"} {
+		// Source shape is a regression guard, not proof of verifier acceptance.
+		for _, required := range []string{
+			"const volatile struct bpf_sock_addr *ctx", "__u32 word;",
+			"word = ctx->user_ip4;",
+			"word = ctx->user_ip6[0];\n\t__builtin_memcpy(destination + 0, &word, sizeof(word));",
+			"word = ctx->user_ip6[1];\n\t__builtin_memcpy(destination + 4, &word, sizeof(word));",
+			"word = ctx->user_ip6[2];\n\t__builtin_memcpy(destination + 8, &word, sizeof(word));",
+			"word = ctx->user_ip6[3];\n\t__builtin_memcpy(destination + 12, &word, sizeof(word));",
+		} {
 			if !strings.Contains(source.Contents, required) {
-				t.Fatalf("word-sized network context copy is missing %q", required)
+				t.Fatalf("constant word-sized network context copy is missing %q", required)
 			}
 		}
+		if strings.Contains(source.Contents, "ctx->user_ip6[i]") {
+			t.Fatal("IPv6 context loop can produce a dereference of a modified ctx pointer")
+		}
+		return
 	}
+	t.Fatal("embedded BPF program source not found")
 }
 
 func TestEmbeddedSourcesMatchWorkingTree(t *testing.T) {

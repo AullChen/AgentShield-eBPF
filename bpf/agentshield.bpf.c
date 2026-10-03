@@ -255,23 +255,25 @@ agentshield_copy_destination(__u8 destination[16],
 			     __u16 address_family)
 {
 	__u32 word;
-	int i;
 
 	/* sock_addr context accesses must remain 32-bit, including IPv6.
-	 * Volatile loads prevent LLVM from combining adjacent words into an
-	 * invalid 64/128-bit context access. Byte copies preserve network order.
+	 * Volatile loads prevent wide reads; explicit constant indices prevent
+	 * LLVM from dereferencing a modified ctx pointer after loop unrolling.
+	 * Byte copies preserve network order.
 	 */
 	if (address_family == AGENTSHIELD_AF_INET) {
 		word = ctx->user_ip4;
 		__builtin_memcpy(destination, &word, sizeof(word));
 		return;
 	}
-#pragma unroll
-	for (i = 0; i < 4; i++) {
-		word = ctx->user_ip6[i];
-		__builtin_memcpy(destination + i * sizeof(word), &word,
-				 sizeof(word));
-	}
+	word = ctx->user_ip6[0];
+	__builtin_memcpy(destination + 0, &word, sizeof(word));
+	word = ctx->user_ip6[1];
+	__builtin_memcpy(destination + 4, &word, sizeof(word));
+	word = ctx->user_ip6[2];
+	__builtin_memcpy(destination + 8, &word, sizeof(word));
+	word = ctx->user_ip6[3];
+	__builtin_memcpy(destination + 12, &word, sizeof(word));
 }
 
 static __always_inline void

@@ -57,25 +57,35 @@ CGROUP_PATH="$cgroup_path" bash -c '
 import errno
 import socket
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-try:
-    sock.connect(("127.0.0.1", 9))
-except OSError as error:
-    if error.errno not in (errno.EPERM, errno.EACCES):
-        raise SystemExit(f"connect was not blocked by cgroup hook: {error}")
-else:
-    raise SystemExit("connect unexpectedly succeeded")
-finally:
-    sock.close()
+for family, address, port in (
+    (socket.AF_INET, "127.0.0.1", 9),
+    (socket.AF_INET6, "::1", 9),
+    (socket.AF_INET6, "2001:db8:1:2:3:4:5:6", 9),
+    (socket.AF_INET6, "2001:db8:1:2:3:4:5:6", 10),
+):
+    with socket.socket(family, socket.SOCK_STREAM) as sock:
+        sock.settimeout(2)
+        try:
+            sock.connect((address, port))
+        except OSError as error:
+            if error.errno not in (errno.EPERM, errno.EACCES):
+                raise SystemExit(f"{address}:{port} was not blocked by cgroup hook: {error}")
+        else:
+            raise SystemExit(f"{address}:{port} unexpectedly succeeded")
 PY
 '
 
 for _ in {1..100}; do
-  if grep -q '"action_result_name":"blocked"' "$evidence_dir/events.jsonl"; then
+  if [[ $(grep -c '"action_result_name":"blocked"' "$evidence_dir/events.jsonl" || true) -ge 4 ]]; then
     break
   fi
   sleep 0.05
 done
+
+# Flush the derived decision after the last raw event before inspecting logs.
+kill -TERM "$audit_pid"
+wait "$audit_pid"
+audit_pid=""
 
 EVIDENCE_PATH="$evidence_dir/events.jsonl" python3 - <<'PY'
 import json
@@ -86,17 +96,26 @@ with open(os.environ["EVIDENCE_PATH"], encoding="utf-8") as stream:
     for line in stream:
         records.append(json.loads(line))
 
-blocked = next((record for record in records
-                if record.get("event_type_name") == "net_connect"
-                and record.get("action_name") == "block"
-                and record.get("action_result_name") == "blocked"), None)
-if blocked is None:
-    raise SystemExit("blocked kernel network event was not emitted")
+for family, address, port in (
+    (2, "127.0.0.1", 9),
+    (10, "::1", 9),
+    (10, "2001:db8:1:2:3:4:5:6", 9),
+    (10, "2001:db8:1:2:3:4:5:6", 10),
+):
+    blocked = next((record for record in records
+                    if record.get("event_type_name") == "net_connect"
+                    and record.get("action_name") == "block"
+                    and record.get("action_result_name") == "blocked"
+                    and record.get("family") == family
+                    and record.get("dst_ip") == address
+                    and record.get("dst_port") == port), None)
+    if blocked is None:
+        raise SystemExit(f"blocked kernel event with exact tuple {address}:{port} was not emitted")
 
-decision = next((record for record in records
-                 if record.get("record_type") == "policy_decision"
-                 and record.get("kernel_monotonic_ns") == blocked.get("kernel_monotonic_ns")), None)
-if decision is None or not decision.get("final", {}).get("enforced"):
-    raise SystemExit("enforced policy decision was not correlated with blocked event")
-print("network block acceptance passed")
+    decision = next((record for record in records
+                     if record.get("record_type") == "policy_decision"
+                     and record.get("kernel_monotonic_ns") == blocked.get("kernel_monotonic_ns")), None)
+    if decision is None or not decision.get("final", {}).get("enforced"):
+        raise SystemExit(f"enforced policy decision was not correlated with {address}:{port}")
+print("network block acceptance passed: IPv4, IPv6 loopback, four-word IPv6, and alternate port")
 PY
