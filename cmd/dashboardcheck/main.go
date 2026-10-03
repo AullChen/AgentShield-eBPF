@@ -124,6 +124,7 @@ func newFixture(ctx context.Context, token, policyFile string) (*fixture, error)
 	if err := overview.SetCapabilities([]api.OverviewCapability{
 		{Name: "acceptance_fixture", Status: "degraded", Detail: "deterministic P4 replay; not Linux kernel proof"},
 		{Name: "bpf_hooks", Status: "unknown", Detail: "fixture does not perform privileged load or attach"},
+		{Name: "kernel_network_enforcement_connect6", Status: "unavailable", Detail: "fixture://kernel-network-enforcement/ipv6/no-real-kernel-claim"},
 		{Name: "realtime_api", Status: "available", Detail: "authenticated ticket and WebSocket replay active"},
 	}); err != nil {
 		return nil, err

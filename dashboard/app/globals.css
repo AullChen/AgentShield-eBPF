@@ -246,6 +246,7 @@ select:focus-visible {
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
+  min-width: 0;
 }
 
 .panel-header {
@@ -452,6 +453,15 @@ select:focus-visible {
 
 .capability-row strong {
   font-size: 13px;
+}
+
+.capability-row > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.capability-row > .pill {
+  flex-shrink: 0;
 }
 
 .capability-row p,

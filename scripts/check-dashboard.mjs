@@ -61,6 +61,11 @@ try {
   await page.screenshot({ path: resolve(outputDirectory, "live-trace.png"), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/");
+  await expectText(page, "body", "kernel_network_enforcement_connect6");
+  const overviewOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  if (overviewOverflow > 1) throw new Error(`mobile overview overflows horizontally by ${overviewOverflow}px`);
+  await page.screenshot({ path: resolve(outputDirectory, "overview-mobile.png"), fullPage: true });
   await open(page, "/evidence/run-demo");
   await expectCount(page, ".evidence-event", 6);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
