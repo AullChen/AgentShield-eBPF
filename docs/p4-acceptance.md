@@ -33,6 +33,7 @@ go test ./internal/evidence -run '^TestP4Acceptance$' -count=1
 ```
 
 The test reconstructs the sample and compares its semantic JSON with the
-tracked artifact. This gate uses deterministic fixtures; production reader,
-checkpoint-store, and containment-store wiring remains pending and is not
-presented as live P4 runtime evidence.
+tracked artifact. This gate uses deterministic fixtures and is not live P4
+runtime evidence. The later [managed entry](managed-runtime.md) now connects
+reader/checkpoint/store/containment source paths, with separate integration
+tests; real supported-Linux evidence is still pending.

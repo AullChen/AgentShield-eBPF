@@ -93,7 +93,7 @@ func (reader ebpfDropCounterReader) Snapshot() (map[uint16]uint64, error) {
 	return snapshot, nil
 }
 
-func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
+func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) (resultErr error) {
 	if opts.ObjectPath == "" {
 		return fmt.Errorf("bpf object path is required")
 	}
@@ -120,6 +120,9 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 		return fmt.Errorf("load bpf collection: %w", err)
 	}
 	defer collection.Close()
+	if opts.OnStopping != nil {
+		defer func() { resultErr = errors.Join(resultErr, opts.OnStopping()) }()
+	}
 
 	openATProgram := collection.Programs[openATProgramName]
 	if openATProgram == nil {
@@ -226,7 +229,7 @@ func RunAudit(ctx context.Context, opts AuditOptions, out io.Writer) error {
 	statsContext, cancelStats := context.WithCancel(ctx)
 	statsDone := make(chan error, 1)
 	go func() {
-		err := monitorDropCounters(statsContext, opts.StatsInterval, dropReader, opts.ReceiptClock, emitter)
+		err := monitorDropCounters(statsContext, opts.StatsInterval, dropReader, opts.ReceiptClock, emitter, opts.OnDropNotice)
 		if err != nil {
 			_ = reader.Close()
 		}

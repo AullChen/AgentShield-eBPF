@@ -34,6 +34,12 @@ on map/slice traversal order.
 This is correlation evidence, not proof of causality and not a replacement for
 the exact Run attribution status.
 
+The managed `serve` worker supplies registered identity and the newest 64
+same-Run candidates from a 1,024-claim global cache. Checkpoint fields do not
+claim trusted PID/TGID, so process-match points are not invented for them.
+SQLite evidence retains the result; links outside the retained snapshot are
+explicitly removed. See [managed-runtime.md](managed-runtime.md).
+
 ## Verification
 
 ```sh

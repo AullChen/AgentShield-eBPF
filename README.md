@@ -2,7 +2,7 @@
 
 AgentShield-eBPF is a Linux eBPF based runtime security and audit system for AI Agent sandboxes.
 
-The project is currently in early MVP development. The repository contains the Go control-plane skeleton, exact-leaf cgroup filtering and registration, file/process/network audit probes, a strict policy loader and compile preview, a minimal demo sandbox, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard. Kernel load/attach evidence, broader policy enforcement, live containment dispatch, and durable evidence history remain under development.
+The project is currently in early MVP development. The repository contains exact-leaf cgroup filtering and registration, file/process/network audit probes, a strict policy loader, a minimal demo sandbox, a reproducible Linux CO-RE object build, local diagnostics, and a Next.js dashboard. The managed `serve` entry connects checkpoints, correlation, SQLite evidence, and post-event containment. Supported-Linux runtime evidence, broader enforcement, general container supervision, and durable Run/history listing remain pending.
 
 ## Current Status
 
@@ -22,12 +22,12 @@ The project is currently in early MVP development. The repository contains the G
 | Kernel Event v3 | Started | Go-side decoding validates schema/size, preserves all 64-bit scope/time identities as JSON strings, adds receipt calibration, and rejects incompatible wire schemas. |
 | cgroup scoping | P2 source gate complete, Linux evidence pending | Exact-leaf registration, finish/TTL tombstones, ID reuse isolation, Core self-protection, and host-negative filtering have automated coverage. |
 | Policy engine | P3 source gate complete, runtime pending | `make test-p3` distinguishes audit, alert, synchronous block, and post-event containment; failed A/B attempts retain the active generation and the reporting updater exposes structured failure data. Concrete BPF activation, persistence, policy CRUD, and Linux evidence remain pending. |
-| Fallback containment | Coordinator source complete, Linux evidence pending | `internal/killer` revalidates exact scope/Core identity before descriptor-relative `cgroup.kill`; the Run-aware coordinator acts only on the final hinted decision and emits a separate result. Production dispatch is not wired into the audit reader. |
-| Checkpoint ingest | Source complete, persistence pending | The isolated Run-scoped endpoint binds Bearer tokens to the route, records calibrated server receipt clocks, and provides bounded sequence/idempotency replay. Agent `run_finished` remains non-authoritative. |
+| Fallback containment | Managed dispatch source complete, Linux evidence pending | `serve` runs the coordinator in a bounded worker and revalidates exact scope/Core identity before descriptor-relative `cgroup.kill`, with a separate result. Standalone `audit` does not contain. |
+| Checkpoint ingest | Managed integration source complete, Linux evidence pending | The isolated Run-scoped endpoint binds Bearer tokens to the route, records calibrated receipt clocks, and hands off once before sequence acknowledgement. Agent `run_finished` remains non-authoritative. |
 | Agent SDK/supervisor | Source examples complete | The Python client exposes only checkpoint writes; the trusted supervisor keeps management on an owner-only Unix socket and requires registered-scope identity plus complete leaf exit before finish. Production task adapters are pending. |
-| Event store | Source complete, integration pending | Real SQLite/WAL persistence uses a redacted normalized record model, bounded non-blocking queue/recent buffer, capacity pruning, gap diagnostics, and a circuit breaker. Reader wiring and historical APIs are pending. |
-| Correlation | Source complete, integration pending | Captured instance/cookie identity resolves the Run first; only then are same-Run checkpoints scored by process, tool semantics, and server-monotonic proximity. Equal candidates remain explicitly ambiguous. |
-| Evidence timeline | P4 source gate complete, runtime pending | The tracked JSON separates agent claims, kernel facts, policy decisions, synchronous block, and post-event containment while preserving attribution and correlation rationale. Production fan-in remains pending. |
+| Event store | Managed integration source complete, Linux evidence pending | SQLite/WAL receives sanitized checkpoint/kernel/decision/containment payloads; bounded per-Run queries survive reopen. Durable Run listing and active recovery are pending. |
+| Correlation | Managed integration source complete, Linux evidence pending | Instance/cookie identity resolves the Run first; bounded same-Run checkpoints are scored by tool semantics and server-monotonic proximity. Equal candidates remain explicitly ambiguous. |
+| Evidence timeline | Managed integration source complete, Linux evidence pending | Evidence separates Agent claims, kernel facts, policy decisions, synchronous block, and post-event containment with attribution and correlation rationale. |
 | Realtime stream | Audit integration source complete, Linux evidence pending | The optional loopback audit API adds redacted JSON fan-out, decimal-string cursors, one-time browser tickets, bounded recovery, and slow-client isolation. Durable snapshot/history is pending. |
 | Isolated demo | Source complete, Linux evidence pending | `scripts/demo.sh` joins the host Core, loopback Compose Dashboard, and a gated unprivileged Sandbox using only the repository fake secret; a pass proves only the standalone audit path. |
 
@@ -65,6 +65,10 @@ tests/               Integration, security, and performance test layout
 ```
 
 Local planning documents and proposal drafts are intentionally kept outside Git under `.local-docs/`.
+
+For the registered runtime entry, separated management/ingest/read surfaces,
+durable per-Run evidence, and isolated acceptance fixture, see
+[docs/managed-runtime.md](docs/managed-runtime.md).
 
 ## Requirements
 
@@ -361,24 +365,25 @@ Subsequent work:
 - Current exact-scope audit output may still contain sensitive path/argv fragments from the registered sandbox.
 - Only the exact-tuple TCP cgroup network path has synchronous block source;
   its Linux evidence is pending. File/exec matching remains post-event. The
-  trusted containment coordinator has automated coverage but is not connected
-  to a production worker or standalone audit command.
+  trusted containment coordinator is connected to the managed `serve` worker,
+  but real Linux acceptance is pending; standalone `audit` does not contain.
 - A/B recovery is currently an abstract `BankStore` contract. There is no
   concrete persistent eBPF bank, persistent policy bundle, unified kernel/user
   activation transaction, or raw-event generation field, so process restart
   and block hot-update recovery are not claimed.
-- Checkpoint replay state remains bounded and in memory; Day 38 adds the
-  persistent evidence store but has not yet wired checkpoint acceptance into
-  it. Restart-safe checkpoint idempotency is not yet claimed.
+- Checkpoint replay state remains bounded and in memory. `serve` hands accepted
+  claims to the asynchronous evidence writer; acknowledgement is not an fsync
+  guarantee. Restart-safe checkpoint idempotency is not claimed.
 - The Day 37 supervisor is a tested orchestration contract, not a production
-  process/container adapter. An adapter must hold the exact-leaf descriptor,
+  container adapter. A concrete stopped Linux acceptance fixture now exists;
+  a general adapter must hold the exact-leaf descriptor,
   verify registration identity, and observe the root workload exit plus an
   empty leaf before management finish.
 - The source enforces exact-leaf cgroup capture, but supported-Linux runtime evidence is still pending.
 - Dashboard read APIs and P5 browser integration are source-complete, but
-  supported-Linux runtime evidence and durable resync/history snapshots remain
-  pending. The deterministic `dashboardcheck` replay is explicitly not kernel
-  proof.
+  supported-Linux runtime evidence and durable Run listing/resync remain
+  pending. `serve` provides bounded SQLite evidence by saved Run ID; the
+  deterministic `dashboardcheck` replay is explicitly not kernel proof.
 - The generated Go source binding embeds source text only; `make bpf-object` is the separate real ELF build.
 
 ## License

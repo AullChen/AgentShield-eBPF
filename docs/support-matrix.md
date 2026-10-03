@@ -26,12 +26,12 @@ changing that statement.
 | Ring-buffer loss accounting | Per-type counters and synthetic notices implemented | Saturation evidence pending | Reserve failure is fail-open for observation and must surface as a drop notice when readable. |
 | Policy audit/alert | Deterministic policy tests and standalone audit integration implemented | Pending supported-host evidence | Evaluation is post-event and cannot prevent file/exec syscalls. |
 | Synchronous network block | Exact-tuple/default-deny source gate implemented | Pending privileged acceptance | Unsupported/missing network enforcement must not be described as blocked. |
-| Post-event containment | Exact-scope executor and coordinator tests implemented | Production dispatch and Linux evidence pending | Standalone audit does not invoke `cgroup.kill`; a hint is not an outcome. |
-| Registration and lifecycle | Exact-leaf identity, TTL, finish, and reuse tests implemented | Production supervisor adapter pending | Agent `run_finished` is non-authoritative. |
-| Checkpoint ingest | Auth/token/replay/limit tests implemented | Production persistence integration pending | Replay state is bounded and in memory. |
-| SQLite evidence store | Redaction, bounded queue/capacity, gap, and circuit tests implemented | Reader/checkpoint fan-in pending | Store failure does not stop kernel auditing but creates an explicit evidence gap. |
-| Correlation/timeline | Deterministic attribution, scoring, ambiguity, and provenance tests implemented | Production fan-in pending | Time proximity is not causal proof. |
-| Dashboard live views | Authenticated API/UI and deterministic browser gate implemented | End-to-end Linux evidence pending | History is the bounded live recovery window, not durable SQLite history. |
+| Post-event containment | Exact-scope executor/coordinator and managed bounded dispatch implemented | Linux evidence pending | Standalone audit does not invoke `cgroup.kill`; a hint is not an outcome. |
+| Registration and lifecycle | Exact-leaf identity, TTL, finish, reuse, and managed entry implemented | Real identity probe/fixture pending; general container adapter absent | Agent `run_finished` is non-authoritative. |
+| Checkpoint ingest | Auth/token/replay/limit tests and managed store handoff implemented | Linux acceptance pending | Acknowledgement is not an fsync guarantee; replay state is bounded and in memory. |
+| SQLite evidence store | Managed fan-in, bounded per-Run reads/reopen, redaction, queue/capacity, gap, and circuit tests implemented | Linux acceptance pending | Store failure does not stop kernel auditing but creates an explicit evidence gap. |
+| Correlation/timeline | Attribution, scoring, provenance tests and managed worker implemented | Linux acceptance pending | Time proximity is not causal proof; checkpoint candidates are bounded. |
+| Dashboard live views | Authenticated APIs/UI and deterministic browser gate implemented | End-to-end Linux evidence pending | `serve` evidence detail is SQLite-backed; History Run listing and WebSocket recovery remain in memory. |
 | Isolated demo orchestration | Compose and guarded host script implemented | Must be run and reviewed on the supported VM | Demonstrates standalone audit only; it is not a production supervisor. |
 
 ## Security and operational semantics
@@ -58,8 +58,8 @@ are resolved with real evidence:
 1. supported-Linux build, demo, and three-event capture pass;
 2. privileged network-block and containment acceptance, or explicit removal
    of those capabilities from the MVP claim;
-3. production lifecycle/checkpoint/store/correlation fan-in and durable history,
-   or a narrower documented MVP scope;
+3. real-host managed lifecycle/checkpoint/store/correlation acceptance, plus a
+   documented boundary for durable Run listing and crash reconciliation;
 4. dependency audit reviewed with no unresolved high-severity finding;
 5. repository owner selects and adds a project license;
 6. sanitized screenshots and hashes are reviewed without publishing secrets.

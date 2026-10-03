@@ -77,6 +77,12 @@ for durable records and storage failure isolation. The handler does not log the
 Authorization header or request body, but callers must still send only
 redacted summaries and metadata.
 
+With managed `serve`, new acceptance also performs a nonblocking pipeline
+handoff under that lifecycle lock. Failure returns 503 without advancing the
+sequence; replay does not hand off again. The worker submits sanitized claims
+to SQLite asynchronously, so 201 is not an fsync guarantee. See
+[managed-runtime.md](managed-runtime.md) for queue, loss, and restart limits.
+
 ## Verification
 
 Run the source-level gate with:

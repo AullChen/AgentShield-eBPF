@@ -249,6 +249,9 @@ func (handler *RegistrationHandler) terminateRun(runID, status, reason string, e
 	if err != nil {
 		return AgentRun{}, fmt.Errorf("complete Run termination: %w", err)
 	}
+	if handler.onRunChanged != nil {
+		handler.onRunChanged(finished)
+	}
 	return finished, nil
 }
 

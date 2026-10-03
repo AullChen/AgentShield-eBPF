@@ -6,6 +6,10 @@ Verdict: the repeatable source-level P3 gate is complete. Real Linux block and
 containment execution, a concrete persistent eBPF A/B store, and production
 dispatch wiring remain pending; this record is not an M2 runtime acceptance.
 
+This is the historical Day 35 record. The later [managed entry](managed-runtime.md)
+now supplies bounded live dispatch source wiring; real Linux acceptance and
+persistent A/B activation remain pending.
+
 ## Four action semantics
 
 `make test-p3` exercises one exact active Run and checks these independent

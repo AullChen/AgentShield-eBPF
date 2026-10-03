@@ -25,7 +25,9 @@ runtime/development library when building with cgo.
 The initial schema contains the design tables plus a normalized
 `evidence_records` ingestion table. Every record stores decimal-string
 monotonic/Unix and scope identities, an explicit source, and bounded redacted
-summary/labels. Arbitrary raw payloads are not accepted. Redaction occurs before
+summary/labels plus an optional valid JSON payload capped at 64 KiB. Payload
+redaction preserves integer precision, strips sensitive keys, and bounds
+nesting before enqueueing. Redaction occurs before
 records enter any queue, recent buffer, log, or database. Label names are
 normalized before sensitive-key matching, and common API-key, token, cookie,
 authorization, password, and cloud-secret assignments are removed from text.
@@ -56,6 +58,11 @@ error or record content, so storage failure remains visible without leaking
 secrets or depending on the failed database.
 
 ## Verification
+
+The managed `serve` entry persists normalized evidence payloads and reads
+bounded per-Run snapshots; older databases migrate the payload column without
+discarding existing rows. See [managed-runtime.md](managed-runtime.md) for
+asynchronous acceptance, retention, restart, and active-Run recovery limits.
 
 ```sh
 go test ./internal/store -count=1

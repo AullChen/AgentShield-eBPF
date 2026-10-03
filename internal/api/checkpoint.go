@@ -90,6 +90,9 @@ type checkpointRunState struct {
 }
 
 type CheckpointOptions struct {
+	// OnAccepted must enqueue without blocking. It runs under the lifecycle
+	// lock once per new checkpoint, before consuming its sequence.
+	OnAccepted          func(Checkpoint) error
 	Clock               CheckpointClock
 	Random              io.Reader
 	MaxBodyBytes        int64
@@ -111,6 +114,7 @@ type CheckpointHandler struct {
 	capacityPerRun      int
 	capacityBytesPerRun int64
 	capacityBytesTotal  int64
+	onAccepted          func(Checkpoint) error
 }
 
 func NewCheckpointHandler(registration *RegistrationHandler, options CheckpointOptions) (*CheckpointHandler, error) {
@@ -158,6 +162,7 @@ func NewCheckpointHandler(registration *RegistrationHandler, options CheckpointO
 		maxBodyBytes: options.MaxBodyBytes, requestsPerSecond: options.RequestsPerSecond,
 		capacityPerRun: options.CapacityPerRun, capacityBytesPerRun: options.CapacityBytesPerRun,
 		capacityBytesTotal: options.CapacityBytesTotal,
+		onAccepted:         options.OnAccepted,
 	}, nil
 }
 
@@ -374,6 +379,11 @@ func (handler *CheckpointHandler) accept(ctx context.Context, runID, token strin
 	}
 	if clientTime != 0 {
 		record.ClientReportedUnixNS = strconv.FormatUint(clientTime, 10)
+	}
+	if handler.onAccepted != nil {
+		if err := handler.onAccepted(cloneCheckpoint(record)); err != nil {
+			return Checkpoint{}, false, errCheckpointService
+		}
 	}
 	envelope := checkpointEnvelope{record: record, fingerprint: fingerprint, retainedBytes: retainedBytes}
 	state.bySequence[sequence] = envelope

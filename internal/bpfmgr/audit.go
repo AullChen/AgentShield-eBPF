@@ -34,11 +34,18 @@ type AuditOptions struct {
 	OnMalformedEvent     func(error)
 	OnDerivedRecordError func(error)
 	OnReady              func()
-	OnScopeMapReady      func(ScopeMap) error
-	DeriveRecords        func(AuditEvent) ([]any, error)
-	NetworkEnforcement   *NetworkEnforcementConfig
-	ReceiptClock         ReceiptClock
-	StatsInterval        time.Duration
+	// OnStopping drains managed consumers before the collection maps close.
+	OnStopping      func() error
+	OnScopeMapReady func(ScopeMap) error
+	// OnEvent is a nonblocking handoff to the managed pipeline. Errors emit
+	// an independent derived_record_error while retaining the raw event.
+	OnEvent func(AuditEvent) error
+	// OnDropNotice receives the same per-type deltas written to the raw log.
+	OnDropNotice       func(AuditEvent)
+	DeriveRecords      func(AuditEvent) ([]any, error)
+	NetworkEnforcement *NetworkEnforcementConfig
+	ReceiptClock       ReceiptClock
+	StatsInterval      time.Duration
 }
 
 type DerivedRecordError struct {
@@ -199,6 +206,14 @@ func streamAuditEventsTo(reader auditSampleReader, opts AuditOptions, emitter *a
 			return fmt.Errorf("sample receipt clocks: %w", err)
 		}
 		records := []any{event}
+		if opts.OnEvent != nil {
+			if err := opts.OnEvent(event); err != nil {
+				if opts.OnDerivedRecordError != nil {
+					opts.OnDerivedRecordError(err)
+				}
+				records = append(records, derivedRecordError(event, err))
+			}
+		}
 		if opts.DeriveRecords != nil {
 			derived, err := opts.DeriveRecords(event)
 			if err != nil {
@@ -236,7 +251,7 @@ type dropCounterReader interface {
 	Snapshot() (map[uint16]uint64, error)
 }
 
-func monitorDropCounters(ctx context.Context, interval time.Duration, reader dropCounterReader, clock ReceiptClock, emitter *auditEventEmitter) error {
+func monitorDropCounters(ctx context.Context, interval time.Duration, reader dropCounterReader, clock ReceiptClock, emitter *auditEventEmitter, onNotice func(AuditEvent)) error {
 	if interval <= 0 {
 		interval = defaultStatsInterval
 	}
@@ -273,6 +288,9 @@ func monitorDropCounters(ctx context.Context, interval time.Duration, reader dro
 			}
 			if err := stampReceiptTime(&event, clock); err != nil {
 				return fmt.Errorf("drop notice receipt clocks: %w", err)
+			}
+			if onNotice != nil {
+				onNotice(event)
 			}
 			if err := emitter.Emit(event); err != nil {
 				return fmt.Errorf("write drop notice: %w", err)

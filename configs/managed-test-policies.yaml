@@ -1,0 +1,16 @@
+# Only for the isolated managed runtime acceptance fixture.
+schema_version: 1
+policies:
+  - id: test.managed.contain-sleep
+    name: Contain managed acceptance sleep
+    enabled: true
+    scope:
+      type: global
+    policy_decision: deny
+    requested_action: contain
+    priority: 100
+    severity: high
+    conditions:
+      exec:
+        executables:
+          - /bin/sleep

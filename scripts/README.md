@@ -4,6 +4,10 @@ Developer, environment-check, and demo helper scripts live here.
 
 Current files:
 
+- `check-managed-runtime.py`: root-only, dedicated-VM stopped exact-leaf
+  workload fixture using the real supervisor and checkpoint SDK. With the
+  managed test policy, requires SIGKILL exit and complete leaf emptiness;
+  persisted outcome/identity and loss diagnostics must also be reviewed.
 - `demo.sh`: guarded, dedicated-VM-only orchestration for the host eBPF Core,
   Compose Dashboard, and gated unprivileged Sandbox. It requires all three
   kernel event classes and stores owner-only evidence.

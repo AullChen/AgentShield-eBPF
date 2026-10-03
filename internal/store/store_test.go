@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,53 @@ import (
 	"testing"
 	"time"
 )
+
+func TestSQLiteMigratesAndReadsBoundedSanitizedPayload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	native, err := openNative(path)
+	if errors.Is(err, ErrSQLiteUnavailable) {
+		t.Skip(err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := strings.Replace(schema, ",\n  payload_json TEXT NOT NULL DEFAULT ''", "", 1)
+	if err := native.Exec(legacy); err != nil {
+		t.Fatal(err)
+	}
+	if err := native.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := OpenSQLite(path, SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	record := testRecord("with-payload", "safe")
+	record.Payload = json.RawMessage(`{"nested":{"prompt":"private prompt","summary":"literal-super-secret"},"identity":"18446744073709551615"}`)
+	safe, err := NewRedactor([]string{"literal-super-secret"}).Apply(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.AppendBatch([]Record{safe}); err != nil {
+		t.Fatal(err)
+	}
+	payloads, err := database.ReadPayloads(context.Background(), "run-1", 1, 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payloads) != 1 || bytes.Contains(payloads[0], []byte("private prompt")) || bytes.Contains(payloads[0], []byte("literal-super-secret")) || !bytes.Contains(payloads[0], []byte("18446744073709551615")) {
+		t.Fatalf("sanitized payload=%s", payloads)
+	}
+	if rows, err := database.ReadPayloads(context.Background(), "run-1' OR 1=1 --", 1, 64<<10); err != nil || len(rows) != 0 {
+		t.Fatalf("escaped query rows=%d err=%v", len(rows), err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := database.ReadPayloads(ctx, "run-1", 1, 64<<10); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled query=%v", err)
+	}
+}
 
 func TestSQLitePersistsSanitizedRecordsInWALDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "evidence.db")

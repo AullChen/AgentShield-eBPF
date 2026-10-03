@@ -30,6 +30,7 @@ type Record struct {
 	Severity          string            `json:"severity,omitempty"`
 	Summary           string            `json:"summary,omitempty"`
 	Labels            map[string]string `json:"labels,omitempty"`
+	Payload           json.RawMessage   `json:"payload,omitempty"`
 }
 
 func (record Record) validate() error {
@@ -48,6 +49,9 @@ func (record Record) validate() error {
 	}
 	if record.ServerMonotonicNS == 0 || record.ServerUnixNS == 0 || len(record.Summary) > 4096 || len(record.Labels) > 32 {
 		return errors.New("record exceeds limits")
+	}
+	if len(record.Payload) > 64<<10 || len(record.Payload) != 0 && !json.Valid(record.Payload) {
+		return errors.New("record payload is invalid or exceeds limits")
 	}
 	for key, value := range record.Labels {
 		if key == "" || len(key) > 128 || len(value) > 1024 || strings.IndexByte(key, 0) >= 0 || strings.IndexByte(value, 0) >= 0 {
@@ -90,7 +94,50 @@ func (redactor Redactor) Apply(record Record) (Record, error) {
 		}
 		record.Labels = labels
 	}
+	if len(record.Payload) != 0 {
+		var value any
+		decoder := json.NewDecoder(strings.NewReader(string(record.Payload)))
+		decoder.UseNumber()
+		if err := decoder.Decode(&value); err != nil {
+			return Record{}, err
+		}
+		if err := redactor.scrubJSON(value, 0); err != nil {
+			return Record{}, err
+		}
+		payload, err := json.Marshal(value)
+		if err != nil || len(payload) > 64<<10 {
+			return Record{}, errors.New("sanitized record payload exceeds limits")
+		}
+		record.Payload = payload
+	}
 	return record, nil
+}
+
+func (redactor Redactor) scrubJSON(value any, depth int) error {
+	if depth > 32 {
+		return errors.New("record payload nesting exceeds limits")
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if sensitiveLabelKey(key) || strings.EqualFold(key, "argv") {
+				typed[key] = "[REDACTED]"
+			} else if text, ok := child.(string); ok {
+				typed[key] = redactor.text(text)
+			} else if err := redactor.scrubJSON(child, depth+1); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for index, child := range typed {
+			if text, ok := child.(string); ok {
+				typed[index] = redactor.text(text)
+			} else if err := redactor.scrubJSON(child, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func sensitiveLabelKey(key string) bool {

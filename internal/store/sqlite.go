@@ -1,6 +1,8 @@
 package store
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -26,7 +28,8 @@ CREATE TABLE IF NOT EXISTS evidence_records (
   scope_cookie TEXT NOT NULL,
   severity TEXT NOT NULL,
   summary TEXT NOT NULL,
-  labels_json TEXT NOT NULL
+  labels_json TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS evidence_records_run_time
 ON evidence_records(run_id, server_monotonic_ns);
@@ -107,6 +110,14 @@ func OpenSQLite(path string, options SQLiteOptions) (*SQLite, error) {
 		_ = database.Close()
 		return nil, fmt.Errorf("initialize SQLite: %w", err)
 	}
+	columns, err := database.ScalarInt64("SELECT count(*) FROM pragma_table_info('evidence_records') WHERE name='payload_json';")
+	if err == nil && columns == 0 {
+		err = database.Exec("ALTER TABLE evidence_records ADD COLUMN payload_json TEXT NOT NULL DEFAULT '';")
+	}
+	if err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("migrate SQLite evidence payload: %w", err)
+	}
 	return store, nil
 }
 
@@ -163,7 +174,7 @@ func (store *SQLite) AppendBatch(records []Record) error {
 			record.ID, record.RecordType, record.RunID, string(record.Source),
 			strconv.FormatUint(record.ServerMonotonicNS, 10), strconv.FormatUint(record.ServerUnixNS, 10),
 			strconv.FormatUint(record.InstanceID, 10), strconv.FormatUint(record.ScopeCookie, 10),
-			record.Severity, record.Summary, labelsJSON(record.Labels),
+			record.Severity, record.Summary, labelsJSON(record.Labels), string(record.Payload),
 		}
 		for index, value := range values {
 			if index != 0 {
@@ -192,6 +203,41 @@ func (store *SQLite) Count() (int64, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	return store.database.ScalarInt64("SELECT count(*) FROM evidence_records;")
+}
+
+// ReadPayloads returns the newest durable evidence within count and byte
+// budgets. It never restores an active Run or its credentials after restart.
+func (store *SQLite) ReadPayloads(ctx context.Context, runID string, limit, maxBytes int) ([]json.RawMessage, error) {
+	if ctx == nil || runID == "" || len(runID) > 128 || limit < 1 || limit > 1000 || maxBytes < 64<<10 || maxBytes > 4<<20 {
+		return nil, errors.New("invalid evidence query")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	reader, ok := store.database.(interface {
+		QueryStrings(string, int, int) ([]string, error)
+	})
+	if !ok {
+		return nil, ErrSQLiteUnavailable
+	}
+	query := "SELECT payload_json FROM evidence_records WHERE run_id=" + sqlQuote(runID) + " AND payload_json<>'' ORDER BY length(server_monotonic_ns) DESC,server_monotonic_ns DESC,id DESC LIMIT " + strconv.Itoa(limit) + ";"
+	rows, err := reader.QueryStrings(query, limit, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]json.RawMessage, 0, len(rows))
+	for _, row := range rows {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if !json.Valid([]byte(row)) {
+			return nil, errors.New("stored evidence payload is invalid")
+		}
+		result = append(result, json.RawMessage(row))
+	}
+	return result, nil
 }
 
 func (store *SQLite) Close() error {

@@ -56,12 +56,16 @@ bounded wait, then KILL plus a bounded wait. It finishes the Run only if one of
 those waits confirms complete scope exit. Otherwise it deliberately leaves the
 management Run active for trusted investigation or bounded TTL cleanup.
 
-The example intentionally leaves OS-specific cgroup/process preparation and
+The general supervisor intentionally leaves OS-specific cgroup/process preparation and
 bounded waiting to a small `PreparedTask` adapter: attempting to launch first
 and stop later would introduce an unmonitored execution race. The included
 management client never logs response bodies, rejects redirects, bounds
 responses, verifies the owner-only socket and peer UID on Linux, and redacts
 the one-time ingest token from representations.
+
+`scripts/check-managed-runtime.py` supplies a concrete stopped Linux task only
+for isolated acceptance of the managed `serve` entry. It is not a production
+Docker/container adapter; see [managed runtime](../docs/managed-runtime.md).
 
 Run the stdlib-only tests from the repository root:
 

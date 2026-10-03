@@ -1,7 +1,7 @@
 # Dashboard evidence detail
 
 The dashboard evidence page reads `GET /api/v1/evidence/{run_id}` with the
-same server-side read token used by Overview. The endpoint projects the
+same server-side read token used by Overview. With standalone `audit`, the endpoint projects the
 authenticated WebSocket recovery buffer into evidence schema v1; it is bounded
 to the newest 1,000 records, 4 MiB of payload, and five minutes and is not
 durable history. At most four snapshots are projected concurrently. Request
@@ -28,6 +28,13 @@ registration and checkpoint pipeline supplies them. The UI explicitly states
 this limitation and never translates `exec_attempt`, `file_open`, or an action
 result of `none` into operation success.
 
-History currently indexes live Runs from Overview and links to their bounded
-evidence snapshots. Durable SQLite history queries are intentionally not
-claimed by this endpoint.
+With managed `serve`, the endpoint instead reads sanitized SQLite evidence,
+with the same 1,000-record/4-MiB/four-snapshot bounds but without a five-minute
+live-window limit. It preserves registered attribution, checkpoint correlation,
+and separate policy/containment outcomes across database reopen. Missing retained
+checkpoint references are explicitly marked `checkpoint_outside_snapshot`.
+
+History still indexes Runs from the in-memory Overview list. Durable Run listing,
+pagination, restart-safe credentials, and WebSocket cursor recovery are not
+implemented; saved Run IDs can be queried directly after restart. See
+[managed-runtime.md](managed-runtime.md).

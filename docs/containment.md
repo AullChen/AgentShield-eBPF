@@ -63,9 +63,10 @@ containment hint. It emits the decision and an independent result correlated by
 Run, generation, policy, rule, event, and scope identity. Execution errors are
 result data and do not discard the decision record.
 
-The coordinator is a safe orchestration boundary, not live audit-loop wiring.
-It may perform cgroup filesystem I/O and must run behind a bounded worker after
-raw evidence is emitted. The standalone `audit` command does not currently own
+The managed `serve` entry invokes the coordinator behind a bounded worker;
+the ring reader only hands off the event and independently retains raw output.
+The worker may perform cgroup filesystem I/O without blocking that reader.
+The standalone `audit` command does not currently own
 the registration Manager needed for exact lifecycle authorization, so it does
 not invoke containment. This coordinator deliberately accepts active Runs only;
 terminating or tombstoned delayed events need a separate attribution-only
@@ -76,7 +77,9 @@ descriptor-relative leaf inspection and the `cgroup.kill` write, and are
 cross-compiled here for CI execution. This Windows workspace cannot execute
 those tests against a real cgroup v2 hierarchy, so real Linux containment
 evidence remains pending and must not be inferred from unit tests or
-cross-compilation.
+cross-compilation. The isolated stopped-workload fixture and complete runtime
+procedure are described in [managed-runtime.md](managed-runtime.md) and the
+local test guide.
 
 Reproducible source checks:
 

@@ -37,6 +37,29 @@ func run(args []string) int {
 	command := args[0]
 	cfg := config.Default()
 	switch command {
+	case "internal-scope-probe":
+		identity, err := bpfmgr.ProbeCurrentCgroup()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Println(identity)
+		return 0
+	case "serve":
+		flags := newFlagSet(command, &cfg)
+		options := managedOptions{}
+		flags.StringVar(&options.objectPath, "bpf-object", "bpf/agentshield.bpf.o", "compiled BPF object")
+		flags.StringVar(&options.networkRoot, "cgroup-root", "/sys/fs/cgroup", "trusted cgroup v2 root for network attachment")
+		flags.StringVar(&options.managementSocket, "management-socket", "", "owner-only Unix registration/finish socket")
+		flags.StringVar(&options.ingestAddress, "ingest-listen", "127.0.0.1:8081", "loopback checkpoint ingest listener")
+		flags.StringVar(&options.readAddress, "api-listen", "127.0.0.1:8080", "loopback read-only Dashboard API")
+		flags.StringVar(&options.tokenFile, "read-token-file", "", "owner-only Dashboard read token file")
+		flags.StringVar(&options.databasePath, "store", "", "owner-only SQLite evidence database")
+		flags.StringVar(&options.policyPath, "policy-file", "configs/default-policies.yaml", "policy bundle for registered Runs")
+		if exitCode, done := parseCommandFlags(flags, args[1:], &cfg); done {
+			return exitCode
+		}
+		return runManaged(cfg, options)
 	case "audit", "audit-openat":
 		flags := newFlagSet(command, &cfg)
 		bpfObject := flags.String("bpf-object", "bpf/agentshield.bpf.o", "path to the compiled AgentShield BPF object")
@@ -358,6 +381,7 @@ func runDiagnose(ctx context.Context, cfg config.Config) int {
 
 func printUsage(out *os.File) {
 	commands := []string{
+		"serve        run registered Agent/checkpoint/evidence/containment pipeline",
 		"audit        stream file and process events as JSON Lines",
 		"diagnose     run local environment diagnostics",
 		"health       run a local control-plane health check",

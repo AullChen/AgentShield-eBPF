@@ -15,16 +15,18 @@ The next work is ordered by evidence and trust boundaries, not by UI surface.
 
 ## Runtime integration
 
-- Implement a concrete stopped-task cgroup/container adapter for the trusted
+- Implement a general stopped-task container adapter for the trusted
   supervisor contract, including descriptor-held identity and `populated 0`
   exit confirmation.
-- Wire lifecycle registration, checkpoint ingest, SQLite persistence,
-  correlator output, and evidence projection into one bounded production
-  control-plane process.
-- Add durable Run/history queries with gap and retention semantics. Keep the
+- Run and review the managed `serve` entry and stopped Linux acceptance fixture
+  on the supported VM, including identity probe, checkpoint/store/correlation,
+  final containment dispatch, and restart reads. Source wiring and deterministic
+  integration tests exist; real-kernel acceptance does not.
+- Add durable Run listing/history pagination with gap and retention semantics;
+  the bounded per-Run SQLite evidence endpoint now exists. Keep the
   current in-memory WebSocket recovery window distinct.
-- Connect final containment decisions to a bounded production worker, preserve
-  exact-scope revalidation, and expose independent attempt/outcome evidence.
+- Add trusted workload reconciliation after Core crash; active Run credentials,
+  replay state, and scope maps are intentionally not restored from evidence.
 
 ## Policy and enforcement
 
@@ -42,8 +44,8 @@ The next work is ordered by evidence and trust boundaries, not by UI surface.
   namespace boundaries; do not infer it from TCP connect hooks.
 - Run controlled ring-buffer saturation and verify per-type drop deltas,
   shutdown draining, and user-visible diagnostics under load.
-- Add restart, disk-full, corrupt-store, expired-token, and slow-client chaos
-  gates after the production fan-in exists.
+- Add real-host restart, disk-full, corrupt-store, expired-token, and slow-client
+  chaos gates for the managed fan-in.
 
 Every item that depends on a real kernel, container runtime, privilege, browser,
 or network service must ship with a reproducible procedure and retained

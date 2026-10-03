@@ -221,7 +221,7 @@ func (writer *Writer) buffer(records []Record) {
 	writer.mu.Lock()
 	defer writer.mu.Unlock()
 	for _, record := range records {
-		size := int64(len(record.Summary) + len(labelsJSON(record.Labels)) + 512)
+		size := int64(len(record.Summary) + len(labelsJSON(record.Labels)) + len(record.Payload) + 512)
 		if len(writer.recent) >= writer.options.RecentCapacity || writer.recentBytes+size > writer.options.RecentBytes {
 			writer.diagnostics.StoreDrops++
 			writer.noteGapLocked(record.ID)

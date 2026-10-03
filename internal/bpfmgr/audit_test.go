@@ -429,10 +429,11 @@ func TestMonitorDropCountersEmitsDeltaAndStops(t *testing.T) {
 	emitter := newAuditEventEmitter(channelWriter{writes: writes})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+	var observed []AuditEvent
 	go func() {
 		done <- monitorDropCounters(ctx, time.Millisecond, reader, func() (ReceiptTime, error) {
 			return ReceiptTime{MonotonicNS: 10, UnixNS: 20, CalibrationErrorNS: 1}, nil
-		}, emitter)
+		}, emitter, func(event AuditEvent) { observed = append(observed, event) })
 	}()
 
 	var payload []byte
@@ -461,6 +462,44 @@ func TestMonitorDropCountersEmitsDeltaAndStops(t *testing.T) {
 	if event.ServerReceivedMonotonicNS != 10 || event.ServerReceivedUnixNS != 20 {
 		t.Fatalf("drop notice receipt clocks = %d/%d", event.ServerReceivedMonotonicNS, event.ServerReceivedUnixNS)
 	}
+	if len(observed) != 1 || observed[0].DroppedEventType != event.DroppedEventType || observed[0].DroppedCount != event.DroppedCount {
+		t.Fatalf("diagnostic callback did not receive the emitted delta: %+v", observed)
+	}
+}
+
+func TestStreamAuditEventsRetainsRawEventWhenManagedHandoffFails(t *testing.T) {
+	sample := encodeAuditSample(t, rawAuditEventV2{SchemaVersion: events.SchemaVersion, EventType: events.EventTypeFileOpen, PID: 42})
+	read := false
+	var out bytes.Buffer
+	var reported error
+	want := errors.New("managed queue full")
+	err := streamAuditEvents(auditSampleReaderFunc(func() ([]byte, error) {
+		if read {
+			return nil, io.EOF
+		}
+		read = true
+		return sample, nil
+	}), AuditOptions{OnEvent: func(event AuditEvent) error {
+		if event.PID != 42 {
+			t.Fatalf("handoff event=%+v", event)
+		}
+		return want
+	}, OnDerivedRecordError: func(err error) { reported = err }}, &out)
+	if err != nil || !errors.Is(reported, want) {
+		t.Fatalf("stream=%v reported=%v", err, reported)
+	}
+	decoder := json.NewDecoder(&out)
+	var raw AuditEvent
+	var failure DerivedRecordError
+	if err := decoder.Decode(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := decoder.Decode(&failure); err != nil {
+		t.Fatal(err)
+	}
+	if raw.PID != 42 || failure.RecordType != "derived_record_error" || failure.Error != want.Error() {
+		t.Fatalf("raw=%+v failure=%+v", raw, failure)
+	}
 }
 
 func TestMonitorDropCountersEmitsInitialNonzeroCounts(t *testing.T) {
@@ -473,7 +512,7 @@ func TestMonitorDropCountersEmitsInitialNonzeroCounts(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- monitorDropCounters(ctx, time.Hour, reader, nil, emitter)
+		done <- monitorDropCounters(ctx, time.Hour, reader, nil, emitter, nil)
 	}()
 
 	select {
@@ -507,7 +546,7 @@ func TestMonitorDropCountersEmitsFinalDeltaOnCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- monitorDropCounters(ctx, time.Hour, reader, nil, emitter)
+		done <- monitorDropCounters(ctx, time.Hour, reader, nil, emitter, nil)
 	}()
 
 	select {

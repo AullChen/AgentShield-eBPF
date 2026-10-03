@@ -25,6 +25,8 @@ var (
 	sqlitePrepare  = sqliteDLL.NewProc("sqlite3_prepare_v2")
 	sqliteStep     = sqliteDLL.NewProc("sqlite3_step")
 	sqliteColumn   = sqliteDLL.NewProc("sqlite3_column_int64")
+	sqliteText     = sqliteDLL.NewProc("sqlite3_column_text")
+	sqliteBytes    = sqliteDLL.NewProc("sqlite3_column_bytes")
 	sqliteFinalize = sqliteDLL.NewProc("sqlite3_finalize")
 	kernel32DLL    = syscall.NewLazyDLL("kernel32.dll")
 	lstrlenA       = kernel32DLL.NewProc("lstrlenA")
@@ -93,6 +95,47 @@ func (database *windowsSQLite) Close() error {
 		return fmt.Errorf("close SQLite: result %d", int32(result))
 	}
 	return nil
+}
+
+func (database *windowsSQLite) QueryStrings(query string, limit, maxBytes int) ([]string, error) {
+	encoded := append([]byte(query), 0)
+	var statement uintptr
+	result, _, _ := sqlitePrepare.Call(database.handle, uintptr(unsafe.Pointer(&encoded[0])), ^uintptr(0), uintptr(unsafe.Pointer(&statement)), 0)
+	runtime.KeepAlive(encoded)
+	if int32(result) != sqliteOK {
+		return nil, fmt.Errorf("prepare SQLite evidence query: result %d", int32(result))
+	}
+	defer sqliteFinalize.Call(statement)
+	rows := make([]string, 0)
+	total := 0
+	for len(rows) < limit {
+		result, _, _ = sqliteStep.Call(statement)
+		if int32(result) == sqliteDone {
+			break
+		}
+		if int32(result) != sqliteRow {
+			return nil, fmt.Errorf("step SQLite evidence query: result %d", int32(result))
+		}
+		length, _, _ := sqliteBytes.Call(statement, 0)
+		if length > 64<<10 {
+			return nil, fmt.Errorf("SQLite evidence row exceeds limit")
+		}
+		if total+int(length) > maxBytes {
+			break
+		}
+		pointer, _, _ := sqliteText.Call(statement, 0)
+		contents := make([]byte, int(length))
+		if length != 0 {
+			if pointer == 0 {
+				return nil, fmt.Errorf("SQLite evidence row has no text")
+			}
+			rtlMoveMemory.Call(uintptr(unsafe.Pointer(&contents[0])), pointer, length)
+			runtime.KeepAlive(contents)
+		}
+		rows = append(rows, string(contents))
+		total += len(contents)
+	}
+	return rows, nil
 }
 
 func (database *windowsSQLite) errorMessage() string {

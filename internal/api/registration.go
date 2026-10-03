@@ -210,6 +210,7 @@ type RegistrationHandler struct {
 	signingKey          [sha256.Size]byte
 	registrationMu      sync.Mutex
 	registrationReplays map[string]registrationReplay
+	onRunChanged        func(AgentRun)
 }
 
 type registrationReplay struct {
@@ -220,6 +221,7 @@ type registrationReplay struct {
 }
 
 type RegistrationOptions struct {
+	OnRunChanged        func(AgentRun)
 	Random              io.Reader
 	Now                 func() time.Time
 	TokenTTL            time.Duration
@@ -281,6 +283,7 @@ func NewRegistrationHandler(registrar Registrar, store *RunStore, options Regist
 		tombstoneMaxEntries: options.TombstoneMaxEntries,
 		instanceID:          instanceID,
 		registrationReplays: make(map[string]registrationReplay),
+		onRunChanged:        options.OnRunChanged,
 	}
 	if _, err := io.ReadFull(options.Random, handler.signingKey[:]); err != nil {
 		return nil, fmt.Errorf("generate ingest signing key: %w", err)
@@ -294,6 +297,8 @@ func (handler *RegistrationHandler) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/agents/{run_id}/finish", handler.serveFinish)
 	return mux
 }
+
+func (handler *RegistrationHandler) Store() *RunStore { return handler.store }
 
 func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
@@ -409,7 +414,7 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 		CgroupPath:   registration.Path,
 		ScopeMode:    input.ScopeMode,
 		RootPID:      input.RootPID,
-		ProfileID:    input.ProfileID,
+		ProfileID:    registration.Value.ProfileID,
 		Labels:       input.Labels,
 		Status:       "active",
 		RegisteredAt: now,
@@ -421,6 +426,9 @@ func (handler *RegistrationHandler) ServeHTTP(response http.ResponseWriter, requ
 		_ = handler.registrar.Unregister(registration.CgroupID)
 		http.Error(response, "could not persist run", http.StatusInternalServerError)
 		return
+	}
+	if handler.onRunChanged != nil {
+		handler.onRunChanged(run)
 	}
 
 	output := RegisterResponse{

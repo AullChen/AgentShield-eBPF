@@ -71,3 +71,34 @@ func (database *cgoSQLite) Close() error {
 	database.handle = nil
 	return nil
 }
+
+func (database *cgoSQLite) QueryStrings(query string, limit, maxBytes int) ([]string, error) {
+	encoded := C.CString(query)
+	defer C.free(unsafe.Pointer(encoded))
+	var statement *C.sqlite3_stmt
+	if result := C.sqlite3_prepare_v2(database.handle, encoded, -1, &statement, nil); result != C.SQLITE_OK {
+		return nil, fmt.Errorf("prepare SQLite evidence query: result %d", result)
+	}
+	defer C.sqlite3_finalize(statement)
+	rows := make([]string, 0)
+	total := 0
+	for len(rows) < limit {
+		result := C.sqlite3_step(statement)
+		if result == C.SQLITE_DONE {
+			break
+		}
+		if result != C.SQLITE_ROW {
+			return nil, fmt.Errorf("step SQLite evidence query: result %d", result)
+		}
+		size := int(C.sqlite3_column_bytes(statement, 0))
+		if size < 0 || size > 64<<10 {
+			return nil, fmt.Errorf("SQLite evidence row exceeds limit")
+		}
+		if total+size > maxBytes {
+			break
+		}
+		rows = append(rows, C.GoStringN((*C.char)(unsafe.Pointer(C.sqlite3_column_text(statement, 0))), C.int(size)))
+		total += size
+	}
+	return rows, nil
+}

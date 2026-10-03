@@ -4,6 +4,8 @@ Public project documentation belongs here.
 
 Current notes:
 
+- `managed-runtime.md`: registered `serve` entry, bounded checkpoint/kernel
+  fan-in, durable per-Run evidence, independent containment, and VM fixture.
 - `demo-guide.md`: Day 48 guarded host-Core/Compose-Dashboard/Sandbox demo,
   evidence semantics, and explicit non-production boundary.
 - `troubleshooting.md`: preflight, BPF, event, Dashboard, and safe-cleanup
