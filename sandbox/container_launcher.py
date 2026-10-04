@@ -35,6 +35,25 @@ def trusted_path(value: str, kind: str) -> Path:
     return path
 
 
+def verify_init_ancestors(init: Path) -> None:
+    for parent in init.parents:
+        info = parent.stat()
+        if info.st_uid != 0 or info.st_mode & 0o022:
+            raise ValueError("trusted init ancestors must not be replaceable by untrusted users")
+
+
+def readonly_cgroupfs(mountinfo: str) -> bool:
+    mounts = []
+    for line in mountinfo.splitlines():
+        before, separator, after = line.partition(" - ")
+        if separator and after.split()[:1] == ["cgroup2"]:
+            fields = before.split()
+            if len(fields) < 6:
+                return False
+            mounts.append("ro" in fields[5].split(","))
+    return bool(mounts) and all(mounts)
+
+
 def create_arguments(image: str, project: Path, init: Path, gateway: Path) -> list[str]:
     if not _IMAGE.fullmatch(image):
         raise ValueError("use a locally installed immutable image ID/digest")
@@ -73,6 +92,7 @@ class ContainerTask:
                 if not stat.S_ISLNK(mode) and (info.st_uid != 0 or mode & 0o022):
                     raise ValueError("approved project copy must not be writable by untrusted users")
         self.init = trusted_path(init, "file")
+        verify_init_ancestors(self.init)
         self.gateway = trusted_path(gateway, "socket")
         parent = trusted_path(cgroup_parent, "directory")
         if not str(parent).startswith("/sys/fs/cgroup/") or parent.stat().st_uid != 0 or parent.stat().st_mode & 0o022:
@@ -125,6 +145,8 @@ class ContainerTask:
             self.start_time = self._pid_start()
             os.kill(self.pid, signal.SIGSTOP)
             self._wait_stopped()
+            if not readonly_cgroupfs(Path(f"/proc/{self.pid}/mountinfo").read_text()):
+                raise RuntimeError("container cgroupfs must be mounted read-only before registration")
             self._write("cgroup.procs", str(self.pid))
             self._request = RegistrationRequest("controlled-harness", str(self.leaf), self.container_id, self.pid)
             self.confirm_stopped()

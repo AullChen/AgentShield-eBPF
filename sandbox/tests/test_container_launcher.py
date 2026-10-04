@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import container_launcher as launcher
@@ -28,6 +29,22 @@ class ContainerArgumentsTests(unittest.TestCase):
         if sys.platform != "linux":
             with self.assertRaises(ValueError):
                 launcher.ContainerTask(image="", project="", init="", gateway="", cgroup_parent="", command=[])
+
+    def test_cgroupfs_must_be_readonly_and_present(self):
+        ro = "31 22 0:27 / /sys/fs/cgroup ro,nosuid,nodev,noexec - cgroup2 cgroup rw\n"
+        self.assertTrue(launcher.readonly_cgroupfs(ro))
+        self.assertFalse(launcher.readonly_cgroupfs(ro.replace("ro,nosuid", "rw,nosuid")))
+        self.assertFalse(launcher.readonly_cgroupfs(ro + ro.replace("ro,nosuid", "rw,nosuid")))
+        self.assertFalse(launcher.readonly_cgroupfs(""))
+
+    def test_init_cannot_be_replaced_through_writable_ancestor(self):
+        trusted = Mock(st_uid=0, st_mode=0o755)
+        with patch.object(Path, "stat", return_value=trusted):
+            launcher.verify_init_ancestors(Path("/opt/agentshield/init"))
+        writable = Mock(st_uid=0, st_mode=0o777)
+        with patch.object(Path, "stat", return_value=writable):
+            with self.assertRaises(ValueError):
+                launcher.verify_init_ancestors(Path("/tmp/init"))
 
 
 if __name__ == "__main__":

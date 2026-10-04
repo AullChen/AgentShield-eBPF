@@ -86,7 +86,9 @@ limits, then registers it. Only after registration matches the held inode and
 stopped process identity does the supervisor send a launch envelope and resume
 it. Descendants inherit this exact leaf. The container sees host cgroup namespace
 for compatibility with the current resolver, but cgroupfs must be read-only,
-UID non-root, all capabilities dropped, and no-new-privileges set.
+UID non-root, all capabilities dropped, and no-new-privileges set. The adapter
+reads the stopped task's mountinfo and rejects any writable/missing cgroup v2
+mount before registration; it also rejects replaceable init-path ancestors.
 
 The leaf is separate from Docker's auto-removed runtime leaf. Finish requires
 Docker's trusted exit state **and** `cgroup.events populated 0` in the held leaf;
