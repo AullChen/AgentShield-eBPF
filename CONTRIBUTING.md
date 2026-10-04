@@ -25,5 +25,8 @@ Go tests live beside their packages; Python tests live under `sdk/python/tests` 
 - Preserve the distinction between an observed attempt, a synchronous block, and post-event containment.
 - Redact evidence before persistence or broadcast, and surface queue/storage loss in diagnostics.
 - Keep privileged operations inside the documented dedicated-VM workflow.
+- Preserve the offline container boundary independently of Core availability.
+- Bind local approval to Run, route, exact request bytes, expiry, and one consumption; apply content/tool rules before approval.
+- Label local inspection receipts separately from kernel enforcement and backend execution.
 
 Store raw runtime artifacts in ignored local directories. Publish reviewed summaries and scrubbed fixtures that preserve the information needed to reproduce a result. Security-sensitive reports follow [SECURITY.md](SECURITY.md).

@@ -1,62 +1,51 @@
 # Controlled offline container launch
 
-This opt-in Linux adapter places the **whole application** (harness, Agent, and
-ordinary local stdio MCP children) in one registered exact leaf before the
-harness executes. It is an initial single-container adapter, not a general
-production platform integration. Linux/Docker acceptance is still required.
+The Linux Docker adapter runs an application harness, agent, and ordinary stdio MCP children in one registered exact cgroup leaf. A trusted static init prepares the container, waits for registration, then starts the workload with a Run-bound local relay. The Linux 6.8/Docker workflow is covered by the [recorded integration results](validation.md).
 
-The network namespace uses `--network=none`: no external IPv4/IPv6, UDP, QUIC,
-or DNS. The only intentional host channel is a single authenticated workload
-Unix socket. A trusted static init exposes that socket to ordinary HTTP clients
-on container loopback `127.0.0.1:18181`; it does not provide a CONNECT proxy.
-The workload socket does not expose registration, finish, policies, or Dashboard
-routes. With Core stopped the socket becomes unusable; arbitrary networking is
-not restored. A Core restart requires newly prepared containers because existing
-single-file mounts retain the old socket inode.
+## Operating boundary
 
-## Preconditions
+| Control | Configuration |
+| --- | --- |
+| Network | Docker `--network=none`; local HTTP relay on `127.0.0.1:18181` |
+| Identity | UID/GID 65532, all capabilities dropped, `no-new-privileges` |
+| Filesystem | Read-only root and approved source; 16 MiB `/tmp` tmpfs and 1 MiB shared memory |
+| Cgroup | Trusted exact leaf, held directory descriptor, read-only workload cgroupfs |
+| Host channel | Individual workload Unix-socket bind mount |
+| Image | Already installed immutable image ID/digest and trusted static init entrypoint |
 
-- Dedicated rootful Linux Docker host, cgroup v2, root supervisor/Core, no user
-  namespace remapping/rootless Docker. Native Windows/macOS is not supported.
-- Root-owned, immutable locally installed image ID/digest. No implicit image
-  volumes, non-whitelisted image environment, or healthchecks. Do not use images
-  that contain credentials. The trusted init overrides the image entrypoint.
-- A private root-owned approved project copy, not an entire home directory.
-  Remove unapproved `.env`, keys, and configuration from the copy. Directories
-  and regular files must not be group/world writable; special files are
-  rejected. Submounts are excluded. Keep the copy unchanged during the Run.
-- The trusted init binary and its ancestors must not be replaceable by an
-  untrusted user. Do not use `/tmp` as the binary's deployment location.
-- A dedicated cgroup parent with `cpu`, `memory`, and `pids` enabled in
-  `cgroup.subtree_control`. Do not delegate it to the workload. The adapter
-  refuses missing controllers instead of changing the host's controller tree.
-- The operator must not `docker exec`, restart, move tasks, or add networks to
-  the container. Docker authority remains outside the sandbox.
+The network namespace remains isolated when Core stops. The relay then reports service unavailability. This boundary also covers ordinary child processes within the container. Model/MCP requests use the [local inspection API](local-inspection.md), whose result is a check receipt.
 
-## Build and launch
+## Prepare a dedicated host
 
-Build on the Linux host (use the host architecture for the init):
+Use rootful Docker on Linux with cgroup v2 and a root supervisor/Core in the host cgroup namespace. The supported adapter configuration uses Docker's regular identity mapping. Give a dedicated cgroup parent the `cpu`, `memory`, and `pids` controllers in `cgroup.subtree_control`; the launcher validates this operator-prepared hierarchy.
+
+Prepare a root-owned approved project copy containing only the files needed by the workload. Keep regular files and directories writable only by the trusted operator, exclude credentials and special files, and hold the copy stable for the Run. Docker authority, the image, init binary, cgroup hierarchy, and source preparation belong to the trusted side.
+
+The image must already contain the command/runtime. Its declared environment is restricted to PATH/LANG/TZ/TERM, and implicit image volumes are rejected. The launcher overrides the entrypoint and disables healthchecks and restarts. Preserve these settings throughout the task; Docker administration remains under operator control.
+
+Build the trusted init and Core on the Linux host:
 
 ```sh
 CGO_ENABLED=0 go build -o bin/sandbox-init ./cmd/sandbox-init
-go build -o bin/agentshield ./cmd/agentshield
+CGO_ENABLED=1 go build -o bin/agentshield ./cmd/agentshield
+sudo install -d -o root -g root -m 0755 /opt/agentshield
 sudo install -o root -g root -m 0755 bin/sandbox-init /opt/agentshield/sandbox-init
 sudo install -d -m 0700 /run/agentshield-workload
 ```
 
-Start the existing managed Core following [managed-runtime.md](managed-runtime.md),
-with its usual policy/store/read-token flags and this additional flag:
+The init and all ancestor directories must remain protected from untrusted replacement. Follow [managed runtime](managed-runtime.md) to build the BPF object and configure Core's own leaf, read credential, database, and management socket. Add:
 
 ```text
 --workload-socket /run/agentshield-workload/gateway.sock
 ```
 
-The socket file is mode 0666 **inside an owner-only 0700 directory**, allowing
-only its individual bind mount to be used by UID 65532. Every checkpoint still
-requires a signed active Run token. Never mount its parent or the management
-socket into the container.
+Add `--inspection-file` as described in [local inspection](local-inspection.md) to enable model/MCP checks. Start this workload with the default audit/alert policy unless a separately prepared runtime policy is required. A strict TCP profile must allow the relay's `127.0.0.1:18181` tuple.
 
-After preparing the approved copy and cgroup parent, launch:
+The workload socket is mode `0666` inside a root-only `0700` directory, allowing the container's UID to use its individual file mount. Checkpoint and inspection requests still require an active Run token. Management and dashboard access remain on their separate interfaces.
+
+## Launch
+
+With the approved copy and controller-enabled parent prepared:
 
 ```sh
 sudo python3 sandbox/container_launcher.py \
@@ -65,58 +54,39 @@ sudo python3 sandbox/container_launcher.py \
   --init /opt/agentshield/sandbox-init \
   --gateway /run/agentshield-workload/gateway.sock \
   --cgroup-parent /sys/fs/cgroup/agentshield-runs \
-  --management-socket /run/agentshield-management/management.sock \
+  --management-socket /run/agentshield/management.sock \
   --timeout 300 -- /usr/bin/python3 /workspace/harness.py
 ```
 
-The image must already contain the command/runtime. No image pull or dependency
-download occurs during launch. Workload environment is freshly constructed:
-fixed PATH/HOME/LANG plus Run/checkpoint/local-check capabilities; no host API
-keys, proxy settings, Docker descriptors, or existing network connections.
-Resource defaults are 512 MiB memory, no swap, 64 tasks, 0.5 CPU, 300 seconds.
-The Python adapter constructor allows explicit bounded budgets; CLI timeout is
-1–900 seconds, fitting the default 15-minute ingest-token lifetime.
+Use the same management socket path configured on Core. The workload receives a newly constructed environment containing its Run/checkpoint/check capabilities and a small set of approved process variables. Image pulls and dependency installation happen during trusted preparation.
 
-## Lifecycle and boundaries
+| Resource | Launcher default | Recorded enforcement experiment |
+| --- | --- | --- |
+| Memory | 512 MiB | 128 MiB; an over-limit child triggered OOM kill |
+| Swap | 0 | 0 |
+| Processes/threads | 64 | Task-limit counter incremented |
+| CPU | 50,000 µs per 100,000 µs period | 0.5 CPU; throttled-period counter incremented |
+| Runtime | 300 seconds | Timeout ended the entire container |
 
-The trusted init signals readiness and stops; the host additionally stops it
-from the ancestor PID namespace and verifies all threads. The adapter moves the
-stopped init into a persistent, descriptor-held leaf, writes/readbacks resource
-limits, then registers it. Only after registration matches the held inode and
-stopped process identity does the supervisor send a launch envelope and resume
-it. Descendants inherit this exact leaf. The container sees host cgroup namespace
-for compatibility with the current resolver, but cgroupfs must be read-only,
-UID non-root, all capabilities dropped, and no-new-privileges set. The adapter
-reads the stopped task's mountinfo and rejects any writable/missing cgroup v2
-mount before registration; it also rejects replaceable init-path ancestors.
+The Python `ContainerTask` constructor accepts bounded memory, task, and CPU budgets. The CLI exposes timeout from 1–900 seconds, within the default 15-minute ingest-token lifetime. The experiment's 128 MiB setting is a test-specific override of the 512 MiB default.
 
-The leaf is separate from Docker's auto-removed runtime leaf. Finish requires
-Docker's trusted exit state **and** `cgroup.events populated 0` in the held leaf;
-cleanup only removes this adapter's empty leaf. Failure invokes termination then
-whole-leaf kill, never an Agent `run_finished` claim.
+## Registration and finish
 
-If the root PID disappears before the supervisor sends finish, the Core monitor
-keeps the Run active only when the held leaf reports `populated 0`. It retains
-the scope registration until trusted finish (or the existing Run expiry).
-A missing PID with remaining members, invalid/unreadable cgroup state, a moved
-live root, or a child cgroup still fails scope inspection. An empty leaf alone
-does not authorize finishing a Run.
+1. The trusted init signals readiness and stops. The host supervisor verifies all its threads are stopped.
+2. The adapter validates the read-only cgroupfs mount, moves the stopped init into its held leaf, and verifies identity and resource-limit readback.
+3. Core registers the exact scope. The supervisor verifies the response against the held inode and stopped root process.
+4. The supervisor sends the Run credential envelope and resumes init; only then does init start the application and local relay.
+5. Docker exit state and `cgroup.events populated 0` establish complete workload exit. The supervisor finishes the Run, then cleans up the container and its empty leaf.
 
-This first version mounts source read-only. Editing can use a task-created copy
-under bounded `/tmp`, but this adapter does not export that copy or apply changes
-to the original. High-privilege/shared MCP servers are not automatically covered;
-they need their own isolation and integration. No cloud model or remote MCP
-forwarding is provided by the local inspection feature.
+The held leaf is separate from Docker's runtime leaf. When the root PID disappears and the held leaf is empty, Core keeps the Run active awaiting trusted finish or expiry. The monitor continues checking child cgroups; remaining members, a migrated live root, or unreadable state cause inspection failure. This preserves monitoring through the gap between task exit and supervisor finish.
 
-## Checks
+## Core shutdown and evidence
+
+Complete workloads before planned Core shutdown. A stopped Core leaves Docker's offline boundary intact and makes the relay unavailable. Following a Core restart, prepare fresh containers so their single-file mounts reference the new socket inode.
+
+The [validation record](validation.md) covers receiver-side zero application bytes, actual resource-limit events, relay body rejection, delayed finish, abnormal scope rejection, persistence, and cleanup. Platform extensions, editable work-copy export, and remote executor integration are described in [development plans](roadmap.md).
 
 ```sh
-go test ./...
-go vet ./...
 python3 -m unittest discover -s sandbox/tests -v
+go test ./cmd/sandbox-init ./internal/scope ./internal/api
 ```
-
-These checks cannot establish cgroupfs mount permissions, Docker lifecycle,
-whole-tree network isolation, or kernel enforcement. Run the dedicated-VM
-acceptance procedure before deploying. Do not publish synthetic or unexecuted
-checks as actual Linux evidence.

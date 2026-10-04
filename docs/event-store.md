@@ -1,6 +1,6 @@
 # Event store
 
-`internal/store` persists evidence in SQLite through a bounded, nonblocking writer.
+`internal/store` persists evidence in SQLite. Kernel/checkpoint capture uses a bounded, nonblocking writer; local inspection appends its minimal receipt synchronously before reporting success.
 
 ## SQLite boundary
 
@@ -57,6 +57,16 @@ error or record content, so storage failure remains visible without leaking
 secrets or depending on the failed database.
 
 ## Verification
+
+Local inspection records use the same redactor, schema, and per-Run query path.
+Approval/check/denial records carry route, digest, fixed reason, and trusted
+identity. `AppendBatch` completes before a successful local inspection response;
+a storage error prevents success. The recorded restart experiment recovered all
+49 inspection records and IDs. See [local inspection](local-inspection.md).
+
+Database operations check the handle's closed state and return an error after
+close. The regression suite covers append/query operations following closure,
+while the runtime experiment covers normal close, reopen, and integrity checks.
 
 The managed `serve` entry persists normalized evidence payloads and reads
 bounded per-Run snapshots; older databases migrate the payload column without

@@ -2,10 +2,11 @@
 
 `agentshield serve` runs registration, checkpoint ingestion, policy evaluation, correlation, containment, SQLite storage, and read APIs in one process. This walkthrough uses the stopped-task fixture to exercise that complete lifecycle on a dedicated Linux 6.8 VM.
 
-Optional `--workload-socket` and `--inspection-file` add the separately documented
-[offline container adapter](controlled-launch.md) and [local-only model/MCP
-checks](local-inspection.md). They do not change this fixture or enable remote
-forwarding. Approval routes stay on the owner-only management socket.
+Optional `--workload-socket` and `--inspection-file` enable the
+[offline container adapter](controlled-launch.md) and [local model/MCP
+checks](local-inspection.md). The workload socket carries Run-authenticated
+requests; approval routes stay on the owner-only management socket. Both paths
+are covered by the [current Linux 6.8 validation](validation.md).
 
 ## Prepare the host
 
@@ -74,6 +75,8 @@ The [dashboard](../dashboard/README.md) uses the same read API. Its own login cr
 Finish the fixture before sending Ctrl-C to Core. Shutdown stops listeners and monitoring, drains the runtime pipeline while scope maps are available, unregisters scopes, flushes the writer, and closes SQLite. Restart Core with the same database and query the saved Run ID to inspect the persisted evidence.
 
 Managed queries return the newest bounded per-Run snapshot: at most 1,000 records and 4 MiB, with four concurrent snapshots. Checkpoint acceptance acknowledges the bounded pipeline handoff; SQLite persistence is asynchronous. Review queue and store diagnostics alongside each result. [Development plans](roadmap.md) cover active-task recovery, durable Run listing, and replay persistence.
+
+Local inspection uses a separate synchronous SQLite append before returning a successful check or approval receipt. Its records remain queryable by saved Run ID after restart. Offline containers keep their network boundary when Core stops; a planned restart finishes existing workloads and prepares fresh socket mounts for subsequent containers.
 
 After Core exits, its empty leaf can be removed with `sudo rmdir /sys/fs/cgroup/agentshield-core`. Retain the evidence directory as operator-owned data.
 

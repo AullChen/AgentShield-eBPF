@@ -1,0 +1,250 @@
+{
+  "tested_commit": "9d7e28f3f84034e1598694fb713a3260d2240298",
+  "recorded_at": "2026-10-04T20:46:22.229075+08:00",
+  "environment": {
+    "architecture": "x86_64",
+    "kernel": "6.8.0-146-generic",
+    "virtualization": "QEMU TCG guest",
+    "cgroup": "v2",
+    "docker": "28.4.0 rootful",
+    "containerd": "1.7.28",
+    "runc": "1.3.0"
+  },
+  "integration": {
+    "new_workflow_checks": 111,
+    "total_checks": 137,
+    "groups": [
+      {
+        "group": "offline-container",
+        "passed": 81,
+        "failed": 0,
+        "files": [
+          "guest-evidence-offline-6.8/offline-check-results.json"
+        ]
+      },
+      {
+        "group": "scope-regression",
+        "passed": 21,
+        "failed": 0,
+        "files": [
+          "guest-evidence-offline-6.8/scope-regression-check-results.json"
+        ]
+      },
+      {
+        "group": "inspection-restart",
+        "passed": 1,
+        "failed": 0,
+        "files": [
+          "guest-evidence-offline-6.8/offline-restart-check-results.json"
+        ]
+      },
+      {
+        "group": "core-stop-and-timeout",
+        "passed": 8,
+        "failed": 0,
+        "files": [
+          "guest-evidence-offline-6.8/offline-lifecycle-check-results.json"
+        ]
+      },
+      {
+        "group": "managed-mainline",
+        "passed": 26,
+        "failed": 0,
+        "files": [
+          "guest-evidence-managed-6.8/managed-check-results.json",
+          "guest-evidence-managed-6.8/managed-check-restart-results.json"
+        ]
+      }
+    ]
+  },
+  "software": {
+    "go": {
+      "passed_including_subtests": 444,
+      "failed": 0,
+      "skipped": 0,
+      "race": true,
+      "statement_coverage_percent": 68.3
+    },
+    "python": {
+      "sdk": 12,
+      "sandbox": 21
+    },
+    "suites": [
+      {
+        "name": "go-race-cover",
+        "exit_code": 0
+      },
+      {
+        "name": "python-sdk",
+        "exit_code": 0
+      },
+      {
+        "name": "python-sandbox",
+        "exit_code": 0
+      },
+      {
+        "name": "go-static-build",
+        "exit_code": 0
+      },
+      {
+        "name": "dashboard-build",
+        "exit_code": 0
+      },
+      {
+        "name": "windows-cross-build",
+        "exit_code": 0
+      },
+      {
+        "name": "shell-syntax",
+        "exit_code": 0
+      }
+    ]
+  },
+  "network_observation": {
+    "mechanism": "Docker network=none",
+    "families": [
+      "IPv4",
+      "IPv6"
+    ],
+    "protocols": [
+      "TCP",
+      "UDP"
+    ],
+    "subjects": [
+      "agent workload",
+      "ordinary stdio child",
+      "container after Core stop"
+    ],
+    "receiver_positive_controls": "passed",
+    "received_application_bytes": 0
+  },
+  "resource_experiment": {
+    "limits": {
+      "memory.max": "134217728",
+      "memory.swap.max": "0",
+      "pids.max": "64",
+      "cpu.max": "50000 100000"
+    },
+    "memory_events": {
+      "low": "0",
+      "high": "0",
+      "max": "18",
+      "oom": "1",
+      "oom_kill": "1",
+      "oom_group_kill": "0"
+    },
+    "cpu_stats": {
+      "usage_usec": "11786078",
+      "user_usec": "8550495",
+      "system_usec": "3235583",
+      "core_sched.force_idle_usec": "0",
+      "nr_periods": "242",
+      "nr_throttled": "234",
+      "throttled_usec": "12698020",
+      "nr_bursts": "0",
+      "burst_usec": "0"
+    },
+    "pids_events": {
+      "max": "1"
+    }
+  },
+  "relay_body_experiment": {
+    "request_bytes": 262145,
+    "http_status": 413,
+    "new_core_inspection_records": 0
+  },
+  "persistence": {
+    "local_inspection_records": 49,
+    "all_record_ids_preserved": true,
+    "sqlite_integrity_check": "ok"
+  },
+  "lifecycle": {
+    "repeated_delayed_finish_runs": 3,
+    "observations_per_run": 3,
+    "delay_seconds_per_observation": 1.1,
+    "before_finish": "active",
+    "after_trusted_finish": "finished",
+    "negative_controls": [
+      "remaining member after root exit",
+      "live root migration",
+      "child cgroup"
+    ]
+  },
+  "binary_sha256": {
+    "bin/agentshield": "4c45f5976adadd928e46fb4341dd08cf2034534e6365713beee3b87aa1d4ec8b",
+    "bin/sandbox-init": "fcc2c23049a21bb3a21885fdc18ce003c9980d62a7bd8aa2228297d77dc99785",
+    "bin/agentshield.bpf.o": "6618e27def7ba2c450856478e0e2547fbadfe896b102d8162b8e0d768b8e2f9f"
+  },
+  "assets": [
+    {
+      "file": "../assets/local-inspection-live.png",
+      "source_file": "screenshots/06-live-sensitive-denial.png",
+      "captured_at": "2026-10-04T20:36:18.227261+08:00",
+      "sha256": "8a5989713f6a8ba096c6b7cc60c0906853c1bb612794b9227951001b4beb197f",
+      "transport": "Production Dashboard reading running guest Core via a test-only read-only serial bridge"
+    },
+    {
+      "file": "../assets/offline-overview-live.png",
+      "source_file": "screenshots/03-live-overview-finished.png",
+      "captured_at": "2026-10-04T20:36:13.083184+08:00",
+      "sha256": "ea543569c6fd0db9427f6ef5bf0773edfb66c14b9784d226d50eee4c5e2a369f",
+      "transport": "Production Dashboard reading running guest Core via a test-only read-only serial bridge"
+    }
+  ],
+  "source_files": [
+    {
+      "name": "data/verification-summary.json",
+      "sha256": "ebdab9d394dacf4cbacc1fca34cfeefcc538fbbdcf5de2cbe05a6d7beed52512"
+    },
+    {
+      "name": "suite-results.json",
+      "sha256": "d1b8b34433ffeba8fadb590432c9a5a1b381320d20468712b1289b09d72027a9"
+    },
+    {
+      "name": "guest-evidence-offline-6.8/offline-environment.txt",
+      "sha256": "cba872ecb78ee940ad752e5041cda650e3a3b02ee766d38436101215b73de395"
+    },
+    {
+      "name": "data/live-captures.json",
+      "sha256": "cb3f7f05326a304306368e0079a943b1892d1cc81d2e5f9f2df0b3e37b6a8dc6"
+    },
+    {
+      "name": "data/外发隔离.csv",
+      "sha256": "8c13c6072c9ad4eebe9b943f042a031d5f84dbaacd2195bc734723d501765c7b"
+    },
+    {
+      "name": "guest-evidence-offline-6.8/offline-resource-counters.json",
+      "sha256": "6006d9a9cf1ccfef226ff5fde4cbab0532caec2bba6a3ea7162bb7aa078c3eb1"
+    },
+    {
+      "name": "guest-evidence-offline-6.8/offline-check-results.json",
+      "sha256": "8460d9f2ceb0d1820f0b7cc65c1ceeddfe879c97ea09afd4c554ff640ae327c8"
+    },
+    {
+      "name": "guest-evidence-offline-6.8/scope-regression-check-results.json",
+      "sha256": "3eff1f4caf2e647f4311b46e9ffe8afbed191e53694fcfe94b6b95ac68ba21eb"
+    },
+    {
+      "name": "guest-evidence-offline-6.8/offline-restart-check-results.json",
+      "sha256": "1743fec1c9c062aaa66d3855bead6ef8adc631671fcca558229d033ca0b40db6"
+    },
+    {
+      "name": "guest-evidence-offline-6.8/offline-lifecycle-check-results.json",
+      "sha256": "d1faa35fbe4bbe464b14b15e7ec722d51722d93d11f8558889cc0917c6bbd6ce"
+    },
+    {
+      "name": "guest-evidence-managed-6.8/managed-check-results.json",
+      "sha256": "5ef0b7dc9f52f3785ee9d1c172f47d882eb38bdbc70ba3870e377f1413627d1d"
+    },
+    {
+      "name": "guest-evidence-managed-6.8/managed-check-restart-results.json",
+      "sha256": "5045050a9aa33782e5bc4fb471ab09dc99afa7598d2cdb70d98f5cbbef95cf49"
+    }
+  ],
+  "scope": [
+    "Local preflight receipts; external model forwarding and MCP backend execution are separate integration work.",
+    "Application-byte observation at controlled receivers after positive controls; not an unrestricted exfiltration or side-channel claim.",
+    "Recorded Linux guest and Docker configuration; no new Linux 7.0 or ARM64 runtime matrix.",
+    "Resource-limit counters are functional evidence, not throughput or latency benchmarks."
+  ]
+}

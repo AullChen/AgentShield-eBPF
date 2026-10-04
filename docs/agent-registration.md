@@ -65,6 +65,12 @@ are also rejected.
 
 ## Finishing and delayed events
 
+For a monitored root that has exited, Core checks the held leaf's
+`cgroup.events`. A valid `populated 0` keeps the Run active while the supervisor
+prepares finish. The monitor still rejects child cgroups, remaining members,
+and live-root migration. This waiting state retains both scope and credentials
+until trusted finish or expiry.
+
 After the trusted supervisor has confirmed that the task or container exited,
 it calls:
 

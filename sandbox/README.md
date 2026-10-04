@@ -1,5 +1,14 @@
 # Sandbox and trusted supervisor
 
+For controlled application execution, use [`container_launcher.py`](container_launcher.py)
+with the static [`sandbox-init`](../cmd/sandbox-init/) binary. It prepares an offline
+Docker workload, installs resource limits, binds an exact leaf, and releases the
+application after trusted registration. Follow [controlled launch](../docs/controlled-launch.md)
+and [local inspection](../docs/local-inspection.md). The recorded Linux 6.8 workflow
+passed the [current integration checks](../docs/validation.md).
+
+## Container audit demonstration
+
 The container demonstration opens the repository fake credential, executes `/bin/echo`, and attempts IPv4/IPv6 loopback connections. Its Compose configuration uses UID 65532, a read-only root filesystem, dropped capabilities, and a read-only mount of `fixtures/demo-secrets/example-token`.
 
 ```sh
@@ -22,7 +31,11 @@ The supervisor owns management authority; the agent owns only its checkpoint cre
 
 The `PreparedTask` interface keeps platform-specific cgroup/process preparation and waiting in the adapter. The management client validates the socket and Linux peer UID, bounds responses, rejects redirects, and redacts credentials.
 
-`scripts/check-managed-runtime.py` supplies the concrete stopped Linux fixture used in the [managed walkthrough](../docs/managed-runtime.md). Platform adapters are part of the [development plan](../docs/roadmap.md).
+`scripts/check-managed-runtime.py` supplies the stopped Linux containment fixture
+used in the [managed walkthrough](../docs/managed-runtime.md). `ContainerTask` supplies
+the rootful Docker adapter. In both flows, Core keeps an exited, empty scope active
+until trusted finish; scope violations remain subject to monitoring. Additional
+platform integrations are part of the [development plan](../docs/roadmap.md).
 
 ```sh
 python -m unittest discover -s sandbox/tests -v

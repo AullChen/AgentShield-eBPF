@@ -1,6 +1,6 @@
 # Development plans
 
-The demonstrated baseline is the controlled x86_64 Linux 6.8 workflow: trusted registration, scoped observation, TCP enforcement, post-event containment, and persistent per-Run evidence. The next work extends its operating range and measures its behavior under load.
+The demonstrated baseline is the controlled x86_64 Linux 6.8 workflow: offline Docker execution, local model/MCP inspection, trusted registration and finish, kernel observation, TCP enforcement, containment, and persistent evidence. The next work extends its operating range and measures its behavior under load.
 
 ## Reliability and security maintenance
 
@@ -12,15 +12,23 @@ The demonstrated baseline is the controlled x86_64 Linux 6.8 workflow: trusted r
 
 - Persist the Run catalog and add paginated History queries. Current SQLite evidence survives restart and is accessible through a saved Run ID; the Overview/History list is in memory.
 - Define restart recovery for active tasks, credentials, checkpoint replay state, and scope reconciliation. The operating procedure currently finishes workloads before stopping Core.
+- Define restart semantics for pending approvals and inspection-attempt counters, which currently live in memory. Prepare new containers after restart to bind the new workload-socket inode.
 - Persist stream cursors and implement durable snapshot/resync. Live recovery currently uses a bounded in-memory window.
 
 ## Policy and runtime integration
 
 - Add policy CRUD, hot reload, and a persistent implementation of the tested A/B activation contract. Runtime policies currently load at startup, with one global synchronous TCP profile.
-- Validate the initial [offline single-container adapter](controlled-launch.md) on a dedicated rootful Linux/Docker host, then extend production platform coverage while preserving stopped-before-registration and complete-leaf-exit invariants. The new adapter has unit/cross-build coverage, not yet real-container acceptance evidence.
-- Integrate trusted model/MCP executors with the [local-only inspection checker](local-inspection.md). External forwarding and backend execution are intentionally absent in this increment; a check receipt alone is not an enforcement boundary. Extend protocol coverage, approved editable work-copy export, model output/cost budgets and backend isolation only with scoped acceptance tests.
-- Extend coverage to UDP and Unix sockets, `execveat`, and suitable synchronous file/process enforcement hooks. Current `openat`/`execve` tracepoints record entry attempts, and containment follows the event.
+- Extend the validated [rootful Docker adapter](controlled-launch.md) to additional platform and identity-mapping configurations while preserving stopped-before-registration, protected init/source inputs, resource-limit readback, and complete-leaf-exit invariants.
+- Add approved editable work-copy export. The current adapter mounts source read-only and provides bounded temporary storage for task-created files.
+- Extend eBPF observation/enforcement coverage to UDP and Unix sockets, `execveat`, and suitable synchronous file/process hooks. Offline container network isolation already covers IPv4/IPv6 TCP/UDP external traffic; kernel event coverage remains file/exec attempts and TCP connects.
 - Evaluate subtree registration separately from the current exact-leaf model, with explicit identity and delegation rules.
+
+## Inspection and executor integration
+
+- Integrate trusted remote model forwarding and MCP backend execution with a clearly specified approval-to-execution boundary. Current endpoints return local preflight receipts; they are neither model-provider API replacements nor complete MCP protocol proxies.
+- Expand MCP transport and schema coverage beyond a single `tools/call` body and configured string-argument rules. Add authenticated live definition discovery, backend filesystem/symlink enforcement, and isolation for shared or privileged MCP services. Current pins describe trusted local snapshots.
+- Extend sensitive-content evaluation beyond exact configured values and selected credential/private-key patterns. Test fragments, encodings, transformations, and false positives using a labeled corpus.
+- Add model output/token/cost accounting and tool-execution budgets. Existing limits count local inspection attempts per Run and simultaneous checks across the checker.
 
 ## Portability and presentation
 
@@ -30,4 +38,4 @@ The demonstrated baseline is the controlled x86_64 Linux 6.8 workflow: trusted r
 
 ## Research evaluation
 
-Build a labeled workload corpus to evaluate checkpoint association precision, recall, and ambiguity as concurrency and checkpoint delay vary. Compare attribution by PID, cgroup ID, and instance/cookie identity under reuse and delayed delivery. Measure synchronous TCP rejection separately from event-to-containment latency. These experiments would quantify the design choices already represented in the implementation.
+Build a labeled workload corpus to evaluate checkpoint association precision, recall, and ambiguity as concurrency and checkpoint delay vary. Compare attribution by PID, cgroup ID, and instance/cookie identity under reuse and delayed delivery. Measure synchronous TCP rejection, local inspection latency, and event-to-containment latency separately. Evaluate offline isolation with positive-control receivers across launch, timeout, and Core-stop transitions. These experiments would quantify the design choices already represented in the implementation.

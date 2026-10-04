@@ -1,32 +1,19 @@
-# Local model-request and MCP preflight checks
+# Local model-request and MCP inspection
 
-This feature implements the requested **local-only** alternative. It never
-forwards a model request, connects to an MCP backend, or executes a tool. There
-is no provider SDK, upstream URL, provider credential, HTTPS CONNECT handling,
-or cloud-model `base_url` compatibility. Do not point a model SDK's `base_url`
-at this endpoint: its response is an inspection receipt, not a model response.
+The checker validates a complete request body against local content rules, a configured route, and a trusted single-use approval. It returns an inspection receipt and stores a minimal decision record. The [offline container](controlled-launch.md) supplies the network boundary; an integration controls the separate execution step.
 
-A trusted integration must separately arrange checking before execution. An
-uncontrolled client can ignore a local check; the checker alone cannot stop its
-upload or tool execution. The [offline container adapter](controlled-launch.md)
-separately prevents external networking and host-source writes. Its ordinary
-stdio MCP children share the controlled leaf but are not automatically routed
-through protocol authorization. High-privilege/shared MCP integration is deferred.
+Model routes check JSON structure and sensitive content. MCP routes additionally check a `tools/call` body against pinned tool definitions and argument rules. The receipt describes local preflight, with `forwarded=false` and `executed=false`.
 
 ## Enable
 
-The managed Core accepts:
+Add these flags to managed Core:
 
 ```text
 --workload-socket /run/agentshield-workload/gateway.sock
 --inspection-file /run/agentshield-inspection/config.json
 ```
 
-Configuration, sensitive-value files, and MCP definition snapshots must be
-regular owner-only files (0600), within owner-only canonical directories (0700),
-owned by Core's effective UID. Do not mount them into the workload. Definitions
-are read again for each MCP check; sensitive values are loaded at Core startup.
-Changing sensitive values or policy requires a controlled Core restart.
+Configuration, sensitive-value files, and MCP snapshots belong to Core's effective UID. Use canonical owner-only directories (`0700`) and regular owner-only files (`0600`) on the trusted host. Keep these inputs outside workload mounts. Sensitive values and configuration load at startup; MCP definition bytes are read and checked against the configured digest on each request.
 
 Example model-only configuration:
 
@@ -39,16 +26,9 @@ Example model-only configuration:
 }
 ```
 
-Each sensitive file contains **one exact value, including any newline bytes**.
-It can contain an entire sensitive file, but this does not detect arbitrary
-fragments, transformations, base64, encryption, or every secret format. Built-in
-checks cover private-key markers, selected credential assignments/fields and
-AWS access-key-shaped values. Checks inspect decoded JSON strings, including
-escaped Unicode, independently of storage redaction.
+Each sensitive file contains one exact value, including any newline bytes, between 8 bytes and 256 KiB. The checker searches decoded JSON strings, so escaped Unicode is checked after decoding. Built-in rules also recognize private-key markers, selected credential fields/assignments, and AWS access-key-shaped values. Extended detection is covered in [development plans](roadmap.md#inspection-and-executor-integration).
 
-## Request and approval
-
-Workloads make authenticated local requests:
+## Request contract
 
 ```text
 POST /gateway/v1/check/{route_id}
@@ -56,18 +36,22 @@ Authorization: Bearer <active Run ingest token>
 Content-Type: application/json
 ```
 
-The trusted container relay supplies its own Run token and strips caller
-credentials. The body is collected completely, limited to 256 KiB, validated
-as a JSON object, and checked before a result is returned. Duplicate names,
-invalid UTF-8, nesting deeper than 32, trailing values, compressed bodies,
-Origin-bearing requests and session headers are rejected. Unknown routes cannot
-select a destination. GET, CONNECT, attachments, SSE and MCP sessions are not
-supported. The checker contains no upstream transport.
+The trusted init's relay collects up to 256 KiB before handing the body to Core. It replaces caller credentials with its own Run token and sends requests through the individually mounted workload socket. Oversized or incomplete bodies receive HTTP 413 at the relay; the recorded oversized request added zero inspection records to Core.
 
-An otherwise acceptable body initially returns HTTP 403 with
-`reason=approval_required` and its **raw-byte** SHA-256. A trusted operator must
-review the exact saved body, its files/fragments and (for MCP) tool/arguments,
-then create approval on the separate owner-only management socket:
+Core accepts one valid UTF-8 JSON object with unique keys, nesting at most 32, and a complete body. Compression, extra JSON values, query parameters, Origin/session headers, and unsupported routes are rejected. This bounded POST interface is the local request format.
+
+| Result | HTTP status | Meaning |
+| --- | --- | --- |
+| `approval_required` | 403 | Body passes content/tool checks and needs an exact approval |
+| `sensitive_data` or tool-rule rejection | 403 | Content or policy rule rejects the body |
+| `invalid_json` | 400 | JSON contract failed |
+| `body_limit` | 413 | Core body bound exceeded; relay has its own preceding bound |
+| `request_budget` / busy | 429 | Run attempt budget or checker-wide concurrency limit reached |
+| `checked` | 200 | Rules and approval passed; minimal evidence was stored |
+
+## Trusted single-use approval
+
+Review the saved raw body and its intended route. Approve its SHA-256 through the owner-only management socket:
 
 ```text
 POST /api/v1/inspection/approvals
@@ -79,38 +63,19 @@ POST /api/v1/inspection/approvals
 }
 ```
 
-This route is absent from the workload, checkpoint TCP and Dashboard listeners.
-Approvals are bound to active Run, route, full body digest, expiry and one use;
-even whitespace or JSON-RPC ID changes require another approval. There are at
-most 1024 pending approvals. Secrets, changed tool definitions and out-of-range
-arguments remain hard-denied even if approved. Approval permits a local check,
-**not external forwarding or tool execution**.
+The approval binds active Run, route, complete raw-body digest, and expiry. Retrying uses the same saved bytes, including whitespace and JSON-RPC ID. Consumption is synchronized, so concurrent requests can use an approval once. The pending approval store is capped at 1,024 entries.
 
-The successful response explicitly says:
+Sensitive-content and MCP rules run before approval consumption. An approval grants eligibility for a local check while those rules continue to apply. A successful response has this form:
 
 ```json
 {"mode":"local_only","checked":true,"reason":"checked","sha256":"...","forwarded":false,"executed":false}
 ```
 
-The checker enforces per-Run authenticated-check attempt counts (including
-denials) and bounded concurrent checks. The first budget exhaustion is recorded;
-subsequent exhausted attempts are rejected without flooding audit storage.
-These are not model token/cost budgets or tool-execution concurrency limits.
-Approved attempts consume their approval even if evidence storage fails.
-Approval/check/denial evidence is synchronously appended to the existing SQLite
-store before success, then published to the existing stream. Records contain
-only trusted Run identity, route, digest and fixed reasons; no body, arguments,
-secret values or ingest tokens. Evidence uses `local_preflight_only` and
-`enforced=false`, never a kernel-block or tool-executed claim.
+Management approvals use a separate interface from workload checks, checkpoint TCP ingestion, and dashboard reads. An approved attempt consumes its approval even if evidence storage subsequently fails.
 
-## MCP local policy
+## MCP policy and definition pinning
 
-Only a single JSON-RPC `tools/call` **body** is checked. This is not a complete
-Streamable HTTP MCP server or stdio proxy: initialization, tools/list, resources,
-prompts, notifications, batching and sessions are outside this local checker.
-The smallest integration leaves transport/execution separate for later work.
-
-An MCP route adds this policy (example pin is deliberately a placeholder):
+Configure an MCP route with a trusted tool snapshot:
 
 ```json
 {
@@ -127,7 +92,7 @@ An MCP route adds this policy (example pin is deliberately a placeholder):
 }
 ```
 
-The trusted definition snapshot uses:
+The route's `mcp` object refers to a snapshot shaped as:
 
 ```json
 {
@@ -139,49 +104,39 @@ The trusted definition snapshot uses:
 }
 ```
 
-The full snapshot's exact-byte hash pins identity/version, descriptions and input
-schemas, including formatting changes. Updates fail closed until the operator
-reviews the snapshot and replaces the configured pin at restart. The snapshot
-must come from a trusted operator/backend exporter; Agent-supplied definitions
-are not authoritative, and this feature cannot detect an unreported backend
-definition change. It does not call a live backend to fetch definitions.
+Pin the SHA-256 of the exact snapshot bytes. That digest covers identity, version, descriptions, schemas, and formatting. A change requires operator review and an updated startup pin. Obtain snapshots from a trusted operator or backend exporter.
 
-Unlisted tools/argument keys, missing required arguments and non-string arguments
-are denied. A rule uses either an absolute clean `path_prefix` (not `/`) or an
-exact `allowed_values` list for a domain/repository/resource identifier. Paths
-cannot contain `..`, backslashes, or escape by similar prefix; **symlink and
-backend filesystem resolution still require the backend's own isolation**.
-This is not a general JSON Schema validator. Tool annotations such as
-`readOnlyHint` and SDK `tool_planned` never grant permission. High-risk tools
-are absent unless explicitly configured and every call still needs approval.
+The checker accepts the configured tool names, required string arguments, and listed argument keys. Each argument rule supplies either a clean absolute `path_prefix` other than `/`, or exact `allowed_values`. Path checks reject traversal, backslashes, and similar-prefix escapes. These are lexical request rules; filesystem resolution and symlink controls belong to the executor's isolation boundary. The snapshot pins definitions, while the explicit route rules define the implemented argument checks.
 
-The body shape follows the official [MCP tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools).
-The transport limitations intentionally avoid advertising support for features
-defined in [MCP transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).
+## Budgets and evidence
+
+`requests_per_run` limits authenticated check attempts for each Run, including body/rule denials that reach that stage. `concurrency` limits simultaneous checks across the checker. The first exhausted-budget response records the condition; further exhausted attempts are rejected without repeating that evidence. These are request-processing budgets, separate from model token/cost or tool-execution accounting.
+
+Approvals, checks, and denials are appended synchronously to SQLite before a successful result is returned, then published to the realtime stream. Storage failure prevents a successful check receipt. The record keeps trusted Run identity, route, digest, fixed reason, and clocks; request bodies and credentials stay outside the evidence record.
+
+Evidence uses type `local_inspection`, source `policy_decision`, requested action `check`, mechanism `local_preflight_only`, and `enforced=false`. The dashboard displays these alongside kernel and containment records. The recorded restart experiment preserved all 49 local inspection records and their IDs.
 
 ## Example client
 
-Use the exact saved bytes for both operator review and retry. Do not serialize
-them differently after approval:
+Inside the controlled container, submit the exact saved bytes to its relay:
 
 ```python
-import http.client, os
+import http.client
+
 body = b'{"question":"approved synthetic source fragment"}'
 connection = http.client.HTTPConnection("127.0.0.1", 18181, timeout=5)
 connection.request("POST", "/gateway/v1/check/model", body, {
     "Content-Type": "application/json",
-    "Authorization": "Bearer " + os.environ["AGENTSHIELD_INGEST_TOKEN"],
 })
 response = connection.getresponse()
 print(response.status, response.read(4096).decode())
 connection.close()
 ```
 
-If the global eBPF TCP policy is strict, explicitly allow `127.0.0.1:18181` for
-this in-container relay. Do not disable the independent `--network=none`
-boundary. That loopback allow rule does not create an external route.
+The relay supplies the Run credential. First obtain the digest from the approval-required receipt, have the trusted operator review and approve the saved bytes, then submit those same bytes again. A direct trusted-host call to the workload socket supplies its Run Bearer token explicitly.
 
-Run `go test ./internal/inspection ./internal/api ./cmd/agentshield` and the
-dedicated-VM procedures before operational use. Normal cloud-model interaction,
-trusted backend execution, writable work-copy export, Landlock/AppArmor, model
-cost/output budgets and new BPF hooks remain separate follow-up work.
+Use [validation](validation.md) for the real-container results and [development plans](roadmap.md#inspection-and-executor-integration) for remote model execution, MCP protocol integration, and broader content detection.
+
+```sh
+go test ./internal/inspection ./internal/api ./cmd/sandbox-init ./cmd/agentshield
+```

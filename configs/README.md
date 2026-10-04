@@ -10,3 +10,10 @@ Pass a policy bundle to `agentshield serve --policy-file PATH` or `agentshield a
 | `policy.schema.json` | Policy bundle schema v1 |
 
 Core configuration uses CLI flags. Policies load at startup; `serve` binds its compiled global TCP enforcement profile to registered leaves. [Policy schema](../docs/policy-schema.md) explains the supported match/action combinations, and [development plans](../docs/roadmap.md) describe policy management extensions.
+
+Local inspection uses a separate owner-only JSON configuration supplied through
+`serve --inspection-file PATH`. It defines model/MCP routes, sensitive-value
+files, trusted tool-definition digests, per-Run attempts, and checker-wide
+concurrency. See [local inspection](../docs/local-inspection.md) for the schema
+examples and single-use approval flow. Runtime policy bundles and inspection
+configuration serve these separate evaluation paths.

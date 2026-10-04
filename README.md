@@ -1,80 +1,78 @@
 # AgentShield-eBPF
 
-**Kernel-level visibility and policy enforcement for AI agent workloads.**
+**Controlled execution, kernel visibility, and local request checks for AI agent workloads.**
 
-AgentShield connects what an agent reports with what its Linux workload attempts. A trusted supervisor registers each task, eBPF captures file, process, and TCP activity, and a Go control plane builds an evidence timeline with policy decisions and containment outcomes.
+AgentShield runs agent workloads inside an offline, resource-bounded container and connects their reported intent to Linux kernel observations. A trusted supervisor registers each task before execution; local model/MCP checks apply content and approval rules; eBPF and a Go control plane produce an evidence timeline of activity, decisions, and containment outcomes.
 
-The system brings together **CO-RE eBPF, cgroup v2, Go, SQLite, a Python SDK, and a Next.js dashboard**. Its core workflow has been exercised on Linux 6.8 with real kernel hooks, TCP rejection, task containment, and evidence queries after restart.
+The system combines **CO-RE eBPF, cgroup v2, Docker, Go, SQLite, a Python SDK, and a Next.js dashboard**. Its controlled Linux 6.8 workflow has passed **137/137 integration checks**, including **111 checks for offline launch, local inspection, and lifecycle handling**.
 
-[Architecture](docs/architecture.md) · [Run locally](docs/managed-runtime.md) · [Validation](docs/validation.md) · [Contributing](CONTRIBUTING.md)
+[Architecture](docs/architecture.md) · [Controlled launch](docs/controlled-launch.md) · [Local checks](docs/local-inspection.md) · [Validation](docs/validation.md)
 
 ## What it does
 
-- **Binds evidence to a trusted task.** Exact-leaf cgroup registration combines independently checked kernel identity with per-instance and per-registration identifiers. The supervisor registers a stopped task before releasing it.
-- **Observes activity at the kernel boundary.** `openat` and `execve` tracepoints record access and execution attempts; `connect4` and `connect6` hooks capture TCP destinations and enforce exact address/port allowlists.
-- **Responds at the appropriate layer.** TCP denial happens synchronously in the connect hook. Exec policies can trigger a separate, identity-checked `cgroup.kill` action against the registered task.
-- **Preserves the origin of each record.** Agent checkpoints, kernel observations, policy decisions, and containment results have distinct types. Correlation adds scored temporal and tool context within the trusted Run.
-- **Makes the result inspectable.** Redacted SQLite evidence supports per-Run queries after restart. The desktop dashboard provides Overview, Live Trace, Evidence, History, Policies, and Diagnostics.
+- **Starts tasks under a trusted identity.** The supervisor prepares a stopped container init, binds its exact cgroup leaf, verifies registration, and then releases the workload. Agent processes and ordinary local stdio MCP children share that scope.
+- **Keeps the workload offline and resource-bounded.** Docker network isolation covers IPv4/IPv6 TCP and UDP, including while Core is stopped. CPU, memory, swap, process/thread, and runtime limits bound execution; approved source is mounted read-only.
+- **Checks requests before an integration proceeds.** Local model checks validate JSON, body size, sensitive values, and selected credential patterns. MCP checks validate tool names, required string arguments, path/value rules, and pinned tool definitions. Responses are local inspection receipts.
+- **Binds approval to the exact request.** Trusted single-use approvals identify the Run, route, raw-body SHA-256, and expiry. Content and tool rules remain mandatory. Per-Run attempt budgets and a checker-wide concurrency limit bound inspection work.
+- **Observes and responds at the kernel boundary.** `openat` and `execve` tracepoints capture attempts; `connect4`/`connect6` audit TCP and enforce exact-tuple policies. Exec policies can trigger identity-checked, post-event `cgroup.kill` containment.
+- **Keeps evidence attributable.** Agent claims, kernel observations, policy decisions, and containment results retain separate types. Local checks are recorded as `local_preflight_only`; SQLite and the desktop dashboard make the resulting timeline inspectable.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     S[Trusted supervisor] -->|register stopped task| R[Run and scope registry]
-    R -->|exact leaf identity| B[eBPF scope map]
-    A[Agent workload] -->|openat / execve / TCP connect| B
-    A -->|Run token + checkpoints| I[Checkpoint API]
-    B -->|ring buffer| C[Go event pipeline]
-    I --> C
-    R -->|trusted attribution| C
-    C --> P[Policy evaluation]
+    S -->|release after registration| A[Offline container: agent and stdio children]
+    A -->|local HTTP| L[Run-bound relay]
+    L -->|workload Unix socket| I[Local model / MCP checks]
+    L --> C[Checkpoint API]
+    O[Trusted operator] -->|single-use approval| I
+    A -->|file / exec / TCP attempts| B[eBPF hooks]
+    R -->|exact scope identity| B
+    B --> P[Go policy and correlation pipeline]
+    C --> P
     P -->|contain| K[cgroup.kill]
-    C --> E[Correlation and evidence]
+    I --> E[Evidence: SQLite and WebSocket]
     P --> E
     K --> E
-    E --> D[(SQLite)]
-    E --> W[WebSocket]
-    D --> U[Desktop dashboard]
-    W --> U
+    E --> U[Desktop dashboard]
 ```
 
-The kernel handles synchronous TCP decisions. The control plane handles registration, correlation, storage, and post-event containment through bounded queues. [Read the design](docs/architecture.md).
+Docker's network namespace supplies offline isolation; eBPF supplies kernel observation and TCP policy enforcement. Local inspection validates request bodies and returns a receipt. [Read the design](docs/architecture.md).
 
-## A task, from intent to outcome
+## From request to evidence
 
-In the managed fixture, the Python SDK announces a tool invocation, the kernel records an `execve` attempt for `/bin/sleep`, and a policy requests containment. The executor validates the task's cgroup identity and writes to `cgroup.kill`. The supervisor observes SIGKILL and an empty leaf before finishing the Run.
+A controlled workload sends a local model-check request through its Run-bound relay. Core validates the complete JSON body, applies sensitive-content rules, and requires a trusted approval bound to the exact bytes. The resulting receipt and minimal evidence identify the route, digest, and decision. The same Run's timeline also includes kernel activity and any runtime policy response.
 
-![Evidence timeline showing an exec attempt, policy decision, and containment result](docs/assets/containment-desktop.png)
+![Live dashboard showing a local sensitive-content rejection alongside kernel events](docs/assets/local-inspection-live.png)
 
-*Production dashboard rendering API snapshots from the Linux 6.8 run on 2026-10-04. The browser used local HTTP replay of those snapshots. [Evidence provenance](docs/validation.md).*
+*Dashboard production build reading the running Linux 6.8 guest Core through a test-only, read-only serial bridge on 2026-10-04. [Capture provenance and results](docs/validation.md).*
 
 ## Validation snapshot
 
-Results for commit `ebcfa7e`, recorded on 2026-10-04:
+Results for commit `9d7e28f`, recorded on 2026-10-04:
 
 | Check | Observed result |
 | --- | --- |
-| Go suite, including race detection | 395 passing test/subtest results; 67.4% statement coverage |
-| Python SDK / trusted supervisor | 12 / 16 passing tests |
-| CO-RE load and attach | Four hooks across two Clang 18 builds and two guest kernels |
-| TCP policy checks | IPv4/IPv6 exact-tuple allowlisting; rejected connections returned `EPERM` |
-| Managed lifecycle on Linux 6.8 | 24 runtime checks plus 2 restart checks passed for each compiler build |
-| Evidence persistence | Saved Run evidence readable after restart; SQLite integrity check passed |
+| Controlled workflow integration | **137/137 passed**: 111 offline/inspection/lifecycle checks plus 26 managed-mainline checks |
+| External application traffic | **0 bytes received** from tested IPv4/IPv6 TCP/UDP attempts; receivers verified with positive controls |
+| Resource enforcement | Actual OOM kill, task-limit hit, and CPU throttling observed; timeout ended the container |
+| Trusted finish | Empty exited scopes stayed active through delayed monitoring, then finished through the supervisor |
+| Inspection persistence | **49 records and their IDs preserved** after Core restart; SQLite integrity check passed |
+| Go suite with race detection | **444 passing test/subtest results**, 68.3% statement coverage |
+| Python SDK / supervisor and launcher | **12 / 21 passing tests** |
 
-The runtime experiments used x86_64 QEMU guests with minimal initramfs environments. Linux 6.8 is the demonstrated operating baseline. [Validation](docs/validation.md) records the experiment scope and reproducible checks; [development plans](docs/roadmap.md) cover compatibility, durability, and broader evaluation.
+Experiments used x86_64 Linux `6.8.0-146-generic` and rootful Docker 28.4.0 inside a QEMU TCG guest. The earlier four-hook, two-compiler, two-kernel CO-RE matrix remains separately documented. [Validation](docs/validation.md) describes the measured scope; [development plans](docs/roadmap.md) cover broader integration and evaluation.
 
 ## Get started
 
-For source development, use Go 1.25+, Python 3.10+, and Node.js 22 or 24. The Linux runtime additionally uses cgroup v2, kernel BTF, Clang/LLVM 18, libbpf headers, and system SQLite.
+For source development, use Go 1.25+, Python 3.10+, and Node.js 22 or 24. The Linux runtime uses cgroup v2, kernel BTF, Clang/LLVM 18, libbpf headers, and system SQLite; controlled container launch also uses rootful Docker.
 
 ```sh
 go test ./...
 python -m unittest discover -s sdk/python/tests -v
 python -m unittest discover -s sandbox/tests -v
 go run ./cmd/agentshield version
-```
-
-```sh
 npm --prefix dashboard ci
 npm --prefix dashboard run typecheck
 npm --prefix dashboard run build
@@ -82,23 +80,22 @@ npm --prefix dashboard run build
 
 Choose a walkthrough:
 
-- **Full lifecycle and containment:** [managed runtime](docs/managed-runtime.md), using `agentshield serve` on a dedicated Linux VM.
-- **Container audit demonstration:** [demo guide](docs/demo-guide.md), using the host Core and Compose-managed dashboard and sandbox.
-- **New opt-in isolation and local preflight:** [controlled offline launch](docs/controlled-launch.md) and [local model/MCP inspection](docs/local-inspection.md). These additions have static regression coverage; real-container acceptance is pending. No external forwarding or backend tool execution is provided.
-- **New opt-in isolation and local preflight:** [controlled offline launch](docs/controlled-launch.md) and [local model/MCP inspection](docs/local-inspection.md). These additions have static regression coverage; real-container acceptance is pending. No external forwarding or backend tool execution is provided.
-- **Dashboard development:** [dashboard guide](dashboard/README.md), using an authenticated synthetic evidence fixture.
+- **Offline workload with local request checks:** [controlled launch](docs/controlled-launch.md) and [model/MCP inspection](docs/local-inspection.md).
+- **Kernel audit, correlation, and containment:** [managed runtime](docs/managed-runtime.md), using `agentshield serve` on a dedicated Linux VM.
+- **Container audit demonstration:** [demo guide](docs/demo-guide.md), using a host Core and Compose-managed dashboard and sandbox.
+- **Dashboard development:** [dashboard guide](dashboard/README.md), using an authenticated synthetic fixture.
 
 ## Repository map
 
 | Path | Responsibility |
 | --- | --- |
 | [`bpf/`](bpf/) | CO-RE programs, scope/enforcement maps, event ABI |
-| [`cmd/`](cmd/) | Core CLI, object inspection, and acceptance fixtures |
-| [`internal/`](internal/) | Registration, event pipeline, policy engine, evidence, storage, APIs |
+| [`cmd/`](cmd/) | Core CLI, trusted container init/relay, object inspection, and fixtures |
+| [`internal/`](internal/) | Registration, local inspection, runtime policy, correlation, evidence, storage, and APIs |
 | [`sdk/python/`](sdk/python/) | Run-scoped checkpoint client |
-| [`sandbox/`](sandbox/) | Trusted supervisor and container demonstration |
+| [`sandbox/`](sandbox/) | Trusted supervisor, controlled Docker launcher, and audit demonstration |
 | [`dashboard/`](dashboard/) | Next.js desktop interface |
-| [`configs/`](configs/) | Policy bundles and schema |
+| [`configs/`](configs/) | Runtime policy bundles and schema |
 | [`scripts/`](scripts/) | Build, test, and Linux acceptance commands |
 | [`docs/`](docs/) | Architecture, operating guides, and validation |
 

@@ -7,6 +7,7 @@
 | `scope` | Exact-leaf identity, held descriptors, registration, and monitoring |
 | `events` | Binary ABI validation and typed kernel-event decoding |
 | `policy` | Strict loading, compilation, matching, precedence, and generation contracts |
+| `inspection` | Full-body local model/MCP checks, definition pins, single-use approval, and request budgets |
 | `killer` | Authorized descriptor-relative cgroup containment |
 | `correlator` | Trusted Run attribution and scored same-Run checkpoint association |
 | `evidence` | Source-aware timeline construction and sample fixtures |

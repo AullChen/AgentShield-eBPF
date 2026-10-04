@@ -36,6 +36,7 @@ go test ./internal/stream -count=1
 ```
 
 Both runtime entries publish through the authenticated read listener. Managed
-Core publishes checkpoint, kernel, policy, and containment records; standalone
+Core publishes checkpoint, kernel, policy, and containment records, including
+`local_inspection` decisions after their synchronous SQLite append; standalone
 audit publishes its redacted event stream. See the [dashboard guide](../dashboard/README.md)
 and [development plans](roadmap.md) for durable snapshot and cursor work.

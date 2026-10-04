@@ -23,12 +23,18 @@ Live Trace obtains a single-use ticket through a same-origin route. Set `AGENTSH
 | --- | --- |
 | Overview | Current Run registry and counters |
 | Live Trace | Filtered WebSocket events with bounded cursor recovery |
-| Evidence | Four-source snapshot for a Run; managed Core reads SQLite |
+| Evidence | Four-source snapshot, including local inspection decisions; managed Core reads SQLite |
 | History | Links from the current Run catalog to evidence |
 | Policies | Loaded bundle, generation, enabled state, and view refresh |
 | Diagnostics | Environment checks, actual load/attach status, queues, and losses |
 
 Managed evidence can be opened by a saved Run ID after Core restarts. Standalone audit provides evidence from its live recovery window. Durable Run listing and cursor work are described in [development plans](../docs/roadmap.md).
+
+Local request checks appear as `local_inspection` policy decisions with action
+`check`, mechanism `local_preflight_only`, and `enforced=false`. Read their
+approval/check/rejection reasons as preflight results alongside the separate
+kernel and containment records. The [current validation](../docs/validation.md)
+includes live screenshots from the running guest Core.
 
 ## Synthetic browser fixture
 

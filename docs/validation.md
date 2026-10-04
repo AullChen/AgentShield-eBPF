@@ -1,35 +1,57 @@
 # Validation
 
-The recorded experiment targets commit `ebcfa7e54dc12be21822d477a079a8655bd50a51` on 2026-10-04. The [machine-readable summary](validation/2026-10-04.json) includes environment versions, object hashes, source-record hashes, and all managed-run outcomes.
+The current controlled-workflow experiment targets commit `9d7e28f3f84034e1598694fb713a3260d2240298`, recorded on 2026-10-04. It passed **137/137 integration checks**, covering offline containers, local inspection, trusted finish, and the existing managed runtime. The [machine-readable summary](validation/2026-10-04-offline-inspection.json) records counts, observations, binary hashes, and source-record hashes.
 
-## Environment and results
+## Environment and checks
 
-Kernel experiments ran on x86_64 in QEMU TCG with real guest kernels and a minimal initramfs. Objects built with Debian Clang 18.1.8 and Ubuntu Clang 18.1.3 were each loaded on Linux `6.8.0-146-generic` and `7.0.0-38-generic`.
+Experiments used x86_64 Linux `6.8.0-146-generic`, cgroup v2, and rootful Docker 28.4.0 with containerd 1.7.28 and runc 1.3.0 inside a QEMU TCG guest. Core and static init were rebuilt from the tested revision. Their hashes matched the binaries executed in the guest.
 
-| Experiment | Result |
+| Integration group | Passing checks | What was exercised |
+| --- | ---: | --- |
+| Offline container and local inspection | 81 | Stopped preparation, registration, isolation, resources, relay, content/MCP rules, approval, budgets, and delayed finish |
+| Finish and abnormal scope regression | 21 | Three repeated delayed finishes, remaining members, live-root migration, and child cgroups |
+| Inspection persistence | 1 | All 49 local inspection records and IDs preserved across Core restart |
+| Core stop and timeout | 8 | Relay unavailability, persistent network isolation, whole-container exit, and cleanup |
+| Existing managed mainline | 26 | Checkpoints, correlation, four hooks, real cgroup.kill, authentication, realtime evidence, and restart queries |
+| **Total** | **137** | **111 new-workflow checks plus 26 mainline checks** |
+
+These are distinct integration assertions; repeated runs are retained as observations rather than added again to the total.
+
+| Software check | Recorded result |
 | --- | --- |
-| Full BPF collection | All four programs loaded and attached in each of the four compiler/kernel combinations |
-| File and exec capture | Marker paths, empty arguments, and truncation checks passed in each combination |
-| TCP capture | IPv4, IPv6 loopback, and an IPv6 address with four nonzero words decoded correctly |
-| TCP enforcement | Exact address/port allowlist matched; wrong-address and wrong-port attempts returned `EPERM` |
-| Scope filtering | Registered-leaf activity captured; outside-scope activity excluded |
-| Managed Core on Linux 6.8 | Both compiler builds passed 24 runtime and 2 restart checks |
-| Software suite | 395 passing Go test/subtest results with race detection; 67.4% statement coverage; SDK 12 and supervisor 16 tests passed |
-| Build checks | Go vet, module verification, generated bindings, Core builds, dashboard typecheck/build, and shell syntax passed |
+| Go suite with race detection | 444 passing test/subtest results, zero failures/skips; 68.3% statement coverage |
+| Python SDK | 12 passing tests |
+| Python supervisor and launcher | 21 passing tests |
+| Build/static checks | Go vet, module integrity, generated bindings, BPF/shell syntax, Core/static-init builds, and Windows cross-build passed |
+| Dashboard | Typecheck and production build passed; live pages captured from the running guest Core |
 
-The allowlist experiments used destinations without TCP listeners. `ECONNREFUSED` established passage through the policy hook; rejected tuples returned `EPERM`. File and exec records retain syscall-entry attempt semantics.
+## Direct observations
 
-The Linux 6.8 managed checks exercised trusted registration replay/conflict handling, Core self-protection, eight checkpoint types, token revocation, actual `cgroup.kill`, four-source evidence, WebSocket delivery, redaction, diagnostics, and persistence. Successful containment produced SIGKILL/-9 and an empty task leaf. Reopened SQLite databases returned saved Run evidence and `integrity_check=ok`.
+**Network isolation.** Controlled receivers first passed positive controls for IPv4/IPv6 TCP and UDP. The tested agent, ordinary stdio subprocess, and container after Core shutdown delivered **0 application bytes** in both receiver observation rounds. The primary isolation mechanism was Docker `network=none`, independent of Core availability. The observation concerns these traffic paths and receivers.
 
-Linux 7.0 investigation, dependency remediation, narrow-screen layout, and extended coverage are recorded in [development plans](roadmap.md). The JSON summary preserves both the initial 7.0 managed outcome and its unchanged rerun. Linux 6.8 remains the demonstrated operating baseline.
+**Resources.** The test selected 128 MiB memory, zero swap, 64 tasks, and CPU quota `50000 100000`. Deliberate over-limit child workloads produced one OOM kill, one task-limit event, and 234 throttled CPU periods; the main workload exited with status 0. These are functional enforcement observations. The launcher's default memory budget is 512 MiB.
 
-## Evidence provenance
+**Request inspection.** Exact-byte approval binding, concurrent single consumption, expiry, sensitive-content rejection, pinned MCP definitions, argument scope, strict JSON, and attempt budgets passed. A relay request of 256 KiB + 1 returned **413** and added **zero** Core inspection records. Allowed receipts retained `mode=local_only`, `forwarded=false`, and `executed=false`.
 
-The public summary is derived from the retained test results, environment record, suite exit codes, and screenshot metadata. Their SHA-256 hashes identify the source records. The supplied evidence bundle passed verification for 140 files during repository preparation.
+**Trusted finish.** The main workload and three repeated `/bin/true` samples were held for three 1.1-second observation intervals after root exit. The held leaf reported `populated 0`; Runs stayed active until supervisor finish, then became finished. Separate injections of remaining members, live-root migration, and child cgroups produced the expected failures and token revocation. The added waits belonged to the test driver.
 
-The [dashboard screenshot](assets/containment-desktop.png) is an unchanged production UI capture rendering API snapshots from a fresh Linux 6.8 run. The browser connected to a local HTTP replay service. The image shows the exec attempt, matched checkpoint context, policy decision, and distinct containment result. Its capture time and hash are included in the JSON summary.
+**Persistence and cleanup.** SQLite integrity checks passed. Closing and reopening Core preserved all 49 inspection records and IDs; container and held-leaf cleanup left the test resources empty. Closed-database operations were covered by the software regression suite.
 
-These measurements characterize functional checks and software coverage. The guest environment, compiler versions, and tested commit define their scope. The [research evaluation plan](roadmap.md#research-evaluation) sets out throughput, latency, overhead, and correlation-quality experiments.
+## Visual evidence and provenance
+
+![Running Core dashboard with completed controlled workloads](assets/offline-overview-live.png)
+
+The overview and [sensitive-content rejection screenshot](assets/local-inspection-live.png) are unchanged captures from the dashboard production build. A test-only read-only serial bridge fetched GET responses from the **running guest Core**, preserving the guest's offline network configuration. This was live API access. The bridge is part of the test apparatus.
+
+Capture timestamps and screenshot hashes are included in the public JSON summary. The archived evidence bundle's checksum list was verified against all **111 listed files**. The complete raw logs, databases, captures, and independent drivers remain operator-held; the public summary identifies its source files by SHA-256.
+
+## Earlier CO-RE compatibility matrix
+
+The [earlier summary](validation/2026-10-04.json) targets `ebcfa7e`. Debian Clang 18.1.8 and Ubuntu Clang 18.1.3 objects each loaded and attached all four hooks on Linux 6.8 and 7.0 x86_64 guests. File/exec markers, empty arguments, truncation, IPv4, IPv6 loopback, a four-nonzero-word IPv6 address, and exact-tuple TCP blocking were checked.
+
+Allowlisted attempts returned `ECONNREFUSED` at destinations without listeners, establishing passage through the hook. Rejected tuples returned `EPERM`. The current run reused the unchanged BPF object and repeated the four-hook and managed path on Linux 6.8. Compatibility follow-up is tracked in [development plans](roadmap.md).
+
+The earlier [containment screenshot](assets/containment-desktop.png) used HTTP replay of saved real-kernel API snapshots; its provenance remains associated with the earlier summary. The current screenshots above use the live serial bridge.
 
 ## Reproduce source checks
 
@@ -48,52 +70,22 @@ npm --prefix dashboard run typecheck
 npm --prefix dashboard run build
 ```
 
-Use a race-enabled Go toolchain and native C compiler for `-race`. See the [dashboard guide](../dashboard/README.md) for the synthetic browser fixture.
+Use a race-enabled Go toolchain and compatible native C compiler. See the [dashboard guide](../dashboard/README.md) for its synthetic browser fixture.
 
-## Reproduce Linux checks
+## Reproduce runtime checks
 
-On the dedicated VM described in [BPF build](bpf-build.md):
+On a dedicated Linux VM, follow [BPF build](bpf-build.md), [managed runtime](managed-runtime.md), [controlled launch](controlled-launch.md), and [local inspection](local-inspection.md). The repository provides the launcher and component fixtures:
 
 ```sh
 make bpf-object
 make verify-bpf-object
 CGO_ENABLED=1 make build
+CGO_ENABLED=0 go build -o bin/sandbox-init ./cmd/sandbox-init
 sudo make accept-audit
 sudo make accept-lifecycle
 sudo make accept-network-block
 ```
 
-Then follow the [managed runtime walkthrough](managed-runtime.md), save its Run ID, inspect its evidence and diagnostics, and repeat the evidence query after a clean Core restart. The repository scripts provide the component and stopped-task fixtures. Reconstructing the exact recorded matrix additionally requires the archived guest kernels, BTF, initramfs, and external test driver.
+To reproduce the full 137-assertion experiment, also supply the independent archived test driver, guest image/kernel, controlled receivers, and resource/finish fault injections. The commands above are component checks and preparation steps. Record positive receiver controls, exact limits, complete-leaf exit, saved Run IDs, restart queries, and binary hashes alongside results.
 
-Keep raw logs owner-only and retain the tested revision, environment, object manifest, commands, and outcomes together. Each verification result should identify whether it covers source behavior, synthetic UI data, or a real kernel path.
-
-## Offline launch and local inspection increment — 2026-10-04
-
-The new opt-in [offline container launcher](controlled-launch.md) and
-[local model/MCP preflight](local-inspection.md) were checked separately from
-the historical `ebcfa7e` kernel matrix. At `cb069f3`, Windows source checks using
-Go 1.25.12 produced 407 passing test/subtest results; `go vet ./...` passed.
-Python SDK tests passed 12 cases and sandbox/supervisor tests passed 21 cases.
-Linux init/Core cross-builds succeeded; this is compilation evidence only,
-not a runnable CGO/SQLite or Docker acceptance result.
-
-Full `go test -race ./...` passed with the existing Qt MinGW 13.1 compiler
-explicitly selected. The default Windows MinGW runtime
-failed to start race test processes (`0xc0000139`); changing DLL search order
-alone did not resolve it. No dependency or system configuration was updated.
-
-The checker regressions cover whole-body bounds/ambiguity, escaped sensitive
-values, signed Run identity, exact-byte single-use approvals, expiry, changed
-parameters, tool-definition pins, bounded denial traffic and fail-closed audit
-storage. Evidence integration tests store summaries and report
-`local_preflight_only`, `enforced=false`, never external execution. The relay
-rejects oversized bodies before handing any bytes to the local Core.
-
-Real-container acceptance is **not run** in this increment: the local Docker
-daemon was unavailable. Before deployment, independently verify stopped-before-
-registration, inherited exact-leaf membership, read-only cgroupfs/source mounts,
-resource enforcement, IPv4/IPv6/UDP zero application bytes at a proven controlled
-receiver, management-socket exclusion, complete-leaf exit and Core-stop behavior.
-Keep results distinct from unit tests. External model forwarding, MCP backend
-execution, live backend-definition discovery and new BPF hooks are not provided
-by this local-only increment.
+Keep raw evidence owner-only. [Development plans](roadmap.md) describe broader portability, executor integration, and performance/association-quality measurements.
