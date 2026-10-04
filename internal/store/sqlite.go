@@ -151,6 +151,9 @@ func (store *SQLite) AppendBatch(records []Record) error {
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	if store.database == nil {
+		return errors.New("SQLite database is closed")
+	}
 	// Capacity maintenance can fail independently of a prior successful
 	// transaction. Retry it before accepting another batch so callers never
 	// retry records that were already committed.
@@ -202,6 +205,9 @@ func (store *SQLite) AppendBatch(records []Record) error {
 func (store *SQLite) Count() (int64, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	if store.database == nil {
+		return 0, errors.New("SQLite database is closed")
+	}
 	return store.database.ScalarInt64("SELECT count(*) FROM evidence_records;")
 }
 
