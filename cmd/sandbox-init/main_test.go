@@ -60,3 +60,27 @@ func TestRelayAuthorityAndRoutes(t *testing.T) {
 		t.Fatal("expected one authorized relay call")
 	}
 }
+
+func TestRelayBuffersBoundedBodyBeforeHostHandoff(t *testing.T) {
+	calls := 0
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		body, err := io.ReadAll(r.Body)
+		if err != nil || string(body) != `{"safe":true}` || r.ContentLength != int64(len(body)) || len(r.TransferEncoding) != 0 {
+			t.Fatal("relay handed off incomplete or ambiguous body")
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+	})
+	handler := relayHandler(launchRequest{IngestToken: "trusted"}, transport)
+	oversized := httptest.NewRecorder()
+	handler.ServeHTTP(oversized, httptest.NewRequest("POST", "/gateway/v1/check/model", strings.NewReader(strings.Repeat("x", (256<<10)+1))))
+	if oversized.Code != 413 || calls != 0 {
+		t.Fatal("oversized body reached the host or returned wrong status")
+	}
+	r := httptest.NewRequest("POST", "/gateway/v1/check/model", strings.NewReader(`{"safe":true}`))
+	r.ContentLength, r.TransferEncoding = -1, []string{"chunked"}
+	handler.ServeHTTP(httptest.NewRecorder(), r)
+	if calls != 1 {
+		t.Fatal("complete bounded body was not handed off")
+	}
+}

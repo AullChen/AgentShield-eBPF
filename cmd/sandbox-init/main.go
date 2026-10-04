@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -141,7 +142,7 @@ func environment(request launchRequest) []string {
 
 func relayHandler(credentials launchRequest, transport http.RoundTripper) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost || request.URL.RawQuery != "" || request.URL.RawPath != "" || request.Header.Get("Origin") != "" {
+		if request.Method != http.MethodPost || request.URL.RawQuery != "" || request.URL.RawPath != "" || request.Header.Get("Origin") != "" || request.Header.Get("Mcp-Session-Id") != "" {
 			http.Error(response, "unsupported gateway request", http.StatusForbidden)
 			return
 		}
@@ -150,14 +151,21 @@ func relayHandler(credentials launchRequest, transport http.RoundTripper) http.H
 			http.Error(response, "route unavailable", http.StatusNotFound)
 			return
 		}
+		data, err := io.ReadAll(http.MaxBytesReader(response, request.Body, 256<<10))
+		if err != nil {
+			http.Error(response, "request body exceeds limit or is incomplete", http.StatusRequestEntityTooLarge)
+			return
+		}
 		out := request.Clone(request.Context())
 		out.URL.Scheme, out.URL.Host, out.Host, out.RequestURI = "http", "localhost", "localhost", ""
+		out.URL.User = nil
 		out.Header = make(http.Header)
-		for _, name := range []string{"Content-Type", "Accept", "MCP-Protocol-Version"} {
+		for _, name := range []string{"Content-Type", "Content-Encoding", "Accept", "MCP-Protocol-Version"} {
 			out.Header.Set(name, request.Header.Get(name))
 		}
 		out.Header.Set("Authorization", "Bearer "+credentials.IngestToken)
-		out.Body = http.MaxBytesReader(response, request.Body, 256<<10)
+		out.Body = io.NopCloser(bytes.NewReader(data))
+		out.ContentLength, out.TransferEncoding = int64(len(data)), nil
 		upstream, err := transport.RoundTrip(out)
 		if err != nil {
 			http.Error(response, "gateway unavailable", http.StatusServiceUnavailable)
