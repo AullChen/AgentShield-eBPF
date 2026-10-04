@@ -66,3 +66,34 @@ sudo make accept-network-block
 Then follow the [managed runtime walkthrough](managed-runtime.md), save its Run ID, inspect its evidence and diagnostics, and repeat the evidence query after a clean Core restart. The repository scripts provide the component and stopped-task fixtures. Reconstructing the exact recorded matrix additionally requires the archived guest kernels, BTF, initramfs, and external test driver.
 
 Keep raw logs owner-only and retain the tested revision, environment, object manifest, commands, and outcomes together. Each verification result should identify whether it covers source behavior, synthetic UI data, or a real kernel path.
+
+## Offline launch and local inspection increment — 2026-10-04
+
+The new opt-in [offline container launcher](controlled-launch.md) and
+[local model/MCP preflight](local-inspection.md) were checked separately from
+the historical `ebcfa7e` kernel matrix. At `cb069f3`, Windows source checks using
+Go 1.25.12 produced 407 passing test/subtest results; `go vet ./...` passed.
+Python SDK tests passed 12 cases and sandbox/supervisor tests passed 21 cases.
+Linux init/Core cross-builds succeeded; this is compilation evidence only,
+not a runnable CGO/SQLite or Docker acceptance result.
+
+Full `go test -race ./...` passed with the existing Qt MinGW 13.1 compiler
+explicitly selected. The default Windows MinGW runtime
+failed to start race test processes (`0xc0000139`); changing DLL search order
+alone did not resolve it. No dependency or system configuration was updated.
+
+The checker regressions cover whole-body bounds/ambiguity, escaped sensitive
+values, signed Run identity, exact-byte single-use approvals, expiry, changed
+parameters, tool-definition pins, bounded denial traffic and fail-closed audit
+storage. Evidence integration tests store summaries and report
+`local_preflight_only`, `enforced=false`, never external execution. The relay
+rejects oversized bodies before handing any bytes to the local Core.
+
+Real-container acceptance is **not run** in this increment: the local Docker
+daemon was unavailable. Before deployment, independently verify stopped-before-
+registration, inherited exact-leaf membership, read-only cgroupfs/source mounts,
+resource enforcement, IPv4/IPv6/UDP zero application bytes at a proven controlled
+receiver, management-socket exclusion, complete-leaf exit and Core-stop behavior.
+Keep results distinct from unit tests. External model forwarding, MCP backend
+execution, live backend-definition discovery and new BPF hooks are not provided
+by this local-only increment.
