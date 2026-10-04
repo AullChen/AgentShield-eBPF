@@ -29,12 +29,28 @@ func (LinuxInspector) Inspect(handle *Handle, rootPID int) (State, error) {
 		}
 	}
 	if rootPID > 0 {
-		membership, err := unifiedCgroupPath(rootPID)
-		if err != nil {
-			return State{}, err
-		}
 		if handle.root == "" {
 			return State{}, fmt.Errorf("held cgroup has no trusted mount root")
+		}
+		membership, err := unifiedCgroupPath(rootPID)
+		if err != nil {
+			if !rootPIDExited(err) || !handle.hasFD {
+				return State{}, err
+			}
+			events, openErr := os.Open(filepath.Join(directory, "cgroup.events"))
+			if openErr != nil {
+				return State{}, fmt.Errorf("open held cgroup.events: %w", openErr)
+			}
+			defer events.Close()
+			empty, readErr := cgroupUnpopulated(events)
+			if readErr != nil {
+				return State{}, readErr
+			}
+			if !empty {
+				return State{}, err
+			}
+			state.RootExitedAndEmpty = true
+			return state, nil
 		}
 		state.RootPIDPath = membershipPath(handle.root, strings.TrimPrefix(membership, "/"))
 	}

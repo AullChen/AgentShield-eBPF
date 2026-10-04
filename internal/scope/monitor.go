@@ -1,8 +1,14 @@
 package scope
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path"
+	"strings"
+	"syscall"
 )
 
 const (
@@ -14,6 +20,9 @@ const (
 type State struct {
 	ChildCgroups []string
 	RootPIDPath  string
+	// RootExitedAndEmpty requires a missing root PID and populated 0 from the held leaf.
+	// It permits waiting for trusted finish, not finishing or unregistering the Run.
+	RootExitedAndEmpty bool
 }
 
 type Inspector interface {
@@ -53,7 +62,7 @@ func (manager *Manager) Check(cgroupID uint64, inspector Inspector) ([]Violation
 			Detail:    child,
 		})
 	}
-	if active.registration.RootPID > 0 && path.Clean(state.RootPIDPath) != path.Clean(active.registration.Path) {
+	if active.registration.RootPID > 0 && !state.RootExitedAndEmpty && path.Clean(state.RootPIDPath) != path.Clean(active.registration.Path) {
 		violations = append(violations, Violation{
 			EventType: "scope_violation",
 			CgroupID:  cgroupID,
@@ -67,4 +76,31 @@ func (manager *Manager) Check(cgroupID uint64, inspector Inspector) ([]Violation
 
 func membershipPath(root, membership string) string {
 	return path.Join(path.Clean(root), path.Clean("/"+membership))
+}
+
+func rootPIDExited(err error) bool {
+	// procfs can return ESRCH if the task is reaped between open and read.
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH)
+}
+
+func cgroupUnpopulated(events io.Reader) (bool, error) {
+	scanner := bufio.NewScanner(events)
+	found, empty := false, false
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) == 0 || fields[0] != "populated" {
+			continue
+		}
+		if found || len(fields) != 2 || (fields[1] != "0" && fields[1] != "1") {
+			return false, fmt.Errorf("invalid populated field in cgroup.events")
+		}
+		found, empty = true, fields[1] == "0"
+	}
+	if err := scanner.Err(); err != nil {
+		return false, fmt.Errorf("read cgroup.events: %w", err)
+	}
+	if !found {
+		return false, fmt.Errorf("cgroup.events has no populated field")
+	}
+	return empty, nil
 }

@@ -95,6 +95,13 @@ Docker's trusted exit state **and** `cgroup.events populated 0` in the held leaf
 cleanup only removes this adapter's empty leaf. Failure invokes termination then
 whole-leaf kill, never an Agent `run_finished` claim.
 
+If the root PID disappears before the supervisor sends finish, the Core monitor
+keeps the Run active only when the held leaf reports `populated 0`. It retains
+the scope registration until trusted finish (or the existing Run expiry).
+A missing PID with remaining members, invalid/unreadable cgroup state, a moved
+live root, or a child cgroup still fails scope inspection. An empty leaf alone
+does not authorize finishing a Run.
+
 This first version mounts source read-only. Editing can use a task-created copy
 under bounded `/tmp`, but this adapter does not export that copy or apply changes
 to the original. High-privilege/shared MCP servers are not automatically covered;

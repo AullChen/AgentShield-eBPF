@@ -155,6 +155,54 @@ func TestMonitorScopesFailsClosedWhenInspectionErrors(t *testing.T) {
 	}
 }
 
+func TestMonitorScopesWaitsForTrustedFinishAfterRootExit(t *testing.T) {
+	scopeMap := &testScopeMap{}
+	manager, err := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{"/agent/leaf": 42}}, testProbe{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registration, err := manager.Register(context.Background(), scope.Target{Path: "/agent/leaf", RootPID: 42}, scope.Value{
+		InstanceID: 1, ScopeCookie: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewRunStore()
+	if err := store.Add(AgentRun{
+		RunID: "run-1", CgroupID: registration.CgroupID, InstanceID: 1, ScopeCookie: 2, Status: "active",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	handler := newScopeMonitorHandler(t, manager, store)
+	inspector := monitorInspector{state: scope.State{RootExitedAndEmpty: true}}
+	for i := 0; i < 3; i++ {
+		if err := MonitorScopesOnce(manager, inspector, handler, time.Now(), func(event ScopeViolationEvent) error {
+			t.Errorf("unexpected violation while waiting for trusted finish: %+v", event)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if run, _ := store.Get("run-1"); run.Status != "active" || !run.EndedAt.IsZero() {
+			t.Fatalf("Run before trusted finish = %+v, want active with no end time", run)
+		}
+		if _, active := manager.Lookup(registration.CgroupID); !active {
+			t.Fatal("scope unregistered before trusted finish")
+		}
+		if _, exists := scopeMap.values[registration.CgroupID]; !exists {
+			t.Fatal("BPF scope entry removed before trusted finish")
+		}
+	}
+	if _, err := handler.FinishRun("run-1"); err != nil {
+		t.Fatal(err)
+	}
+	if run, _ := store.Get("run-1"); run.Status != "finished" || run.EndedAt.IsZero() || run.StatusReason != "" {
+		t.Fatalf("Run after trusted finish = %+v, want finished without failure", run)
+	}
+	if _, active := manager.Lookup(registration.CgroupID); active || len(scopeMap.values) != 0 {
+		t.Fatal("trusted finish did not unregister the scope")
+	}
+}
+
 func TestMonitorScopesRetriesWhenViolationEmissionFails(t *testing.T) {
 	scopeMap := &testScopeMap{}
 	manager, err := scope.NewManager(scopeMap, testResolver{ids: map[string]uint64{"/agent/leaf": 42}}, testProbe{})
