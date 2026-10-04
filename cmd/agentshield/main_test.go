@@ -52,6 +52,11 @@ func TestManagedEntryRequiresSeparateTrustedSurfaces(t *testing.T) {
 		t.Fatalf("incomplete serve=%d", exitCode)
 	}
 	options := managedOptions{managementSocket: "/run/agentshield/management.sock", databasePath: "/var/lib/agentshield/evidence.db", tokenFile: "/run/agentshield/read.token", policyPath: "configs/default-policies.yaml", networkRoot: "/sys/fs/cgroup", readAddress: "127.0.0.1:8080", ingestAddress: "127.0.0.1:8081"}
+	aliased := options
+	aliased.workloadSocket = options.managementSocket
+	if aliased.validate() == nil {
+		t.Fatal("management socket exposed as workload listener")
+	}
 	if err := options.validate(); err != nil {
 		t.Fatal(err)
 	}

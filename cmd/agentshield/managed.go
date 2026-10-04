@@ -31,6 +31,7 @@ type managedOptions struct {
 	objectPath       string
 	networkRoot      string
 	managementSocket string
+	workloadSocket   string
 	ingestAddress    string
 	readAddress      string
 	tokenFile        string
@@ -50,6 +51,9 @@ func (options managedOptions) validate() error {
 	}
 	if options.readAddress == options.ingestAddress {
 		return errors.New("read API and checkpoint ingest require distinct listeners")
+	}
+	if options.workloadSocket != "" && filepath.Clean(options.workloadSocket) == filepath.Clean(options.managementSocket) {
+		return errors.New("management and workload require distinct sockets")
 	}
 	return nil
 }
@@ -164,7 +168,7 @@ func serveManaged(parent context.Context, options managedOptions, logger *slog.L
 	var registration *api.RegistrationHandler
 	var pipeline *api.RuntimePipeline
 	var servers []*http.Server
-	serverFailures := make(chan error, 3)
+	serverFailures := make(chan error, 4)
 	var monitorDone chan struct{}
 	var shutdownOnce sync.Once
 	var shutdownErr error
@@ -291,6 +295,21 @@ func serveManaged(parent context.Context, options managedOptions, logger *slog.L
 				serverFailures <- err
 				cancel()
 				return
+			}
+			defer func() {
+				if !started {
+					_ = readListener.Close()
+				}
+			}()
+			if options.workloadSocket != "" {
+				workload, err := api.ListenWorkloadUnix(options.workloadSocket)
+				if err != nil {
+					serverFailures <- err
+					cancel()
+					return
+				}
+				// No registration, finish, Dashboard, or policy routes here.
+				start(workload, checkpoint.Routes())
 			}
 			start(ingest, checkpoint.Routes())
 			start(readListener, readRoutes)

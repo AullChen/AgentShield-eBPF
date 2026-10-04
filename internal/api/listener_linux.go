@@ -48,3 +48,18 @@ func ListenOwnerUnix(path string) (net.Listener, error) {
 	}
 	return listener, nil
 }
+
+// ListenWorkloadUnix exposes only authenticated workload routes. Its socket
+// file may be mounted individually for a non-root container user, but the
+// containing directory remains owner-only. Never use it for management routes.
+func ListenWorkloadUnix(path string) (net.Listener, error) {
+	listener, err := ListenOwnerUnix(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(path, 0o666); err != nil {
+		_ = listener.Close()
+		return nil, fmt.Errorf("set workload socket permissions: %w", err)
+	}
+	return listener, nil
+}
