@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require("playwright");
 
 const baseURL = process.argv[2] ?? "http://127.0.0.1:3000";
-const outputDirectory = resolve(process.argv[3] ?? "tmp/p5-dashboard");
+const outputDirectory = resolve(process.argv[3] ?? "tmp/dashboard-check");
 const dashboardToken = process.env.AGENTSHIELD_DASHBOARD_TOKEN;
 if (!dashboardToken) throw new Error("AGENTSHIELD_DASHBOARD_TOKEN is required");
 await mkdir(outputDirectory, { recursive: true });
@@ -29,10 +29,10 @@ page.on("pageerror", (error) => pageErrors.push(error.message));
 try {
   await open(page, "/");
   await expectText(page, "h2", "Overview");
-  await expectText(page, "body", "P5 acceptance fixture");
+  await expectText(page, "body", "Dashboard acceptance fixture");
   await page.screenshot({ path: resolve(outputDirectory, "overview.png"), fullPage: true });
 
-  await page.getByRole("link", { name: /P5 acceptance fixture/ }).click();
+  await page.getByRole("link", { name: /Dashboard acceptance fixture/ }).click();
   await page.waitForURL(/\/evidence\/run-demo$/);
   await expectText(page, "h2", "Evidence detail");
   await expectCount(page, ".evidence-event", 6);
@@ -73,7 +73,7 @@ try {
   await page.screenshot({ path: resolve(outputDirectory, "evidence-mobile.png"), fullPage: true });
 
   if (pageErrors.length > 0) throw new Error(`browser page errors: ${pageErrors.join(" | ")}`);
-  console.log(`P5 dashboard browser acceptance passed; screenshots: ${outputDirectory}`);
+  console.log(`Dashboard browser acceptance passed; screenshots: ${outputDirectory}`);
 } finally {
   await browser.close();
 }

@@ -1,0 +1,276 @@
+{
+  "tested_commit": "ebcfa7e54dc12be21822d477a079a8655bd50a51",
+  "tested_at": "2026-10-04T00:35:12.697601+08:00",
+  "environment": {
+    "date": "2026-10-04T00:37:06.343278+08:00",
+    "platform": "x86_64",
+    "runtime": "Docker 28.4.0; QEMU software TCG; real guest kernels and minimal initramfs",
+    "kernels": [
+      "6.8.0-146-generic",
+      "7.0.0-38-generic"
+    ],
+    "go": "1.26.8",
+    "node": "24.19.0",
+    "npm": "11.9.0",
+    "python": "3.12.14",
+    "playwright": "1.62.1",
+    "chromium": "151.0.7922.173",
+    "clang": [
+      "Debian 18.1.8",
+      "Ubuntu 18.1.3"
+    ]
+  },
+  "software": {
+    "go_tests": {
+      "pass": 395
+    },
+    "coverage_percent": 67.4,
+    "python_sdk": 12,
+    "python_supervisor": 16
+  },
+  "software_commands": [
+    {
+      "name": "go-race-cover",
+      "exit_code": 0
+    },
+    {
+      "name": "python-sdk",
+      "exit_code": 0
+    },
+    {
+      "name": "python-supervisor",
+      "exit_code": 0
+    },
+    {
+      "name": "go-vet-runtime-build",
+      "exit_code": 0
+    },
+    {
+      "name": "dashboard-build",
+      "exit_code": 0
+    },
+    {
+      "name": "windows-build",
+      "exit_code": 0
+    },
+    {
+      "name": "shell-syntax",
+      "exit_code": 0
+    }
+  ],
+  "native_load_attach": [
+    {
+      "kernel": "6.8",
+      "compiler": "debian",
+      "programs": [
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_trace_openat"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_trace_execve"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_connect4"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_connect6"
+        }
+      ],
+      "original_network_script": "PASS"
+    },
+    {
+      "kernel": "6.8",
+      "compiler": "ubuntu",
+      "programs": [
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_trace_openat"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_trace_execve"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_connect4"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_connect6"
+        }
+      ],
+      "original_network_script": "PASS"
+    },
+    {
+      "kernel": "7.0",
+      "compiler": "debian",
+      "programs": [
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_trace_openat"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_trace_execve"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_connect4"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_connect6"
+        }
+      ],
+      "original_network_script": "PASS"
+    },
+    {
+      "kernel": "7.0",
+      "compiler": "ubuntu",
+      "programs": [
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_trace_openat"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_trace_execve"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_connect4"
+        },
+        {
+          "attach": "PASS",
+          "load": "PASS",
+          "program": "agentshield_connect6"
+        }
+      ],
+      "original_network_script": "PASS"
+    }
+  ],
+  "managed_runs": [
+    {
+      "label": "guest-evidence-debian-managed-6.8",
+      "passed": true,
+      "checks": 26,
+      "failed_checks": [],
+      "sqlite": {
+        "integrity_check": "ok",
+        "evidence_record_count": 23
+      }
+    },
+    {
+      "label": "guest-evidence-debian-managed-7.0",
+      "passed": true,
+      "checks": 26,
+      "failed_checks": [],
+      "sqlite": {
+        "integrity_check": "ok",
+        "evidence_record_count": 17
+      }
+    },
+    {
+      "label": "guest-evidence-ubuntu-managed-6.8",
+      "passed": true,
+      "checks": 26,
+      "failed_checks": [],
+      "sqlite": {
+        "integrity_check": "ok",
+        "evidence_record_count": 23
+      }
+    },
+    {
+      "label": "guest-evidence-ubuntu-managed-7.0",
+      "passed": false,
+      "checks": 24,
+      "failed_checks": [
+        "original-fixture-exit-code",
+        "original-stopped-fixture-killed",
+        "durable-four-sources",
+        "attempt-not-falsely-labelled-blocked",
+        "same-run-checkpoint-correlation",
+        "real-cgroup-kill-evidence",
+        "containment-decision-distinct",
+        "real-live-four-sources"
+      ],
+      "sqlite": {
+        "integrity_check": "ok",
+        "evidence_record_count": 16
+      }
+    },
+    {
+      "label": "guest-evidence-ubuntu-managed-7.0-repeat1",
+      "passed": true,
+      "checks": 26,
+      "failed_checks": [],
+      "sqlite": {
+        "integrity_check": "ok",
+        "evidence_record_count": 19
+      }
+    }
+  ],
+  "objects": [
+    {
+      "compiler": "debian",
+      "sha256": "6618e27def7ba2c450856478e0e2547fbadfe896b102d8162b8e0d768b8e2f9f",
+      "source_sha256": "df6d8f4aaf649eb524bd8fed741392486106241bb983a27b73cbd87c2f72b519"
+    },
+    {
+      "compiler": "ubuntu",
+      "sha256": "1b03021115dcf5c2fdc159ae073ec3b59f323292ba4d8e1146895f3aef6a6104",
+      "source_sha256": "df6d8f4aaf649eb524bd8fed741392486106241bb983a27b73cbd87c2f72b519"
+    }
+  ],
+  "screenshot": {
+    "file": "../assets/containment-desktop.png",
+    "source": "06-dashboard-containment-desktop.png",
+    "sha256": "cec24fb05bdff73268eb51314bee3f2d5d5ace6f065514571354f62c5cc39ee1",
+    "captured_at": "2026-10-04T10:49:06.731504+08:00",
+    "transport": "Local HTTP replay of unchanged API snapshots from a real Linux 6.8 managed run"
+  },
+  "source_files": [
+    {
+      "name": "sources/agentshield-retest-ebcfa7e-20261004/复测结果.json",
+      "sha256": "dd0db21b03999457bef405b2e43cc35d9c863639786b37149480d0c0aa21246e"
+    },
+    {
+      "name": "sources/agentshield-retest-ebcfa7e-20261004/测试环境与产物.json",
+      "sha256": "542a27259b707fe0de432f47393f20a158611f7ef06282704d4e272b6ca9112b"
+    },
+    {
+      "name": "sources/agentshield-retest-ebcfa7e-20261004/suite-results.json",
+      "sha256": "f7462b3fac75a4dd9d8826b7c273f87669ec5d35576f745c44baabb005a02bc3"
+    },
+    {
+      "name": "data/dashboard-screenshots.json",
+      "sha256": "3275481bbc910c4bcfcaa1c3b314a0fd720e63ca9db2531f56018d6cee92c225"
+    }
+  ],
+  "scope": [
+    "actual kernels in QEMU TCG, minimal initramfs not full Ubuntu acceptance",
+    "x86_64 only; 6.8/7.0 and two Clang18 versions",
+    "allow connections verified through hook, no TCP listener in tuple tests",
+    "no benchmark or long-term stability claim",
+    "govulncheck was not rerun; dependency integrity and npm audit were rerun"
+  ]
+}

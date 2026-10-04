@@ -93,7 +93,7 @@ func newFixture(ctx context.Context, token, policyFile string) (*fixture, error)
 		return nil, fmt.Errorf("load fixture policies: %w", err)
 	}
 	generation := policy.Generation{Revision: 1, Bank: policy.BankA}
-	timeline, err := evidence.BuildP4Sample()
+	timeline, err := evidence.BuildSampleTimeline()
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func newFixture(ctx context.Context, token, policyFile string) (*fixture, error)
 		return nil, err
 	}
 	overview := api.NewOverviewState(api.OverviewStateOptions{})
-	if err := overview.UpsertRun(api.OverviewRunInput{RunID: fixtureRunID, Label: "P5 acceptance fixture", Status: "active", StartedAt: time.Now().Add(-2 * time.Minute)}); err != nil {
+	if err := overview.UpsertRun(api.OverviewRunInput{RunID: fixtureRunID, Label: "Dashboard acceptance fixture", Status: "active", StartedAt: time.Now().Add(-2 * time.Minute)}); err != nil {
 		return nil, err
 	}
 	if err := overview.ObserveEvent(api.OverviewEventInput{RunID: fixtureRunID, Blocked: false}); err != nil {
@@ -122,7 +122,7 @@ func newFixture(ctx context.Context, token, policyFile string) (*fixture, error)
 		return nil, err
 	}
 	if err := overview.SetCapabilities([]api.OverviewCapability{
-		{Name: "acceptance_fixture", Status: "degraded", Detail: "deterministic P4 replay; not Linux kernel proof"},
+		{Name: "acceptance_fixture", Status: "degraded", Detail: "deterministic evidence replay; synthetic kernel records"},
 		{Name: "bpf_hooks", Status: "unknown", Detail: "fixture does not perform privileged load or attach"},
 		{Name: "kernel_network_enforcement_connect6", Status: "unavailable", Detail: "fixture://kernel-network-enforcement/ipv6/no-real-kernel-claim"},
 		{Name: "realtime_api", Status: "available", Detail: "authenticated ticket and WebSocket replay active"},

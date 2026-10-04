@@ -1,9 +1,0 @@
-# AgentShield-eBPF example configuration.
-# YAML parsing is not implemented yet. Supplying --config or
-# AGENTSHIELD_CONFIG is rejected explicitly instead of being ignored.
-
-server:
-  listen: "127.0.0.1:8080"
-
-logging:
-  level: "info"

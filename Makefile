@@ -7,7 +7,7 @@ ifeq ($(OS),Windows_NT)
 BINARY := bin/agentshield.exe
 endif
 
-.PHONY: generate verify-generated bpf-object verify-bpf-object accept-p1 accept-p2 accept-network-block accept-sandbox release-check test-p2 test-p3 test-checkpoint test-runtime test-sdk test-supervisor test-stream check-bpf-syntax check-linux-bpfmgr check-linux-killer check-linux-api test build check clean
+.PHONY: generate verify-generated bpf-object verify-bpf-object accept-audit accept-lifecycle accept-network-block accept-sandbox release-check test-lifecycle test-policy test-checkpoint test-runtime test-sdk test-supervisor test-stream check-bpf-syntax check-linux-bpfmgr check-linux-killer check-linux-api test build check clean
 
 generate:
 	go generate ./internal/bpfmgr
@@ -21,14 +21,14 @@ bpf-object:
 verify-bpf-object:
 	go run ./cmd/bpfcheck --object $(BPF_OBJECT) --verify-manifest $(BPF_MANIFEST)
 
-accept-p1: bpf-object build
-	sudo ./scripts/accept-p1.sh $(BPF_OBJECT) $(BPF_MANIFEST)
+accept-audit: bpf-object build
+	sudo ./scripts/accept-audit.sh $(BPF_OBJECT) $(BPF_MANIFEST)
 
-test-p2:
-	go test ./internal/api -run '^TestP2LifecycleAcceptance$$' -count=1
+test-lifecycle:
+	go test ./internal/api -run '^TestLifecycleAcceptance$$' -count=1
 
-test-p3:
-	go test ./internal/api -run '^Test(P3Acceptance|PolicyCoordinator.*)$$' -count=1
+test-policy:
+	go test ./internal/api -run '^Test(PolicyActions|PolicyCoordinator.*)$$' -count=1
 	go test ./internal/policy -count=1
 
 test-checkpoint:
@@ -47,8 +47,8 @@ test-supervisor:
 test-stream:
 	go test ./internal/stream -count=1
 
-accept-p2: bpf-object build
-	sudo ./scripts/accept-p2.sh $(BPF_OBJECT) $(BPF_MANIFEST)
+accept-lifecycle: bpf-object build
+	sudo ./scripts/accept-lifecycle.sh $(BPF_OBJECT) $(BPF_MANIFEST)
 
 accept-network-block: bpf-object build
 	sudo ./scripts/accept-network-block.sh $(BPF_OBJECT)

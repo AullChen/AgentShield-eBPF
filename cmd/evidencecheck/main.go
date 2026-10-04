@@ -9,15 +9,15 @@ import (
 )
 
 func main() {
-	timeline, err := evidence.BuildP4Sample()
+	timeline, err := evidence.BuildSampleTimeline()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "build P4 evidence sample:", err)
+		fmt.Fprintln(os.Stderr, "build evidence sample:", err)
 		os.Exit(1)
 	}
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(timeline); err != nil {
-		fmt.Fprintln(os.Stderr, "encode P4 evidence sample:", err)
+		fmt.Fprintln(os.Stderr, "encode evidence sample:", err)
 		os.Exit(1)
 	}
 }

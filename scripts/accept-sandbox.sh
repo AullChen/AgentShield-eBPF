@@ -19,7 +19,7 @@ fi
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 compose_file="$repo_root/sandbox/compose.yaml"
 fixture="$repo_root/sandbox/fixtures/demo-secrets/example-token"
-evidence_root=${AGENTSHIELD_EVIDENCE_DIR:-"$repo_root/tmp/acceptance/day20"}
+evidence_root=${AGENTSHIELD_EVIDENCE_DIR:-"$repo_root/tmp/acceptance/sandbox"}
 
 fixture_source=$(readlink -f "$fixture")
 case "$fixture_source" in
@@ -68,4 +68,4 @@ grep -Fx "AGENTSHIELD_ACTION exec=/bin/echo" "$output" >/dev/null
 grep -Fx "AGENTSHIELD_ACTION network_ipv4=127.0.0.1:18080" "$output" >/dev/null
 grep -Fx "AGENTSHIELD_ACTION network_ipv6=[::1]:18080" "$output" >/dev/null
 
-echo "Day 20 sandbox acceptance passed. Evidence: $evidence_dir"
+echo "Sandbox acceptance passed. Evidence: $evidence_dir"

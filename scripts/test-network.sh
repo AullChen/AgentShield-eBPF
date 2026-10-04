@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-ipv4_url=${1:-http://127.0.0.1:18080/agentshield-day15-ipv4}
-ipv6_url=${2:-http://[::1]:18080/agentshield-day15-ipv6}
+ipv4_url=${1:-http://127.0.0.1:18080/agentshield-network-ipv4}
+ipv6_url=${2:-http://[::1]:18080/agentshield-network-ipv6}
 
 if ! command -v curl >/dev/null 2>&1; then
   echo "curl is required" >&2

@@ -15,20 +15,19 @@ The request selects exactly one trusted lookup input:
   "agent_name": "demo-agent",
   "container_id": "container-1",
   "cgroup_path": "/sys/fs/cgroup/agentshield/demo/leaf",
-  "profile_id": 7,
+  "profile_id": 0,
   "scope_mode": "leaf_exact",
   "labels": {"purpose": "demo"}
 }
 ```
 
-The management API requires `cgroup_path`; PID-based scope selection remains a
-diagnostic/Roadmap capability and is rejected by registration. A trusted
-supervisor may add `root_pid` for migration monitoring, but it does not select
-or redefine the cgroup. The API rejects unknown fields, so a client cannot
-provide its own `run_id`, `cgroup_id`, `instance_id`, or `scope_cookie`. The
-trusted scope manager resolves and opens the leaf, compares its filesystem
-identity with an independent `bpf_get_current_cgroup_id()` observation, and
-only then writes the scope map.
+The management API selects the leaf through `cgroup_path`. A trusted supervisor
+may add `root_pid` for migration monitoring. Core generates `run_id`, `cgroup_id`,
+`instance_id`, and `scope_cookie` after resolving and opening the leaf and
+comparing its filesystem identity with an independent
+`bpf_get_current_cgroup_id()` observation. It then writes the scope map.
+In managed `serve`, `profile_id: 0` selects the operator's startup profile;
+Core binds that profile to the registration.
 
 `request_id` is a 16-128 byte supervisor-generated idempotency key. While its
 initial ingest token remains active, replaying the same normalized

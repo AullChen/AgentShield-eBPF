@@ -10,7 +10,7 @@ import (
 	"github.com/agentshield/agentshield-ebpf/internal/events"
 )
 
-func TestAnalyzeAcceptsDay14Evidence(t *testing.T) {
+func TestAnalyzeAcceptsFileExecEvidence(t *testing.T) {
 	input := encodeEvents(t,
 		events.KernelEvent{
 			JSONSchemaVersion: events.JSONSchemaVersion,
@@ -19,7 +19,7 @@ func TestAnalyzeAcceptsDay14Evidence(t *testing.T) {
 			EventTypeName:     "file_open",
 			ActionResult:      events.ActionResultNone,
 			ActionResultName:  "none",
-			Data:              "/tmp/agentshield-day14-file",
+			Data:              "/tmp/agentshield-file-exec-file",
 		},
 		events.KernelEvent{
 			JSONSchemaVersion: events.JSONSchemaVersion,
@@ -28,12 +28,12 @@ func TestAnalyzeAcceptsDay14Evidence(t *testing.T) {
 			EventTypeName:     "exec_attempt",
 			ActionResult:      events.ActionResultNone,
 			ActionResultName:  "none",
-			Argv:              []string{"/bin/echo", "", "agentshield-day14-exec", strings.Repeat("x", 31)},
+			Argv:              []string{"/bin/echo", "", "agentshield-file-exec-exec", strings.Repeat("x", 31)},
 			Truncated:         true,
 		},
 	)
 
-	summary, err := analyze(input, "agentshield-day14-file", "agentshield-day14-exec")
+	summary, err := analyze(input, "agentshield-file-exec-file", "agentshield-file-exec-exec")
 	if err != nil {
 		t.Fatalf("analyze returned error: %v", err)
 	}

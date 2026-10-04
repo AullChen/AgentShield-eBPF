@@ -1,53 +1,32 @@
-# Roadmap
+# Development plans
 
-The next work is ordered by evidence and trust boundaries, not by UI surface.
+The demonstrated baseline is the controlled x86_64 Linux 6.8 workflow: trusted registration, scoped observation, TCP enforcement, post-event containment, and persistent per-Run evidence. The next work extends its operating range and measures its behavior under load.
 
-## Release gate
+## Reliability and security maintenance
 
-- Run the complete clean-host procedure in the local test guide on a disposable
-  supported Linux VM; retain tool versions, BTF/object/image hashes, raw logs,
-  authenticated snapshots, and sanitized screenshots.
-- Review dependency-audit output. A command completing is not equivalent to
-  “no high-severity findings”; the recorded result must be inspected.
-- Choose a repository license. The eBPF `Dual MIT/GPL` loader declaration is
-  kernel metadata and does not license the repository as a whole.
-- Publish only the evidence and capability claims that the reviewed run proves.
+- **Linux 7.0 event delivery and containment:** retain and reproduce the initial Ubuntu-built-object failure alongside its successful unchanged rerun. Instrument exec-event delivery and dispatch to explain the missed containment before extending the operating baseline.
+- **Dependency maintenance:** resolve the recorded npm audit findings (nine affected package entries: one critical, seven high, one moderate), then repeat build, browser, and vulnerability checks. Re-run Go vulnerability scanning with the selected release toolchain. Findings are tied to the recorded audit snapshot; affected-package counts can include propagation through transitive dependencies.
+- **Load and soak evaluation:** measure event throughput, ring reserve failures, queue loss, CPU/memory overhead, storage growth, and tail latency under controlled workload rates. Exercise shutdown and storage recovery during sustained load.
 
-## Runtime integration
+## Durable lifecycle and history
 
-- Implement a general stopped-task container adapter for the trusted
-  supervisor contract, including descriptor-held identity and `populated 0`
-  exit confirmation.
-- Run and review the managed `serve` entry and stopped Linux acceptance fixture
-  on the supported VM, including identity probe, checkpoint/store/correlation,
-  final containment dispatch, and restart reads. Source wiring and deterministic
-  integration tests exist; real-kernel acceptance does not.
-- Add durable Run listing/history pagination with gap and retention semantics;
-  the bounded per-Run SQLite evidence endpoint now exists. Keep the
-  current in-memory WebSocket recovery window distinct.
-- Add trusted workload reconciliation after Core crash; active Run credentials,
-  replay state, and scope maps are intentionally not restored from evidence.
+- Persist the Run catalog and add paginated History queries. Current SQLite evidence survives restart and is accessible through a saved Run ID; the Overview/History list is in memory.
+- Define restart recovery for active tasks, credentials, checkpoint replay state, and scope reconciliation. The operating procedure currently finishes workloads before stopping Core.
+- Persist stream cursors and implement durable snapshot/resync. Live recovery currently uses a bounded in-memory window.
 
-## Policy and enforcement
+## Policy and runtime integration
 
-- Add authenticated policy CRUD with validation, authorization, audit records,
-  and optimistic generation control.
-- Implement concrete persistent BPF A/B banks plus policy-bundle recovery as
-  one transaction; test crash points and generation reconciliation.
-- Obtain kernel evidence for exact-tuple IPv4/IPv6 blocking and containment.
-  Extend beyond TCP only after current semantics are stable.
+- Add policy CRUD, hot reload, and a persistent implementation of the tested A/B activation contract. Runtime policies currently load at startup, with one global synchronous TCP profile.
+- Implement production container/platform `PreparedTask` adapters while preserving stopped-before-registration and complete-leaf-exit invariants.
+- Extend coverage to UDP and Unix sockets, `execveat`, and suitable synchronous file/process enforcement hooks. Current `openat`/`execve` tracepoints record entry attempts, and containment follows the event.
+- Evaluate subtree registration separately from the current exact-leaf model, with explicit identity and delegation rules.
 
-## Coverage and reliability
+## Portability and presentation
 
-- Add `openat2` and `execveat` with the same attempt-versus-result clarity.
-- Decide explicit coverage for UDP, Unix sockets, DNS attribution, and
-  namespace boundaries; do not infer it from TCP connect hooks.
-- Run controlled ring-buffer saturation and verify per-type drop deltas,
-  shutdown draining, and user-visible diagnostics under load.
-- Add real-host restart, disk-full, corrupt-store, expired-token, and slow-client
-  chaos gates for the managed fan-in.
+- Run native ARM64 and additional kernel/toolchain combinations; current runtime evidence covers x86_64 guests on the recorded 6.8 and 7.0 kernels.
+- Improve narrow-screen evidence layout and add long-path regression fixtures. The recorded 390 px view overflowed by 237 px; the current presentation target is desktop.
+- Package a reproducible kernel lab with pinned guest images and dependencies, and publish reviewed evidence bundles for subsequent releases.
 
-Every item that depends on a real kernel, container runtime, privilege, browser,
-or network service must ship with a reproducible procedure and retained
-evidence. Deterministic fixtures remain valuable, but must keep their fixture
-label.
+## Research evaluation
+
+Build a labeled workload corpus to evaluate checkpoint association precision, recall, and ambiguity as concurrency and checkpoint delay vary. Compare attribution by PID, cgroup ID, and instance/cookie identity under reuse and delayed delivery. Measure synchronous TCP rejection separately from event-to-containment latency. These experiments would quantify the design choices already represented in the implementation.

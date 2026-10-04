@@ -1,73 +1,28 @@
-# Sandbox
+# Sandbox and trusted supervisor
 
-The minimal demo Agent deliberately performs four auditable actions:
-
-- opens the repository-owned fake fixture at `/demo-secrets/example-token`;
-- executes `/bin/echo`;
-- attempts TCP connections to IPv4 and IPv6 loopback.
-
-No host credential or real secret may be mounted. `compose.yaml` fixes the only
-bind source to `fixtures/demo-secrets/example-token`, mounts it read-only, runs
-as an unprivileged user, drops all capabilities, and uses a read-only root
-filesystem.
-
-Run the reproducible Linux acceptance:
+The container demonstration opens the repository fake credential, executes `/bin/echo`, and attempts IPv4/IPv6 loopback connections. Its Compose configuration uses UID 65532, a read-only root filesystem, dropped capabilities, and a read-only mount of `fixtures/demo-secrets/example-token`.
 
 ```sh
 ./scripts/accept-sandbox.sh
 ```
 
-The invoking user must be authorized to use the Docker socket. On the dedicated
-test VM, running this one acceptance command with `sudo` is preferable to
-granting a general-purpose account persistent membership in the Docker group.
+Run this on the dedicated Docker test VM. The script records image ID, fixture hash, and mount identity under owner-only `tmp/acceptance/sandbox/`. For the full host Core and dashboard workflow, follow the [demo guide](../docs/demo-guide.md).
 
-The command pulls the configured base image before building and records the
-resulting sandbox image ID alongside the repository fixture's host path and
-SHA-256. It then records the container mount namespace, mount ID/options, and
-device/inode without printing the fixture content. Raw evidence is owner-only under
-`tmp/acceptance/day20/` and must not be committed.
+## Trusted lifecycle
 
-The complete guarded host-Core/Dashboard/Sandbox flow is
-`sudo ./scripts/demo.sh --isolated-vm`; see `docs/demo-guide.md`. In that flow
-the container entrypoint waits on an owner-controlled file in its private
-`/tmp` until Core reports successful hook attachment. The gate prevents demo
-attack actions from running early. It is not a substitute for the stronger
-stopped-task production supervisor contract below.
+[`supervisor.py`](supervisor.py) coordinates a platform-provided `PreparedTask`:
 
-## Trusted supervisor example
+1. Verify the task is prepared and stopped in its dedicated exact leaf.
+2. Register it through the owner-only Unix management socket.
+3. Check the response against the held leaf descriptor and confirm the root task remains stopped.
+4. Pass the Run ID, ingest URL, and checkpoint token to the task, then release execution.
+5. Finish the Run after root-task exit and `cgroup.events` reporting `populated 0`.
 
-[`supervisor.py`](supervisor.py) demonstrates the Day 37 lifecycle boundary. A
-platform adapter must first create the dedicated exact-leaf cgroup and prepare a
-stopped task inside it. `supervise()` then follows this order:
+The supervisor owns management authority; the agent owns only its checkpoint credential. A reported `run_finished` is recorded as an agent claim. During cleanup, the supervisor attempts TERM and a bounded wait, then KILL and a bounded wait. Successful finish requires complete scope exit.
 
-1. verify that the task is already prepared and stopped;
-2. register the leaf through the owner-only Unix-socket management client;
-3. verify the response identity against the still-held exact-leaf descriptor
-   and confirm the root task remains stopped;
-4. pass only the Run ID, checkpoint URL, and ingest token to the task, then start it;
-5. call `finish` only after the root workload exits and the held exact leaf is empty.
+The `PreparedTask` interface keeps platform-specific cgroup/process preparation and waiting in the adapter. The management client validates the socket and Linux peer UID, bounds responses, rejects redirects, and redacts credentials.
 
-The Agent never receives the management client or socket path. Its
-`run_finished` checkpoint is an untrusted claim and is not an input to this
-lifecycle. The adapter's `wait_for_scope_exit()` must observe both workload exit
-and `cgroup.events` `populated 0` using the held leaf, so a forked child cannot
-outlive scope monitoring. On failure the supervisor attempts TERM plus a
-bounded wait, then KILL plus a bounded wait. It finishes the Run only if one of
-those waits confirms complete scope exit. Otherwise it deliberately leaves the
-management Run active for trusted investigation or bounded TTL cleanup.
-
-The general supervisor intentionally leaves OS-specific cgroup/process preparation and
-bounded waiting to a small `PreparedTask` adapter: attempting to launch first
-and stop later would introduce an unmonitored execution race. The included
-management client never logs response bodies, rejects redirects, bounds
-responses, verifies the owner-only socket and peer UID on Linux, and redacts
-the one-time ingest token from representations.
-
-`scripts/check-managed-runtime.py` supplies a concrete stopped Linux task only
-for isolated acceptance of the managed `serve` entry. It is not a production
-Docker/container adapter; see [managed runtime](../docs/managed-runtime.md).
-
-Run the stdlib-only tests from the repository root:
+`scripts/check-managed-runtime.py` supplies the concrete stopped Linux fixture used in the [managed walkthrough](../docs/managed-runtime.md). Platform adapters are part of the [development plan](../docs/roadmap.md).
 
 ```sh
 python -m unittest discover -s sandbox/tests -v

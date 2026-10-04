@@ -20,7 +20,7 @@ export default async function EvidencePage({ params }: { params: Promise<{ runId
       </header>
 
       <div className="notice evidence-notice">
-        This view covers the live recovery window, not durable history. An observed attempt is never treated as proof that an operation completed.
+        A bounded evidence snapshot for this Run. Operation attempts, policy decisions, and containment outcomes are recorded separately.
       </div>
       {result.error ? <div className="notice danger-notice" role="status">{result.error}</div> : null}
 
@@ -51,7 +51,7 @@ export default async function EvidencePage({ params }: { params: Promise<{ runId
             </div>
           </article>
         )) : (
-          <div className="panel"><p className="empty-state">{timeline ? "No evidence is retained for this Run. Generate activity in the configured sandbox, then return within five minutes." : "Evidence is unavailable until the control plane is connected."}</p></div>
+          <div className="panel"><p className="empty-state">{timeline ? "This Run has an empty evidence snapshot. Check its ID, workload activity, and retention settings." : "Connect the control plane to load Run evidence."}</p></div>
         )}
       </section>
     </>

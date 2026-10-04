@@ -1,6 +1,7 @@
 # Checkpoint correlation
 
-Day 39 adds a deterministic two-stage correlator in `internal/correlator`.
+`internal/correlator` associates kernel events with checkpoints in two stages:
+trusted Run attribution, followed by scored matching within that Run.
 
 ## Stage 1: Run attribution
 

@@ -1,77 +1,29 @@
-# Isolated Linux demo
+# Container audit demonstration
 
-The demo joins the host Core, a Compose-managed Dashboard, and an unprivileged
-Sandbox. It is an acceptance harness for the standalone `agentshield audit`
-path, not a production deployment.
+This walkthrough combines a privileged host Core with a Compose-managed desktop dashboard and an unprivileged sandbox. It exercises `agentshield audit` with exact-leaf file, exec, and TCP observation. For checkpoint correlation and task containment, use the [managed runtime](managed-runtime.md).
 
-> **Run only in a disposable, dedicated Ubuntu 24.04 VM.** The host Core runs
-> as root to load eBPF. Raw owner-only evidence can contain bounded process,
-> path, and argument metadata. Never point the demo at a workstation, shared
-> server, production cgroup, or real credential.
+## Run
 
-## What the command does
-
-`scripts/demo.sh` performs these steps in a fixed order:
-
-1. verifies Linux, root, cgroup v2, kernel BTF, Docker Compose, and the required
-   build tools;
-2. confirms that the only secret fixture is the repository file
-   `sandbox/fixtures/demo-secrets/example-token` and records its SHA-256;
-3. builds the CO-RE object, Core binary, Dashboard image, and Sandbox image;
-4. starts the Sandbox behind a file gate, discovers its host cgroup v2 path,
-   and rejects a non-leaf or escaped path;
-5. starts Core against that exact leaf and waits for the authenticated
-   diagnostics API to report successful load and attachment;
-6. verifies the authenticated Dashboard, releases the Sandbox, and requires
-   `file_open`, `exec_attempt`, and `net_connect` kernel records;
-7. stores logs, hashes, image IDs, and API snapshots below ignored
-   `tmp/demo/`, with an owner-only umask.
-
-The Sandbox runs as UID 65532 with a read-only root filesystem, no Linux
-capabilities, `no-new-privileges`, and a read-only bind of the fake fixture.
-The Dashboard runs read-only as an unprivileged user. No service in the Compose
-file is privileged; only the host Core has root privileges.
-
-## Interactive run
-
-Install the prerequisites from [bpf-build.md](bpf-build.md), make sure ports
-`127.0.0.1:8080` and `127.0.0.1:3000` are unused, then run from the repository
-root:
+Use a disposable, dedicated Ubuntu VM with Docker Compose v2 and the [BPF toolchain](bpf-build.md). The workload opens a repository-owned fake credential, executes `/bin/echo`, and attempts IPv4/IPv6 loopback connections.
 
 ```sh
 sudo ./scripts/demo.sh --isolated-vm
 ```
 
-After all checks pass, the command prints a one-time Dashboard password. Open
-`http://127.0.0.1:3000`, use username `agentshield`, and keep the command
-running while inspecting Overview, Live Trace, Policies, History, and
-Diagnostics. Press Ctrl-C to stop Core and remove the demo containers.
+The script builds the object and images, starts the sandbox behind a file gate, verifies its exact cgroup leaf, and starts Core. Once all hooks are attached, it checks dashboard authentication and releases the workload. It then requires all three kernel event classes.
 
-For a non-interactive gate that captures snapshots and cleans up immediately:
+Open `http://127.0.0.1:3000`, use username `agentshield`, and enter the generated dashboard password printed by the script. Explore Overview, Live Trace, History, Policies, and Diagnostics. Ctrl-C stops Core and removes the demonstration containers.
+
+For an automated run with immediate cleanup:
 
 ```sh
 sudo ./scripts/demo.sh --isolated-vm --non-interactive
 ```
 
-The mandatory `--isolated-vm` acknowledgement can instead be supplied as
-`AGENTSHIELD_DEMO_ISOLATED_VM=1` for a dedicated CI runner. Do not set it on a
-general-purpose host.
+## Isolation and evidence
 
-## Evidence and interpretation
+The sandbox runs as UID 65532 with a read-only root filesystem, dropped capabilities, and `no-new-privileges`. Its credential fixture is the read-only repository file `sandbox/fixtures/demo-secrets/example-token`. The dashboard runs as an unprivileged container; the host Core owns BPF privileges.
 
-A passing `summary.sanitized.md` proves only the checks named in that file:
-exact-scope attachment, all configured hooks ready, fake-fixture protection,
-three event classes, and an authenticated Dashboard request. Review the raw
-JSON Lines before publishing even the sanitized summary. Do not commit the
-evidence directory or either generated authentication token.
+Owner-only artifacts under `tmp/demo/` include object hashes, image IDs, raw events, diagnostics, API snapshots, and a sanitized summary. Treat raw path and argv fragments as sensitive. Review material before publishing it.
 
-The demo does **not** prove a production supervisor adapter, checkpoint/store/
-correlator fan-in, durable Dashboard history, policy CRUD, fallback containment
-dispatch, or synchronous network-block behavior. The Sandbox shell exists
-before attachment but remains behind a benign file gate; this avoids executing
-the attack before hooks are ready, while not claiming the stronger stopped-task
-contract required by `sandbox/supervisor.py`.
-
-See [troubleshooting.md](troubleshooting.md) when a preflight, build, attach,
-event, or Dashboard check fails. See [support-matrix.md](support-matrix.md) for
-the exact supported and pending boundaries.
+The result describes exact-scope attachment, the three captured event classes, fixture isolation, and dashboard access. [Troubleshooting](troubleshooting.md) follows the build, attach, trigger, and display sequence.

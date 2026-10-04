@@ -1,6 +1,6 @@
 # Authenticated realtime stream
 
-Day 41 adds a bounded RFC 6455 stream at `GET /api/v1/stream`. The server
+Core exposes a bounded RFC 6455 stream at `GET /api/v1/stream`. The server
 accepts either a read-only Bearer token or a short-lived, single-use ticket.
 Browser clients should obtain the ticket through
 `POST /api/v1/stream-ticket`; a trusted same-origin backend supplies the
@@ -35,6 +35,7 @@ Run the source gate with:
 go test ./internal/stream -count=1
 ```
 
-Day 43 wires the Hub to the optional loopback listener and Linux audit JSON
-Lines sink; see `dashboard-live-trace.md`. A durable `/api/v1/snapshot` and
-supported-Linux runtime evidence remain pending.
+Both runtime entries publish through the authenticated read listener. Managed
+Core publishes checkpoint, kernel, policy, and containment records; standalone
+audit publishes its redacted event stream. See the [dashboard guide](../dashboard/README.md)
+and [development plans](roadmap.md) for durable snapshot and cursor work.

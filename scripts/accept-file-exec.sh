@@ -2,17 +2,17 @@
 set -euo pipefail
 
 if [ "$(uname -s)" != Linux ]; then
-  echo "Day 14 acceptance requires Linux" >&2
+  echo "File/exec acceptance requires Linux" >&2
   exit 1
 fi
 if [ "$(id -u)" -ne 0 ]; then
-  echo "run Day 14 acceptance as root on an isolated test host" >&2
+  echo "run File/exec acceptance as root on an isolated test host" >&2
   exit 1
 fi
 
 object_path=${1:-bpf/agentshield.bpf.o}
 manifest_path=${2:-bpf/agentshield.bpf.manifest.json}
-evidence_root=${AGENTSHIELD_EVIDENCE_DIR:-tmp/acceptance/day14}
+evidence_root=${AGENTSHIELD_EVIDENCE_DIR:-tmp/acceptance/file-exec}
 
 for path in "$object_path" "$manifest_path"; do
   if [ ! -r "$path" ]; then
@@ -30,10 +30,10 @@ binary="$evidence_dir/agentshield"
 events_log="$evidence_dir/events.raw.jsonl"
 runtime_log="$evidence_dir/runtime.log"
 summary="$evidence_dir/summary.sanitized.json"
-file_marker="agentshield-day14-file-$run_id"
-exec_marker="agentshield-day14-exec-$run_id"
+file_marker="agentshield-file-exec-file-$run_id"
+exec_marker="agentshield-file-exec-exec-$run_id"
 fixture="$evidence_dir/$file_marker"
-cgroup_path="/sys/fs/cgroup/agentshield-day14-$run_id"
+cgroup_path="/sys/fs/cgroup/agentshield-file-exec-$run_id"
 audit_pid=
 
 cleanup() {
@@ -89,7 +89,7 @@ if [ "$ready" != true ]; then
   exit 1
 fi
 
-printf 'AgentShield Day 14 fixture\n' >"$fixture"
+printf 'AgentShield file/exec fixture\n' >"$fixture"
 (
   echo "$BASHPID" >"$cgroup_path/cgroup.procs"
   cat -- "$fixture" >/dev/null
@@ -108,5 +108,5 @@ go run ./cmd/auditcheck \
   --exec-marker "$exec_marker" \
   --require-scope-identity >"$summary"
 
-echo "Day 14 acceptance passed. Sanitized summary: $summary"
+echo "File/exec acceptance passed. Sanitized summary: $summary"
 echo "Raw exact-scope events remain owner-only under $evidence_dir and must not be committed."

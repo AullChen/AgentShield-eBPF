@@ -1,7 +1,6 @@
 # Event store
 
-Day 38 introduces `internal/store`, a source-stage SQLite evidence store behind
-a non-blocking, bounded writer.
+`internal/store` persists evidence in SQLite through a bounded, nonblocking writer.
 
 ## SQLite boundary
 

@@ -1,40 +1,17 @@
-# scripts
+# Build and verification scripts
 
-Developer, environment-check, and demo helper scripts live here.
+| Script | Purpose |
+| --- | --- |
+| `build-bpf.sh` | CO-RE compilation and object/BTF/toolchain manifest |
+| `accept-file-exec.sh` | Linux file/exec capture, empty argv, truncation, and ABI checks |
+| `accept-audit.sh` | Full collection load/attach, file/exec/TCP capture, and scope filtering |
+| `accept-lifecycle.sh` | Registration lifecycle, scoped audit, and sandbox checks |
+| `accept-network-block.sh` | IPv4/IPv6 exact tuples, alternate ports, and synchronous rejection |
+| `accept-sandbox.sh` | Container hardening, fake fixture identity, and workload triggers |
+| `check-managed-runtime.py` | Stopped-task supervisor, checkpoint, and real containment fixture |
+| `check-dashboard.mjs` | Authenticated browser navigation, evidence, streaming, and layout assertions |
+| `demo.sh` | Host Core with Compose dashboard and gated sandbox |
+| `release-check.sh` | Module integrity, source checks, vulnerability scans, builds, and container demo |
+| `test-audit.sh`, `test-network.sh` | Syscall triggers executed inside a registered leaf |
 
-Current files:
-
-- `check-managed-runtime.py`: root-only, dedicated-VM stopped exact-leaf
-  workload fixture using the real supervisor and checkpoint SDK. With the
-  managed test policy, requires SIGKILL exit and complete leaf emptiness;
-  persisted outcome/identity and loss diagnostics must also be reviewed.
-- `demo.sh`: guarded, dedicated-VM-only orchestration for the host eBPF Core,
-  Compose Dashboard, and gated unprivileged Sandbox. It requires all three
-  kernel event classes and stores owner-only evidence.
-- `release-check.sh`: clean-tree Ubuntu release gate for module integrity,
-  reachable Go vulnerabilities, source/unit checks, Dashboard build/audit, and
-  the non-interactive privileged demo. License and screenshot review stay manual.
-- `build-bpf.sh`: builds a real CO-RE ELF object on the supported Ubuntu
-  toolchain and records object/BTF hashes and a parsed spec manifest.
-- `accept-file-exec.sh`: performs the Day 14 kernel load, verifier, tracepoint
-  attach, attempt semantics, empty-argv, truncation, and ABI acceptance gate.
-- `accept-p1.sh`: performs the Day 17 single-run file/exec/connect pre-M1 gate
-  plus the Day 22 exact-scope positive/host-negative gate, and produces
-  owner-only evidence plus a sanitized coverage matrix.
-- `accept-p2.sh`: combines the Day 25 lifecycle integration test, exact-scope
-  kernel/host-negative gate, and sandbox fixture gate into one owner-only
-  evidence directory on the supported Linux host.
-- `accept-network-block.sh`: loads the full kernel collection and checks
-  synchronous rejection plus exact decoded tuples/correlated decisions for
-  IPv4, IPv6 loopback, a four-nonzero-word IPv6 address, and an alternate port.
-- `accept-sandbox.sh`: builds the minimal demo Agent, verifies its repository
-  fixture origin/read-only mount metadata, and triggers all three event classes.
-- `test-audit.sh`: triggers one file-open action and one process execution for
-  the Linux audit loop.
-- `test-network.sh`: triggers TCP IPv4 and IPv6 connection attempts from the
-  caller's current cgroup; connection refusal is an acceptable fixture result.
-- `check-dashboard.mjs`: runs the P5 Playwright navigation, evidence semantics,
-  live stream, policy, diagnostics, and mobile-overflow acceptance assertions.
-
-The trigger scripts only produce syscalls; they do not build or load BPF.
-Run them from the exact cgroup registered by the trusted audit supervisor.
+The Makefile exposes named targets for these checks. Linux acceptance commands run on a dedicated VM; owner-only artifacts are written beneath ignored `tmp/`. See [validation](../docs/validation.md) for commands and experiment provenance.

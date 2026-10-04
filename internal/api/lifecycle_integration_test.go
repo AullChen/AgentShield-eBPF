@@ -9,7 +9,7 @@ import (
 	"github.com/agentshield/agentshield-ebpf/internal/scope"
 )
 
-func TestP2LifecycleAcceptance(t *testing.T) {
+func TestLifecycleAcceptance(t *testing.T) {
 	const (
 		reusedCgroupID = uint64(42)
 		hostCgroupID   = uint64(7)

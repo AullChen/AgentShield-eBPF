@@ -1,11 +1,5 @@
-# deploy
+# Demo deployment
 
-`compose.demo.yaml` builds and runs the loopback Dashboard plus the
-unprivileged, gated Sandbox. The privileged eBPF Core deliberately remains a
-host process controlled by `scripts/demo.sh`; there is no privileged Core
-container or production deployment in this directory.
+`compose.demo.yaml` runs the loopback dashboard and gated, unprivileged sandbox. The host Core is managed by `scripts/demo.sh`.
 
-Do not invoke the Compose file directly. The script generates separate random
-Dashboard/read tokens, verifies the fixed fake-secret fixture, discovers and
-validates the Sandbox exact-leaf cgroup, waits for real hook attachment, and
-then releases the workload. See `docs/demo-guide.md`.
+Start the deployment through the [demo script](../docs/demo-guide.md). It generates separate credentials, validates the fake-secret mount and sandbox cgroup, waits for hook attachment, and releases the workload in that order.

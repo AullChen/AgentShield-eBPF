@@ -1,70 +1,21 @@
-# docs
+# Documentation
 
-Public project documentation belongs here.
+Start with the [architecture](architecture.md), then run the [managed fixture](managed-runtime.md) or [container audit demo](demo-guide.md).
 
-Current notes:
-
-- `managed-runtime.md`: registered `serve` entry, bounded checkpoint/kernel
-  fan-in, durable per-Run evidence, independent containment, and VM fixture.
-- `demo-guide.md`: Day 48 guarded host-Core/Compose-Dashboard/Sandbox demo,
-  evidence semantics, and explicit non-production boundary.
-- `troubleshooting.md`: preflight, BPF, event, Dashboard, and safe-cleanup
-  diagnosis without weakening exact-scope checks.
-- `support-matrix.md`: environment baseline plus source, runtime, degradation,
-  privacy, fail-open, block, and containment coverage.
-- `roadmap.md`: release blockers and ordered runtime, enforcement, and coverage
-  follow-up work.
-- `audit-reliability.md`: Day 16 per-type drop counters, Go-synthesized loss
-  notices, double-clock receipt fields, and shutdown/failure semantics.
-- `agent-registration.md`: trusted Agent Run registration contract, identity
-  ownership, and short-lived ingest tokens.
-- `bpf-build.md`: supported CO-RE toolchain, BTF provenance, object manifest,
-  and ELF/spec versus kernel-load acceptance boundary.
-- `cgroup-scope-acceptance.md`: exact-leaf positive/host-negative gate,
-  subtree rejection, and escape monitoring.
-- `containment.md`: Day 34 exact-scope `cgroup.kill` fallback executor and Day
-  35 trusted Run-aware coordination, identity revalidation, Core protection,
-  and separate result semantics.
-- `correlation.md`: Day 39 two-stage scope-to-Run attribution and deterministic
-  within-Run checkpoint scoring/conflict semantics.
-- `dashboard-overview.md`: Day 42 read-only Overview API, string counters,
-  server-only dashboard credentials, and honest unavailable states.
-- `dashboard-live-trace.md`: Day 43 audit-to-WebSocket bridge, browser filters,
-  string-safe `u64` rendering, redaction, and loopback deployment contract.
-- `dashboard-evidence.md`: Day 44 bounded evidence snapshots, five-source
-  separation, and attempt-versus-outcome wording rules.
-- `dashboard-policies.md`: Day 45 loaded policy catalog, generation and enabled
-  state, and read-only refresh boundary.
-- `dashboard-diagnostics.md`: Day 46 environment evidence, actual load/attach
-  result, hook state, generation, and per-type event loss.
-- `checkpoint-ingest.md`: Day 36 isolated Run-scoped checkpoint ingestion,
-  token binding, dual-clock receipts, replay semantics, and lifecycle limits.
-- `../sdk/python/README.md` and `../sandbox/README.md`: Day 37 checkpoint-only
-  Python client and trusted supervisor lifecycle contract.
-- `file-exec-acceptance.md`: reproducible Day 14 Linux kernel load/attach and
-  file/exec semantic acceptance gate.
-- `event-store.md`: Day 38 SQLite/WAL evidence persistence, pre-queue
-  redaction, bounded non-blocking writer, and circuit-breaker semantics.
-- `file-exec-audit.md`: current Day 12 file/exec attempt-event semantics and safety limits.
-- `network-audit.md`: Day 15 cgroup connect4/connect6 semantics, fixture, and
-  explicit coverage/fallback matrix.
-- `network-enforcement.md`: Day 33 exact-tuple cgroup connect default-deny
-  compiler, synchronous block semantics, and privileged acceptance gate.
-- `p0-integration-check.md`: historical Day 1-6 integration snapshot.
-- `p1-coverage.md`: Day 17 pre-M1 source/runtime coverage matrix, reproducible
-  Linux evidence command, and current pending acceptance status.
-- `p2-acceptance.md`: Day 25 register/capture/finish/TTL/reuse/host-negative
-  lifecycle gate and supported-Linux evidence procedure.
-- `policy-schema.md`: policy bundle schema, strict loader limits, compile
-  preview classes, deterministic scope precedence, and enforcement semantics.
-- `p3-policy-integration-check.md`: Day 35 audit/alert/block/contain source
-  acceptance, update-failure/recovery contract, reproducible gate, and runtime
-  limits.
-- `p4-acceptance.md`: Day 40 source evidence timeline, provenance boundaries,
-  correlation rationale, and block/containment result separation.
-- `p5-dashboard-integration.md`: Day 47 deterministic full-dashboard browser
-  flow, responsive gate, and explicit non-kernel-fixture boundary.
-- `realtime-stream.md`: Day 41 authenticated WebSocket, resume window,
-  browser ticket bootstrap, filters, and slow-client isolation.
-
-Local planning documents, drafts, and proposal materials are kept in `.local-docs/` and ignored by Git.
+| Guide | Contents |
+| --- | --- |
+| [Architecture](architecture.md) | Trust boundaries, kernel hooks, identities, queues, and evidence flow |
+| [Managed runtime](managed-runtime.md) | Build, start Core, register a stopped workload, and inspect containment |
+| [BPF build](bpf-build.md) | CO-RE toolchain, object manifests, and IPv6 context accesses |
+| [Validation](validation.md) | Recorded results, provenance, and reproducible checks |
+| [Registration API](agent-registration.md) | Trusted Run creation, credentials, finish, and delayed events |
+| [Checkpoint API](checkpoint-ingest.md) | Agent claims, replay, limits, and receipt clocks |
+| [Policy schema](policy-schema.md) | Match conditions, precedence, and action semantics |
+| [Containment](containment.md) | Descriptor-relative execution and scope revalidation |
+| [Correlation](correlation.md) | Run attribution and scored checkpoint matching |
+| [Event store](event-store.md) | SQLite, redaction, retention, and failure isolation |
+| [Realtime stream](realtime-stream.md) | Authentication, filters, cursors, and bounded recovery |
+| [Dashboard](../dashboard/README.md) | Configuration and browser fixture |
+| [Demo](demo-guide.md) | Host Core with Compose dashboard and sandbox |
+| [Troubleshooting](troubleshooting.md) | Environment, attachment, evidence, and authentication checks |
+| [Development plans](roadmap.md) | Durability, compatibility, security maintenance, and evaluation |

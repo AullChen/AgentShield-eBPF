@@ -12,8 +12,8 @@ import (
 	"github.com/agentshield/agentshield-ebpf/internal/policy"
 )
 
-func TestP3Acceptance(t *testing.T) {
-	coordinator, containment, bundle, run := newP3Coordinator(t, killer.ResultKilled, nil, p3Policies()...)
+func TestPolicyActions(t *testing.T) {
+	coordinator, containment, bundle, run := newTestCoordinator(t, killer.ResultKilled, nil, testPolicies()...)
 
 	t.Run("audit", func(t *testing.T) {
 		containment.reset()
@@ -21,7 +21,7 @@ func TestP3Acceptance(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ProcessAuditEvent: %v", err)
 		}
-		decision := onlyP3Decision(t, records)
+		decision := onlyDecision(t, records)
 		if decision.Final == nil || decision.Final.RequestedAction != policy.ActionAudit ||
 			decision.Final.EffectiveAction != policy.ActionAudit || decision.Final.Enforced {
 			t.Fatalf("audit final = %+v", decision.Final)
@@ -37,7 +37,7 @@ func TestP3Acceptance(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ProcessAuditEvent: %v", err)
 		}
-		decision := onlyP3Decision(t, records)
+		decision := onlyDecision(t, records)
 		if decision.Final == nil || decision.Final.RequestedAction != policy.ActionAlert ||
 			decision.Final.EffectiveAction != policy.ActionAlert || decision.Final.Enforced {
 			t.Fatalf("alert final = %+v", decision.Final)
@@ -74,9 +74,9 @@ func TestP3Acceptance(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ProcessAuditEvent: %v", err)
 		}
-		decision := onlyP3Decision(t, records)
+		decision := onlyDecision(t, records)
 		if decision.Final == nil || decision.Final.EffectiveAction != policy.ActionBlock || !decision.Final.Enforced ||
-			len(decision.Hits) != 1 || !hasP3Reason(decision.Hits[0].Reasons, "cgroup_connect_hook_blocked") {
+			len(decision.Hits) != 1 || !hasReason(decision.Hits[0].Reasons, "cgroup_connect_hook_blocked") {
 			t.Fatalf("block decision = %+v", decision)
 		}
 		if len(containment.calls) != 0 {
@@ -97,7 +97,7 @@ func TestP3Acceptance(t *testing.T) {
 		decision := records[0].(policy.AuditDecisionRecord)
 		if decision.Final == nil || decision.Final.EffectiveAction != policy.ActionContain || !decision.Final.Enforced ||
 			len(decision.Hits) != 1 || decision.Hits[0].ContainmentHint ||
-			!hasP3Reason(decision.Hits[0].Reasons, "post_event_containment_killed") {
+			!hasReason(decision.Hits[0].Reasons, "post_event_containment_killed") {
 			t.Fatalf("contain decision = %+v", decision)
 		}
 		result := records[1].(PolicyContainmentRecord)
@@ -120,7 +120,7 @@ func TestPolicyCoordinatorRejectsUntrustedAndTerminatingRuns(t *testing.T) {
 		func(event *events.KernelEvent) { event.InstanceID++ },
 		func(event *events.KernelEvent) { event.ScopeCookie++ },
 	} {
-		coordinator, containment, _, run := newP3Coordinator(t, killer.ResultKilled, nil, p3Policies()...)
+		coordinator, containment, _, run := newTestCoordinator(t, killer.ResultKilled, nil, testPolicies()...)
 		event := p3ExecEvent(run, "contain-tool")
 		mutate(&event)
 		if _, err := coordinator.ProcessAuditEvent(context.Background(), event); !errors.Is(err, ErrPolicyEventNotActiveRun) {
@@ -131,7 +131,7 @@ func TestPolicyCoordinatorRejectsUntrustedAndTerminatingRuns(t *testing.T) {
 		}
 	}
 
-	coordinator, _, _, run := newP3Coordinator(t, killer.ResultKilled, nil, p3Policies()...)
+	coordinator, _, _, run := newTestCoordinator(t, killer.ResultKilled, nil, testPolicies()...)
 	if _, begun, err := coordinator.runs.beginTermination(run.RunID); err != nil || !begun {
 		t.Fatalf("beginTermination: begun=%v error=%v", begun, err)
 	}
@@ -139,7 +139,7 @@ func TestPolicyCoordinatorRejectsUntrustedAndTerminatingRuns(t *testing.T) {
 		t.Fatalf("terminating Run error = %v", err)
 	}
 
-	coordinator, _, _, run = newP3Coordinator(t, killer.ResultKilled, nil, p3Policies()...)
+	coordinator, _, _, run = newTestCoordinator(t, killer.ResultKilled, nil, testPolicies()...)
 	if _, changed, found := coordinator.runs.FailScope(run.CgroupID, "scope escaped"); !found || !changed {
 		t.Fatalf("FailScope: found=%v changed=%v", found, changed)
 	}
@@ -150,7 +150,7 @@ func TestPolicyCoordinatorRejectsUntrustedAndTerminatingRuns(t *testing.T) {
 
 func TestPolicyCoordinatorRecordsContainmentFailure(t *testing.T) {
 	executionErr := errors.New("cgroup.kill unavailable")
-	coordinator, containment, _, run := newP3Coordinator(t, killer.ResultFailed, executionErr, p3Policies()...)
+	coordinator, containment, _, run := newTestCoordinator(t, killer.ResultFailed, executionErr, testPolicies()...)
 	records, err := coordinator.ProcessAuditEvent(context.Background(), p3ExecEvent(run, "contain-tool"))
 	if err != nil {
 		t.Fatalf("ProcessAuditEvent returned execution error instead of records: %v", err)
@@ -160,7 +160,7 @@ func TestPolicyCoordinatorRecordsContainmentFailure(t *testing.T) {
 	}
 	decision := records[0].(policy.AuditDecisionRecord)
 	if decision.Final == nil || decision.Final.Enforced || decision.Final.EffectiveAction != policy.ActionAlert ||
-		!decision.Hits[0].ContainmentHint || !hasP3Reason(decision.Hits[0].Reasons, "post_event_containment_failed") {
+		!decision.Hits[0].ContainmentHint || !hasReason(decision.Hits[0].Reasons, "post_event_containment_failed") {
 		t.Fatalf("failed contain decision = %+v", decision)
 	}
 	result := records[1].(PolicyContainmentRecord)
@@ -182,7 +182,7 @@ func TestPolicyCoordinatorRejectsInconsistentContainmentOutcome(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			coordinator, containment, _, run := newP3Coordinator(t, test.result, test.executeErr, p3Policies()...)
+			coordinator, containment, _, run := newTestCoordinator(t, test.result, test.executeErr, testPolicies()...)
 			containment.mutate = test.mutate
 			records, err := coordinator.ProcessAuditEvent(context.Background(), p3ExecEvent(run, "contain-tool"))
 			if err != nil {
@@ -204,18 +204,18 @@ func TestPolicyCoordinatorRejectsInconsistentContainmentOutcome(t *testing.T) {
 func TestPolicyCoordinatorDoesNotExecuteNonWinningOrAllowedContainment(t *testing.T) {
 	contain := p3ExecPolicy("p3.contain", "shared-tool", policy.DecisionDeny, policy.ActionContain, 10)
 	alert := p3ExecPolicy("p3.alert", "shared-tool", policy.DecisionObserve, policy.ActionAlert, 100)
-	coordinator, containment, _, run := newP3Coordinator(t, killer.ResultKilled, nil, contain, alert)
+	coordinator, containment, _, run := newTestCoordinator(t, killer.ResultKilled, nil, contain, alert)
 	records, err := coordinator.ProcessAuditEvent(context.Background(), p3ExecEvent(run, "shared-tool"))
 	if err != nil {
 		t.Fatalf("ProcessAuditEvent: %v", err)
 	}
-	decision := onlyP3Decision(t, records)
+	decision := onlyDecision(t, records)
 	if decision.Final == nil || decision.Final.PolicyID != alert.ID || len(containment.calls) != 0 {
 		t.Fatalf("non-winning contain decision = %+v calls=%d", decision, len(containment.calls))
 	}
 
 	allowlistedContain := p3NetworkPolicy("p3.net.contain", policy.ActionContain)
-	coordinator, containment, _, run = newP3Coordinator(t, killer.ResultKilled, nil, allowlistedContain)
+	coordinator, containment, _, run = newTestCoordinator(t, killer.ResultKilled, nil, allowlistedContain)
 	event := p3Event(run)
 	event.EventType = events.EventTypeNetConnect
 	event.EventTypeName = "net_connect"
@@ -226,13 +226,13 @@ func TestPolicyCoordinatorDoesNotExecuteNonWinningOrAllowedContainment(t *testin
 	if err != nil {
 		t.Fatalf("ProcessAuditEvent allowlisted contain: %v", err)
 	}
-	decision = onlyP3Decision(t, records)
+	decision = onlyDecision(t, records)
 	if decision.Final == nil || decision.Final.NetworkDisposition != policy.DispositionAllowed ||
 		decision.Hits[0].ContainmentHint || len(containment.calls) != 0 {
 		t.Fatalf("allowlisted contain decision = %+v calls=%d", decision, len(containment.calls))
 	}
 
-	coordinator, containment, _, run = newP3Coordinator(
+	coordinator, containment, _, run = newTestCoordinator(
 		t,
 		killer.ResultKilled,
 		nil,
@@ -244,7 +244,7 @@ func TestPolicyCoordinatorDoesNotExecuteNonWinningOrAllowedContainment(t *testin
 	if err != nil {
 		t.Fatalf("ProcessAuditEvent already blocked: %v", err)
 	}
-	decision = onlyP3Decision(t, records)
+	decision = onlyDecision(t, records)
 	if decision.Final == nil || !decision.Hits[0].ContainmentHint || len(containment.calls) != 0 {
 		t.Fatalf("already-blocked contain decision = %+v calls=%d", decision, len(containment.calls))
 	}
@@ -273,7 +273,7 @@ func TestPolicyCoordinatorKeepsNetworkSyscallSeparateFromContainment(t *testing.
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			coordinator, containment, _, run := newP3Coordinator(
+			coordinator, containment, _, run := newTestCoordinator(
 				t,
 				test.result,
 				test.executionErr,
@@ -298,8 +298,8 @@ func TestPolicyCoordinatorKeepsNetworkSyscallSeparateFromContainment(t *testing.
 			if decision.Final == nil || decision.Final.NetworkDisposition != policy.DispositionDenied ||
 				decision.Final.EffectiveAction != test.effectiveAction || decision.Final.Enforced != test.enforced ||
 				len(decision.NetworkDecisions) != 1 || decision.NetworkDecisions[0].Enforced ||
-				!hasP3Reason(decision.Hits[0].Reasons, test.expectedReason) ||
-				(test.unexpectedReason != "" && hasP3Reason(decision.Hits[0].Reasons, test.unexpectedReason)) {
+				!hasReason(decision.Hits[0].Reasons, test.expectedReason) ||
+				(test.unexpectedReason != "" && hasReason(decision.Hits[0].Reasons, test.unexpectedReason)) {
 				t.Fatalf("network containment decision = %+v", decision)
 			}
 			if event.ActionResult != events.ActionResultNone || result.SyscallResult != killer.SyscallNotObserved ||
@@ -341,7 +341,7 @@ func (executor *fakeContainmentExecutor) reset() {
 	executor.calls = nil
 }
 
-func newP3Coordinator(t *testing.T, result killer.EnforcementResult, executionErr error, policies ...policy.Policy) (*PolicyCoordinator, *fakeContainmentExecutor, policy.Bundle, AgentRun) {
+func newTestCoordinator(t *testing.T, result killer.EnforcementResult, executionErr error, policies ...policy.Policy) (*PolicyCoordinator, *fakeContainmentExecutor, policy.Bundle, AgentRun) {
 	t.Helper()
 	run := AgentRun{
 		RunID: "run-p3", CgroupID: 42, InstanceID: 1001, ScopeCookie: 2002,
@@ -364,7 +364,7 @@ func newP3Coordinator(t *testing.T, result killer.EnforcementResult, executionEr
 	return coordinator, containment, bundle, run
 }
 
-func p3Policies() []policy.Policy {
+func testPolicies() []policy.Policy {
 	return []policy.Policy{
 		p3ExecPolicy("p3.audit", "audit-tool", policy.DecisionObserve, policy.ActionAudit, 10),
 		p3ExecPolicy("p3.alert", "alert-tool", policy.DecisionObserve, policy.ActionAlert, 20),
@@ -426,7 +426,7 @@ func p3ExecEvent(run AgentRun, executable string) events.KernelEvent {
 	return event
 }
 
-func onlyP3Decision(t *testing.T, records []any) policy.AuditDecisionRecord {
+func onlyDecision(t *testing.T, records []any) policy.AuditDecisionRecord {
 	t.Helper()
 	if len(records) != 1 {
 		t.Fatalf("record count = %d, want one policy decision", len(records))
@@ -441,7 +441,7 @@ func onlyP3Decision(t *testing.T, records []any) policy.AuditDecisionRecord {
 	return decision
 }
 
-func hasP3Reason(reasons []string, expected string) bool {
+func hasReason(reasons []string, expected string) bool {
 	for _, reason := range reasons {
 		if reason == expected {
 			return true

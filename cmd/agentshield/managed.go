@@ -28,7 +28,14 @@ import (
 )
 
 type managedOptions struct {
-	objectPath, networkRoot, managementSocket, ingestAddress, readAddress, tokenFile, databasePath, policyPath string
+	objectPath       string
+	networkRoot      string
+	managementSocket string
+	ingestAddress    string
+	readAddress      string
+	tokenFile        string
+	databasePath     string
+	policyPath       string
 }
 
 func (options managedOptions) validate() error {
@@ -192,7 +199,14 @@ func serveManaged(parent context.Context, options managedOptions, logger *slog.L
 	}
 	defer func() { resultErr = errors.Join(resultErr, shutdown()) }()
 	start := func(listener net.Listener, routes http.Handler) {
-		server := &http.Server{Handler: routes, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+		server := &http.Server{
+			Handler:           routes,
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			MaxHeaderBytes:    16 << 10,
+		}
 		servers = append(servers, server)
 		go func() {
 			if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {

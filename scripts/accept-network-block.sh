@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 object_path="${1:-$repo_root/bpf/agentshield.bpf.o}"
 binary_path="$repo_root/bin/agentshield"
 policy_path="$repo_root/configs/strict-network-profile.yaml"
-cgroup_path="/sys/fs/cgroup/agentshield-day33-$$"
+cgroup_path="/sys/fs/cgroup/agentshield-network-block-$$"
 evidence_dir="$(mktemp -d)"
 audit_pid=""
 

@@ -2,11 +2,11 @@
 set -euo pipefail
 
 if [ "$(uname -s)" != Linux ]; then
-  echo "Day 17 P1 acceptance requires Linux" >&2
+  echo "Audit acceptance requires Linux" >&2
   exit 1
 fi
 if [ "$(id -u)" -ne 0 ]; then
-  echo "run P1 acceptance as root on an isolated test host" >&2
+  echo "run audit acceptance as root on an isolated test host" >&2
   exit 1
 fi
 case "$(uname -m)" in
@@ -38,7 +38,7 @@ fi
 
 object_path=${1:-bpf/agentshield.bpf.o}
 manifest_path=${2:-bpf/agentshield.bpf.manifest.json}
-evidence_root=${AGENTSHIELD_EVIDENCE_DIR:-tmp/acceptance/day17}
+evidence_root=${AGENTSHIELD_EVIDENCE_DIR:-tmp/acceptance/audit}
 
 for path in "$object_path" "$manifest_path"; do
   if [ ! -r "$path" ]; then
@@ -51,7 +51,7 @@ umask 077
 mkdir -p "$evidence_root"
 evidence_dir=$(mktemp -d "$evidence_root/$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")
 run_id=${evidence_dir##*/}
-cgroup_path="/sys/fs/cgroup/agentshield-p1-$run_id"
+cgroup_path="/sys/fs/cgroup/agentshield-audit-$run_id"
 mkdir "$cgroup_path"
 
 binary="$evidence_dir/agentshield"
@@ -60,8 +60,8 @@ runtime_log="$evidence_dir/runtime.log"
 summary="$evidence_dir/summary.sanitized.json"
 strict_error="$evidence_dir/network-check.txt"
 coverage="$evidence_dir/coverage-matrix.sanitized.md"
-file_marker="agentshield-day17-file-$run_id"
-exec_marker="agentshield-day17-exec-$run_id"
+file_marker="agentshield-audit-file-$run_id"
+exec_marker="agentshield-audit-exec-$run_id"
 fixture="$evidence_dir/$file_marker"
 host_marker="agentshield-host-negative-$run_id"
 host_fixture="$evidence_dir/$host_marker"
@@ -96,8 +96,8 @@ trap 'exit 143' TERM
 
 cat >"$evidence_dir/reproduction-commands.txt" <<EOF
 make bpf-object
-sudo ./scripts/accept-p1.sh $object_path $manifest_path
-./scripts/test-network.sh http://127.0.0.1:18080/agentshield-day17-ipv4 http://[::1]:18080/agentshield-day17-ipv6
+sudo ./scripts/accept-audit.sh $object_path $manifest_path
+./scripts/test-network.sh http://127.0.0.1:18080/agentshield-audit-ipv4 http://[::1]:18080/agentshield-audit-ipv6
 EOF
 
 cp "$manifest_path" "$evidence_dir/object.manifest.json"
@@ -136,15 +136,15 @@ if ! wait_for_ready; then
   exit 1
 fi
 
-printf 'AgentShield P1 fixture\n' >"$fixture"
+printf 'AgentShield audit fixture\n' >"$fixture"
 (
   echo "$BASHPID" >"$cgroup_path/cgroup.procs"
   cat -- "$fixture" >/dev/null
   long_arg=$(printf 'x%.0s' $(seq 1 96))
   /bin/echo "" "$exec_marker" "$long_arg" >/dev/null
   ./scripts/test-network.sh \
-    http://127.0.0.1:18080/agentshield-day17-ipv4 \
-    'http://[::1]:18080/agentshield-day17-ipv6'
+    http://127.0.0.1:18080/agentshield-audit-ipv4 \
+    'http://[::1]:18080/agentshield-audit-ipv6'
 )
 printf 'AgentShield host negative fixture\n' >"$host_fixture"
 cat -- "$host_fixture" >/dev/null
@@ -198,7 +198,7 @@ go run ./cmd/auditcheck \
   --require-scope-identity >"$summary"
 
 cat >"$coverage" <<EOF
-# P1 pre-M1 coverage ($run_id)
+# Audit coverage ($run_id)
 
 | Event path | Status | Evidence |
 | --- | --- | --- |
@@ -214,6 +214,6 @@ Stable event classes: 3/3. The combined gate fails on any required file, exec, I
 Object, environment, reproduction commands, ABI, and runtime evidence are stored in this owner-only directory.
 EOF
 
-echo "P1 pre-M1 acceptance passed with 3/3 stable event classes."
+echo "Audit acceptance passed with 3/3 stable event classes."
 echo "Sanitized coverage: $coverage"
 echo "Raw exact-scope events remain owner-only and must not be committed."

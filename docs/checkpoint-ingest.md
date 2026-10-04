@@ -1,6 +1,6 @@
 # Checkpoint ingest
 
-Day 36 adds a Run-scoped, write-only checkpoint surface:
+The checkpoint API accepts Run-scoped agent context at:
 
 ```text
 POST /ingest/v1/runs/{run_id}/checkpoints
@@ -41,7 +41,7 @@ different payload, or a gap/stale sequence, returns `409`.
 
 Authenticated writes are limited to 20 new checkpoints per Run per second and
 1,024 retained checkpoints, an estimated 4 MiB retained per Run, and an
-estimated 64 MiB retained across the store in this source-stage implementation.
+estimated 64 MiB retained across the store in memory.
 The conservative estimate charges the encoded request plus fixed Go object/map
 overhead.
 Rate-limited and temporarily unavailable responses include `Retry-After: 1`.
@@ -72,7 +72,7 @@ status. A trusted supervisor must confirm actual process/container exit before
 using the management finish route.
 
 Checkpoint replay state is currently bounded in memory and is removed when the
-Run is terminated. It is not restart-persistent; the Day 38 store is responsible
+Run is terminated. It is not restart-persistent; the store is responsible
 for durable records and storage failure isolation. The handler does not log the
 Authorization header or request body, but callers must still send only
 redacted summaries and metadata.

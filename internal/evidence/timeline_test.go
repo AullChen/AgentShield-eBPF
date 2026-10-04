@@ -9,10 +9,10 @@ import (
 	"github.com/agentshield/agentshield-ebpf/internal/correlator"
 )
 
-func TestP4Acceptance(t *testing.T) {
-	timeline, err := BuildP4Sample()
+func TestEvidenceTimeline(t *testing.T) {
+	timeline, err := BuildSampleTimeline()
 	if err != nil {
-		t.Fatalf("BuildP4Sample: %v", err)
+		t.Fatalf("BuildSampleTimeline: %v", err)
 	}
 	if timeline.SchemaVersion != "1" || len(timeline.Items) != 6 {
 		t.Fatalf("timeline = %+v", timeline)
@@ -38,7 +38,7 @@ func TestP4Acceptance(t *testing.T) {
 		t.Fatalf("blocked operation = %+v", blocked)
 	}
 
-	goldenPath := filepath.Join("..", "..", "docs", "examples", "p4-evidence-timeline.json")
+	goldenPath := filepath.Join("..", "..", "docs", "examples", "evidence-timeline.json")
 	golden, err := os.ReadFile(goldenPath)
 	if err != nil {
 		t.Fatalf("read golden: %v", err)
@@ -50,7 +50,7 @@ func TestP4Acceptance(t *testing.T) {
 	want, _ := json.Marshal(timeline)
 	got, _ := json.Marshal(tracked)
 	if string(want) != string(got) {
-		t.Fatalf("tracked P4 sample is stale\nwant %s\ngot  %s", want, got)
+		t.Fatalf("tracked evidence sample is stale\nwant %s\ngot  %s", want, got)
 	}
 }
 

@@ -1,20 +1,19 @@
-# internal
+# Control-plane packages
 
-Private Go packages for the AgentShield control plane.
+| Package | Responsibility |
+| --- | --- |
+| `api` | Registration, checkpoints, lifecycle, runtime pipeline, and authenticated read routes |
+| `bpfmgr` | Object loading, hook attachment, scope probe, and ring-buffer consumption |
+| `scope` | Exact-leaf identity, held descriptors, registration, and monitoring |
+| `events` | Binary ABI validation and typed kernel-event decoding |
+| `policy` | Strict loading, compilation, matching, precedence, and generation contracts |
+| `killer` | Authorized descriptor-relative cgroup containment |
+| `correlator` | Trusted Run attribution and scored same-Run checkpoint association |
+| `evidence` | Source-aware timeline construction and sample fixtures |
+| `store` | Redaction, SQLite persistence, bounded writer, and recovery diagnostics |
+| `stream` | Authenticated WebSocket fan-out and bounded cursor recovery |
+| `envcheck` | Host capability inspection |
+| `timebase` | Receipt clock support |
+| `config`, `logging`, `version` | CLI configuration, structured logging, and build metadata |
 
-Package responsibilities are split by runtime concern:
-
-- `api`: Run/checkpoint management plus the read-only Dashboard Overview API.
-- `bpfmgr`
-- `config`
-- `correlator`: two-stage Run attribution and deterministic checkpoint matching.
-- `envcheck`
-- `events`
-- `evidence`: provenance-safe evidence timeline construction and P4 sample.
-- `killer`
-- `logging`
-- `policy`
-- `scope`
-- `stream`: authenticated resumable WebSocket fan-out with bounded clients.
-- `store`: redacted SQLite evidence persistence and isolated bounded writer.
-- `version`
+Tests live beside their implementation. Start with the [architecture](../docs/architecture.md) to follow the runtime through these packages.

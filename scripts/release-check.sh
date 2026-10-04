@@ -100,8 +100,8 @@ run_check go-mod-verify go mod verify
 run_check go-vulnerability-scan govulncheck ./...
 run_check aggregate-source-check make check
 run_check go-vet go vet ./...
-run_check p2-source-gate make test-p2
-run_check p3-source-gate make test-p3
+run_check lifecycle-tests make test-lifecycle
+run_check policy-tests make test-policy
 run_check checkpoint-source-gate make test-checkpoint
 run_check stream-source-gate make test-stream
 run_check python-sdk-tests python3 -m unittest discover -s sdk/python/tests -v
@@ -135,10 +135,9 @@ cat >"$evidence_dir/release-check.sanitized.md" <<EOF
 - Dashboard clean install, typecheck, build, and high-severity audit gate: PASS
 - Supported-Linux CO-RE build/load and isolated three-event demo: PASS
 
-This command does not select a repository license, review raw evidence, or
-capture/review human-facing Dashboard screenshots. Those manual release gates
-remain required before a public release claim.
+Review raw evidence and Dashboard screenshots before publishing the release.
+The repository's LICENSE file contains its distribution terms.
 EOF
 
 echo "Automated release checks passed. Review all owner-only evidence: $evidence_dir"
-echo "Manual license, raw-evidence, and screenshot review are still required."
+echo "Review raw evidence and Dashboard screenshots before publication."

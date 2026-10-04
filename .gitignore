@@ -1,4 +1,4 @@
-# Local planning and private source documents
+# Local workspace files
 .local-docs/
 .agents/
 .codex/
@@ -28,6 +28,7 @@ coverage.out
 # eBPF build outputs
 *.o
 *.bpf.o
+*.bpf.manifest.json
 *.elf
 
 # Node / Next.js outputs

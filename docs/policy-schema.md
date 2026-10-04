@@ -1,171 +1,57 @@
 # Policy bundle schema v1
 
-The policy package defines the data contract, strict YAML/JSON loading, and a
-bounded compile preview. The preview estimates map entries and identifies
-conditions that require post-event user-space evaluation; it does not attach
-eBPF programs or activate maps.
+The canonical shape is [`configs/policy.schema.json`](../configs/policy.schema.json). `internal/policy` loads JSON or YAML, validates the bundle, compiles immutable matchers, and evaluates events against a named generation.
 
-The canonical machine-readable shape is
-`configs/policy.schema.json`. YAML uses the same keys. Go code uses
-`internal/policy`; `LoadFile` accepts only `.json`, `.yaml`, and `.yml` files.
+## Loading and limits
 
-## Loader and resource limits
+Pass a bundle through `--policy-file`. The loader accepts `.json`, `.yaml`, and `.yml`, requires explicit `enabled` and `priority` values, and rejects unknown fields, duplicate JSON keys, and extra documents.
 
-The loader rejects unknown keys, duplicate JSON keys, additional YAML
-documents or JSON values, and omitted `enabled` or `priority` fields. It
-normalizes deprecated `kill` before producing a compile preview.
-
-The default limits are:
-
-| Resource | Limit |
+| Resource | Default limit |
 | --- | ---: |
-| Input file | 1 MiB |
-| Policies per bundle | 256 |
+| Input | 1 MiB |
+| Policies | 256 |
 | UTF-8 bytes per string | 256 |
-| Values per condition or label selector | 64 |
+| Values per condition/label selector | 64 |
 | Glob metacharacters per value | 4 |
-| Estimated kernel map entries | 1024 |
-| User-space match entries | 1024 |
+| Estimated kernel map entries | 1,024 |
+| User-space match entries | 1,024 |
 
-Callers may supply different positive limits. A zero-valued limit selects the
-documented default. Glob syntax is validated even though glob matching remains
-a user-space capability.
+The compile preview reports `kernel_eligible`, `user_space_only`, `mixed`, or `disabled`, together with reason codes and resource estimates. Eligibility describes a representation; the action compiler determines which installed hook can enforce it.
 
-## Compile preview
+## Match semantics
 
-Each enabled policy receives one execution class:
-
-| Class | Meaning |
+| Condition | Supported interpretation |
 | --- | --- |
-| `kernel_eligible` | Every condition has an exact kernel-map representation. |
-| `user_space_only` | Every condition needs post-event evaluation. |
-| `mixed` | Exact candidates and user-space evidence are both present. |
-| `disabled` | The policy emits no entries. |
+| File | Exact path, prefix, suffix, basename, and access-mode matching on observed path data |
+| Exec | Executable and bounded-argument matching on execution attempts |
+| Network | Family, protocol, destination CIDR/port matching and observe/default-deny intent |
 
-Absolute exact file paths, exact executable names, CIDRs, port ranges, and
-network-family defaults are kernel eligible. File prefixes, suffixes,
-basenames, relative paths, glob patterns, and executable argument fragments
-return stable reason codes explaining the required fallback. A `block` action
-that depends on any user-space match is rejected instead of claiming a
-synchronous denial that cannot be delivered. Audit, alert, and contain flows
-may retain those rules for post-event handling.
+File strings are labeled `user_path`; callers supplying resolved device/inode/mount evidence can label a match `file_identity`. Truncated paths can satisfy a complete prefix rule; exact, suffix, basename, and glob checks require complete input. File string rules support audit/alert.
 
-## Atomic generation updates
+Exec matching distinguishes empty arguments from missing capture and carries truncation information. Exec containment is requested through a `containment_hint` and authorized by the registered runtime coordinator. Syscall-entry evidence retains attempt semantics.
 
-Rule and profile maps use two logical banks. An update resets and fully writes
-the inactive bank, reads every entry back, and compares it with the immutable
-requested image before changing the active selector. A reset, write, readback,
-verification, cancellation, or selector failure leaves the previous generation
-active. The selector store must provide one atomic guarantee: when activation
-returns an error, the visible generation has not changed.
+The running TCP hooks support a default-deny profile compiled from exact host addresses and exact ports. Matching tuples pass the hook; other scoped TCP destinations are rejected synchronously. Omitting `cidrs` allows any address in the declared families for the selected ports; omitting `ports` allows any port at the selected addresses. Omitting both produces an empty allowlist and denies all scoped TCP connections. General CIDRs and port ranges remain available to control-plane evaluation; synchronous block compilation accepts host prefixes and individual ports.
 
-The current package implements and fault-tests this transaction contract. A
-concrete store backed by the live eBPF rule/profile maps is not connected yet;
-an in-memory test store is not runtime activation evidence.
+Enabling blocking requires exactly one applicable enabled network policy, including audit/observe policies in that count. Use the strict network profile as the selected network policy rather than combining it with the default outbound-observation rule. Core reconciles hook results with policy decisions using `enforced` and the effective mechanism. UDP/QUIC decision fixtures exercise matcher logic; capture extensions are on the [roadmap](roadmap.md).
 
-## File match evidence
+## Actions and precedence
 
-File matching produces post-event audit or alert evidence only. A pathname
-captured from syscall arguments is labelled `user_path`, never file identity.
-Callers may provide a resolved path together with device/inode/mount evidence;
-such a match is labelled `file_identity`. Relative user paths remain heuristic,
-symlink-resolved hits retain both path semantics, and truncated paths can only
-satisfy an already-complete prefix rule. Exact, suffix, basename, and glob
-matches are suppressed when their input is truncated. File string matching
-rejects `block` and `contain` rather than overstating enforcement.
+| Decision | Actions |
+| --- | --- |
+| `observe` | `audit`, `alert` |
+| `allow` | `audit` |
+| `deny` | `audit`, `alert`, `block`, `contain`, subject to hook and matcher capability |
 
-## Exec heuristic evidence
+`block` denotes synchronous hook rejection. `contain` requests a separate post-event cgroup action. `audit` and `alert` record policy evaluation. Legacy `kill` normalizes to `contain` with a deprecation reason code.
 
-Executable and bounded-argument matches describe an exec syscall attempt, not
-a successful execution. Missing arguments and a legitimate empty argument list
-are distinct states. Positive matches from a truncated argv remain incomplete;
-absence of a match is not evidence of safety. Truncated executable names do not
-match. Relative `execveat` paths retain an explicit resolution gap because the
-capture does not reconstruct dirfd/flag semantics. An exec `contain` request is
-emitted as an alert plus `containment_hint`; no process action occurs here, and
-`block` is rejected.
+Applicable policies are ordered by scope specificity (`run` > `cgroup` > `labels` > `global`), descending priority, then lexical policy ID. Decisions preserve all matching rules and identify the final selection. Network decisions also retain `network_disposition` for an allowlist match.
 
-## Network profile decisions
+`serve` supplies trusted registration context for Run, cgroup, and label scopes and installs one global TCP block profile at startup. `audit` supplies its registered cgroup ID and accepts policies supported by that context. Public cgroup IDs use decimal strings to preserve 64-bit precision.
 
-Network evaluation uses the captured destination address, port, protocol, and
-family. `default_observe` emits a hit only for a selected static tuple.
-`default_deny` treats CIDR and port entries as an allowlist and returns a deny
-hit for everything else, including direct DNS, QUIC, HTTPS/DoH, and proxy
-bypass attempts. An empty allowlist denies every tuple, and the current static
-profile permits TCP only. One applicable default-deny block policy made only
-of exact host prefixes and exact ports can be compiled into the cgroup connect
-enforcement maps. Its blocked raw event is reconciled to `enforced=true` and
-effective block. Policy shapes outside that first kernel representation return
-explicit unsupported; post-event-only decisions retain `enforced=false`,
-effective audit, and `enforcement_not_connected`.
+## Generation contract
 
-Observed hostnames are experimental evidence only. They never grant access,
-because DNS answers and names are mutable and are not a stable kernel security
-boundary. The strict example permits only a controlled proxy's fixed IP and
-port; its documentation address must be replaced before deployment.
+The policy package has a fault-tested A/B transaction contract: prepare the inactive bank, read it back, compare the requested image, then change the active selector. A failed preparation or activation retains the prior generation. Current runtime activation occurs at startup; persistent live-map transactions and hot reload are tracked in [development plans](roadmap.md).
 
-`agentshield audit --policy-file <bundle.yaml>` calls these matchers after each
-decoded file, exec, or network event. The raw event is emitted first and its
-`policy_decision` record follows immediately. The decision record identifies
-one immutable generation, retains all matching rules, and exposes one final
-decision using the precedence below. Network final decisions also include
-`network_disposition`, so a higher-precedence static allowlist match remains
-visible even though its policy's configured default decision is deny. The
-standalone audit command supplies a trusted cgroup ID; it rejects enabled run-
-or label-scoped policies at load time until registration-context metadata is
-available, instead of silently treating them as non-matches.
-
-The engine validates and compiles file, exec, and network matchers when a
-generation is created or activated. Event evaluation reads that immutable
-compiled snapshot and does not revalidate or rebuild the bundle on the audit
-ring-buffer path.
-
-The tracked kernel network path captures TCP only; UDP DNS and QUIC
-reason-code tests exercise control-plane decisions until UDP capture and
-enforcement hooks exist. All current matcher results are post-event evidence,
-not runtime blocking evidence. The in-process A/B snapshot switch also does
-not claim that live eBPF rule/profile maps have been activated.
-
-## Decision and action matrix
-
-Combinations outside this table are rejected:
-
-| `policy_decision` | Valid `requested_action` | Meaning |
-| --- | --- | --- |
-| `observe` | `audit`, `alert` | Record or alert without changing the operation. |
-| `allow` | `audit` | Explicitly allow and record. |
-| `deny` | `audit`, `alert`, `block`, `contain` | Deny intent; actual execution depends on the requested action and capability. |
-
-Legacy `kill` is accepted only by the normalization path, becomes `contain`,
-and emits `deprecated_action_kill`. New JSON output never emits `kill`.
-`block` means a synchronous kernel hook rejected the operation. `contain`
-means a separate post-event action and must not rewrite the original syscall
-result.
-
-## Scope precedence
-
-Applicable policies are ordered deterministically:
-
-1. more specific scope: `run` > `cgroup` > `labels` > `global`;
-2. higher numeric `priority`;
-3. lexically smaller stable policy ID.
-
-An allow rule therefore cannot bypass a deny from a more specific scope merely
-by choosing a larger priority. Resolution must retain every matched policy for
-later explanation rather than exposing only the winner.
-
-`cgroup_id` is a non-zero decimal string so JSON consumers do not lose 64-bit
-precision. Each policy selects exactly one scope form and exactly one condition
-kind.
-
-## Conditions
-
-- `file`: exact paths, prefixes, suffixes, or basenames plus one or more of
-  `read`, `write`, and `execute`.
-- `exec`: bounded executable names and/or argument fragments.
-- `network`: an explicit `default_observe` or `default_deny`, IPv4/IPv6
-  families, optional static CIDRs, and optional inclusive port ranges.
-
-These fields describe policy intent. A valid schema does not prove a condition
-can be enforced in the kernel. Tracepoint path strings and argv fragments are
-audit/alert evidence; strict blocking requires a suitable LSM or cgroup hook.
+```sh
+make test-policy
+```
