@@ -19,6 +19,7 @@ import (
 	"github.com/agentshield/agentshield-ebpf/internal/bpfmgr"
 	"github.com/agentshield/agentshield-ebpf/internal/config"
 	"github.com/agentshield/agentshield-ebpf/internal/envcheck"
+	"github.com/agentshield/agentshield-ebpf/internal/inspection"
 	"github.com/agentshield/agentshield-ebpf/internal/killer"
 	"github.com/agentshield/agentshield-ebpf/internal/logging"
 	"github.com/agentshield/agentshield-ebpf/internal/policy"
@@ -32,6 +33,7 @@ type managedOptions struct {
 	networkRoot      string
 	managementSocket string
 	workloadSocket   string
+	inspectionFile   string
 	ingestAddress    string
 	readAddress      string
 	tokenFile        string
@@ -54,6 +56,9 @@ func (options managedOptions) validate() error {
 	}
 	if options.workloadSocket != "" && filepath.Clean(options.workloadSocket) == filepath.Clean(options.managementSocket) {
 		return errors.New("management and workload require distinct sockets")
+	}
+	if options.inspectionFile != "" && options.workloadSocket == "" {
+		return errors.New("local inspection requires --workload-socket")
 	}
 	return nil
 }
@@ -167,6 +172,7 @@ func serveManaged(parent context.Context, options managedOptions, logger *slog.L
 	var manager *scope.Manager
 	var registration *api.RegistrationHandler
 	var pipeline *api.RuntimePipeline
+	var checker *inspection.Checker
 	var servers []*http.Server
 	serverFailures := make(chan error, 4)
 	var monitorDone chan struct{}
@@ -259,6 +265,17 @@ func serveManaged(parent context.Context, options managedOptions, logger *slog.L
 				cancel()
 				return
 			}
+			if options.inspectionFile != "" {
+				cfg, err := inspection.Load(options.inspectionFile, readInspectionFile)
+				if err == nil {
+					checker, err = api.NewInspectionChecker(cfg, api.InspectionOptions{Registration: registration, Database: database, Hub: hub, Redactor: redactor, OwnerRead: readInspectionFile})
+				}
+				if err != nil {
+					serverFailures <- err
+					cancel()
+					return
+				}
+			}
 			readRoutes, err := managedReadRoutes(token, hub, overview, database, diagnostics, loaded.Bundle, generation, pipeline, writer)
 			if err != nil {
 				serverFailures <- err
@@ -309,11 +326,16 @@ func serveManaged(parent context.Context, options managedOptions, logger *slog.L
 					return
 				}
 				// No registration, finish, Dashboard, or policy routes here.
-				start(workload, checkpoint.Routes())
+				start(workload, managedWorkloadRoutes(checkpoint.Routes(), checker))
 			}
 			start(ingest, checkpoint.Routes())
 			start(readListener, readRoutes)
-			start(management, registration.Routes())
+			managementRoutes := http.NewServeMux()
+			managementRoutes.Handle("/", registration.Routes())
+			if checker != nil {
+				managementRoutes.Handle("/api/v1/inspection/", checker.ManagementRoutes())
+			}
+			start(management, managementRoutes)
 			started = true
 			_ = overview.SetCapabilities([]api.OverviewCapability{{Name: "bpf_hooks", Status: "available", Detail: "all four hooks attached"}, {Name: "registered_runtime", Status: "available", Detail: "checkpoint, correlation, SQLite, and containment worker connected"}})
 			monitorDone = make(chan struct{})
@@ -353,6 +375,15 @@ func serveManaged(parent context.Context, options managedOptions, logger *slog.L
 		},
 		OnDerivedRecordError: report, OnMalformedEvent: report,
 	}, os.Stdout)
+}
+
+func managedWorkloadRoutes(checkpoints http.Handler, checker *inspection.Checker) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/ingest/", checkpoints)
+	if checker != nil {
+		mux.Handle("/gateway/v1/check/", checker)
+	}
+	return mux
 }
 
 func managedReadRoutes(token string, hub *stream.Hub, overview *api.OverviewState, database *store.SQLite, diagnostics *api.DiagnosticsState, bundle policy.Bundle, generation policy.Generation, pipeline *api.RuntimePipeline, writer *store.Writer) (http.Handler, error) {

@@ -57,6 +57,11 @@ func TestManagedEntryRequiresSeparateTrustedSurfaces(t *testing.T) {
 	if aliased.validate() == nil {
 		t.Fatal("management socket exposed as workload listener")
 	}
+	missingWorkload := options
+	missingWorkload.inspectionFile = "/private/inspection.json"
+	if missingWorkload.validate() == nil {
+		t.Fatal("inspection exposed without a workload socket")
+	}
 	if err := options.validate(); err != nil {
 		t.Fatal(err)
 	}

@@ -52,6 +52,7 @@ func run(args []string) int {
 		flags.StringVar(&options.networkRoot, "cgroup-root", "/sys/fs/cgroup", "trusted cgroup v2 root for network attachment")
 		flags.StringVar(&options.managementSocket, "management-socket", "", "owner-only Unix registration/finish socket")
 		flags.StringVar(&options.workloadSocket, "workload-socket", "", "optional authenticated checkpoint Unix socket for offline containers")
+		flags.StringVar(&options.inspectionFile, "inspection-file", "", "owner-only local model/MCP inspection configuration; no forwarding")
 		flags.StringVar(&options.ingestAddress, "ingest-listen", "127.0.0.1:8081", "loopback checkpoint ingest listener")
 		flags.StringVar(&options.readAddress, "api-listen", "127.0.0.1:8080", "loopback read-only Dashboard API")
 		flags.StringVar(&options.tokenFile, "read-token-file", "", "owner-only Dashboard read token file")

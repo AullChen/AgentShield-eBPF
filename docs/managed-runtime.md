@@ -2,6 +2,11 @@
 
 `agentshield serve` runs registration, checkpoint ingestion, policy evaluation, correlation, containment, SQLite storage, and read APIs in one process. This walkthrough uses the stopped-task fixture to exercise that complete lifecycle on a dedicated Linux 6.8 VM.
 
+Optional `--workload-socket` and `--inspection-file` add the separately documented
+[offline container adapter](controlled-launch.md) and [local-only model/MCP
+checks](local-inspection.md). They do not change this fixture or enable remote
+forwarding. Approval routes stay on the owner-only management socket.
+
 ## Prepare the host
 
 Use x86_64 Linux with cgroup v2, kernel BTF, Python 3.10+, and the [BPF build dependencies](bpf-build.md). Core needs BPF privileges, host cgroup namespace visibility, access to `clone3`, and permission to open cgroupfs descriptors. Run the following from the repository root in the disposable VM:

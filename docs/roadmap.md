@@ -17,7 +17,8 @@ The demonstrated baseline is the controlled x86_64 Linux 6.8 workflow: trusted r
 ## Policy and runtime integration
 
 - Add policy CRUD, hot reload, and a persistent implementation of the tested A/B activation contract. Runtime policies currently load at startup, with one global synchronous TCP profile.
-- Implement production container/platform `PreparedTask` adapters while preserving stopped-before-registration and complete-leaf-exit invariants.
+- Validate the initial [offline single-container adapter](controlled-launch.md) on a dedicated rootful Linux/Docker host, then extend production platform coverage while preserving stopped-before-registration and complete-leaf-exit invariants. The new adapter has unit/cross-build coverage, not yet real-container acceptance evidence.
+- Integrate trusted model/MCP executors with the [local-only inspection checker](local-inspection.md). External forwarding and backend execution are intentionally absent in this increment; a check receipt alone is not an enforcement boundary. Extend protocol coverage, approved editable work-copy export, model output/cost budgets and backend isolation only with scoped acceptance tests.
 - Extend coverage to UDP and Unix sockets, `execveat`, and suitable synchronous file/process enforcement hooks. Current `openat`/`execve` tracepoints record entry attempts, and containment follows the event.
 - Evaluate subtree registration separately from the current exact-leaf model, with explicit identity and delegation rules.
 

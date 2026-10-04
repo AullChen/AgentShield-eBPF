@@ -84,6 +84,8 @@ Choose a walkthrough:
 
 - **Full lifecycle and containment:** [managed runtime](docs/managed-runtime.md), using `agentshield serve` on a dedicated Linux VM.
 - **Container audit demonstration:** [demo guide](docs/demo-guide.md), using the host Core and Compose-managed dashboard and sandbox.
+- **New opt-in isolation and local preflight:** [controlled offline launch](docs/controlled-launch.md) and [local model/MCP inspection](docs/local-inspection.md). These additions have static regression coverage; real-container acceptance is pending. No external forwarding or backend tool execution is provided.
+- **New opt-in isolation and local preflight:** [controlled offline launch](docs/controlled-launch.md) and [local model/MCP inspection](docs/local-inspection.md). These additions have static regression coverage; real-container acceptance is pending. No external forwarding or backend tool execution is provided.
 - **Dashboard development:** [dashboard guide](dashboard/README.md), using an authenticated synthetic evidence fixture.
 
 ## Repository map
