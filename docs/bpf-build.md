@@ -22,7 +22,7 @@ The script generates `vmlinux.h` from the kernel BTF in a temporary directory. F
 
 ## IPv6 context reads
 
-`agentshield_copy_destination` reads `user_ip6[0]` through `user_ip6[3]` explicitly. Each volatile 32-bit field access retains its CO-RE relocation. This access shape matters: an unrolled loop may produce arithmetic on `PTR_TO_CTX` followed by a dereference of the modified pointer, which the verifier rejects.
+`agentshield_copy_destination` reads `user_ip6[0]` through `user_ip6[3]` explicitly. Each volatile 32-bit field access retains its CO-RE relocation. An unrolled loop may produce arithmetic on `PTR_TO_CTX` followed by a dereference of the modified pointer, which the verifier rejects.
 
 Both the network allow-map key and event payload use the helper. After changing it, inspect disassembly for word-sized loads from the original context base and exercise addresses with all four words nonzero:
 
@@ -46,4 +46,4 @@ make check-bpf-syntax CLANG=clang
 make check-linux-bpfmgr
 ```
 
-The checked-in Go binding embeds BPF source text and hashes. `make generate` refreshes that binding; `make bpf-object` produces the loadable ELF. Their outputs serve different purposes.
+The checked-in Go binding embeds BPF source text and hashes. `make generate` refreshes that binding; `make bpf-object` produces the loadable ELF.

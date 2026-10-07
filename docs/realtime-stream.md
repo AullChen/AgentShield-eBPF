@@ -29,7 +29,7 @@ clients send no application data; text, binary, and fragmented client frames
 are rejected before their payload is allocated, while bounded close/ping/pong
 control frames remain supported.
 
-Run the source gate with:
+Run the stream tests:
 
 ```sh
 go test ./internal/stream -count=1

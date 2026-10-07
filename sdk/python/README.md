@@ -1,8 +1,9 @@
 # AgentShield Python ingest SDK
 
-This zero-runtime-dependency package reports semantic checkpoints for one
-already registered Agent Run. It is context, not a security boundary: kernel
-events and trusted supervisor lifecycle facts remain authoritative.
+This package reports semantic checkpoints for one already registered Agent
+Run and has no runtime dependencies. Checkpoints describe agent-reported
+activity. Kernel events and trusted supervisor lifecycle facts remain
+authoritative; the SDK provides no security boundary.
 
 `IngestClient` is fixed to the base URL, `run_id`, and short-lived ingest token
 provided at construction. Its only network operation is:

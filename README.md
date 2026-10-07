@@ -1,21 +1,21 @@
 # AgentShield-eBPF
 
-**Controlled execution, kernel visibility, and local request checks for AI agent workloads.**
+Controlled execution, kernel visibility, and local request checks for AI agent workloads.
 
-AgentShield runs agent workloads inside an offline, resource-bounded container and connects their reported intent to Linux kernel observations. A trusted supervisor registers each task before execution; local model/MCP checks apply content and approval rules; eBPF and a Go control plane produce an evidence timeline of activity, decisions, and containment outcomes.
+AgentShield runs agent workloads in offline containers with resource limits. A trusted supervisor registers each task before execution. Local model/MCP checks apply content and approval rules, while eBPF records kernel activity. The Go control plane combines those observations with the agent's reported intent, policy decisions, and containment outcomes in an evidence timeline.
 
-The system combines **CO-RE eBPF, cgroup v2, Docker, Go, SQLite, a Python SDK, and a Next.js dashboard**. Its controlled Linux 6.8 workflow has passed **137/137 integration checks**, including **111 checks for offline launch, local inspection, and lifecycle handling**.
+The implementation uses CO-RE eBPF, cgroup v2, Docker, Go, and SQLite, with a Python SDK and Next.js dashboard. Its controlled Linux 6.8 workflow passed **137/137 integration checks**, including 111 for offline launch, local inspection, and lifecycle handling.
 
 [Architecture](docs/architecture.md) · [Controlled launch](docs/controlled-launch.md) · [Local checks](docs/local-inspection.md) · [Validation](docs/validation.md)
 
 ## What it does
 
-- **Starts tasks under a trusted identity.** The supervisor prepares a stopped container init, binds its exact cgroup leaf, verifies registration, and then releases the workload. Agent processes and ordinary local stdio MCP children share that scope.
-- **Keeps the workload offline and resource-bounded.** Docker network isolation covers IPv4/IPv6 TCP and UDP, including while Core is stopped. CPU, memory, swap, process/thread, and runtime limits bound execution; approved source is mounted read-only.
-- **Checks requests before an integration proceeds.** Local model checks validate JSON, body size, sensitive values, and selected credential patterns. MCP checks validate tool names, required string arguments, path/value rules, and pinned tool definitions. Responses are local inspection receipts.
-- **Binds approval to the exact request.** Trusted single-use approvals identify the Run, route, raw-body SHA-256, and expiry. Content and tool rules remain mandatory. Per-Run attempt budgets and a checker-wide concurrency limit bound inspection work.
-- **Observes and responds at the kernel boundary.** `openat` and `execve` tracepoints capture attempts; `connect4`/`connect6` audit TCP and enforce exact-tuple policies. Exec policies can trigger identity-checked, post-event `cgroup.kill` containment.
-- **Keeps evidence attributable.** Agent claims, kernel observations, policy decisions, and containment results retain separate types. Local checks are recorded as `local_preflight_only`; SQLite and the desktop dashboard make the resulting timeline inspectable.
+- The supervisor prepares a stopped container init, binds its exact cgroup leaf, verifies registration, and then releases the workload. Agent processes and ordinary local stdio MCP children share that scope.
+- Docker network isolation covers IPv4/IPv6 TCP and UDP, including while Core is stopped. CPU, memory, swap, process/thread, and runtime limits bound execution; approved source is mounted read-only.
+- Before an integration proceeds, local model checks validate JSON, body size, sensitive values, and selected credential patterns. MCP checks validate tool names, required string arguments, path/value rules, and pinned tool definitions. Responses are local inspection receipts.
+- Trusted single-use approvals identify the Run, route, raw-body SHA-256, and expiry. Content and tool rules remain mandatory. Per-Run attempt budgets and a checker-wide concurrency limit bound inspection work.
+- `openat` and `execve` tracepoints capture attempts; `connect4`/`connect6` audit TCP and enforce exact-tuple policies. Exec policies can trigger identity-checked, post-event `cgroup.kill` containment.
+- Agent claims, kernel observations, policy decisions, and containment results retain separate types. Local checks are recorded as `local_preflight_only`; SQLite stores the timeline for inspection in the desktop dashboard.
 
 ## Architecture
 
@@ -80,10 +80,10 @@ npm --prefix dashboard run build
 
 Choose a walkthrough:
 
-- **Offline workload with local request checks:** [controlled launch](docs/controlled-launch.md) and [model/MCP inspection](docs/local-inspection.md).
-- **Kernel audit, correlation, and containment:** [managed runtime](docs/managed-runtime.md), using `agentshield serve` on a dedicated Linux VM.
-- **Container audit demonstration:** [demo guide](docs/demo-guide.md), using a host Core and Compose-managed dashboard and sandbox.
-- **Dashboard development:** [dashboard guide](dashboard/README.md), using an authenticated synthetic fixture.
+- Offline workload with local request checks: [controlled launch](docs/controlled-launch.md) and [model/MCP inspection](docs/local-inspection.md).
+- Kernel audit, correlation, and containment: [managed runtime](docs/managed-runtime.md), using `agentshield serve` on a dedicated Linux VM.
+- Container audit demonstration: [demo guide](docs/demo-guide.md), using a host Core and Compose-managed dashboard and sandbox.
+- Dashboard development: [dashboard guide](dashboard/README.md), using an authenticated synthetic fixture.
 
 ## Repository map
 

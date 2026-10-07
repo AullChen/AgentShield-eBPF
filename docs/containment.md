@@ -32,4 +32,4 @@ make test-policy
 make check-linux-killer
 ```
 
-The [managed runtime fixture](managed-runtime.md) checks a real SIGKILL exit. The recorded Linux 6.8 runs additionally checked persisted results, scope identity, WebSocket delivery, and evidence after restart. See [validation](validation.md) and [development plans](roadmap.md).
+The [managed runtime fixture](managed-runtime.md) checks a real SIGKILL exit. The recorded Linux 6.8 runs also checked persisted results, scope identity, WebSocket delivery, and evidence after restart. See [validation](validation.md) and [development plans](roadmap.md).

@@ -15,7 +15,7 @@ npm --prefix dashboard run build
 npm --prefix dashboard run start
 ```
 
-Log in with the Basic-auth username `agentshield` and the dashboard token as password. The dashboard token must be 24–512 bytes and distinct from the Core read token. Keep the Core credential server-side. Production start binds to loopback; remote access uses authenticated TLS termination.
+Log in with the Basic-auth username `agentshield` and the dashboard token as password. The dashboard token must be 24 to 512 bytes and distinct from the Core read token. Keep the Core credential server-side. Production start binds to loopback; remote access uses authenticated TLS termination.
 
 Live Trace obtains a single-use ticket through a same-origin route. Set `AGENTSHIELD_STREAM_URL` when the browser-visible WebSocket URL differs from the API URL; remote URLs use `wss://`.
 
@@ -31,10 +31,11 @@ Live Trace obtains a single-use ticket through a same-origin route. Set `AGENTSH
 Managed evidence can be opened by a saved Run ID after Core restarts. Standalone audit provides evidence from its live recovery window. Durable Run listing and cursor work are described in [development plans](../docs/roadmap.md).
 
 Local request checks appear as `local_inspection` policy decisions with action
-`check`, mechanism `local_preflight_only`, and `enforced=false`. Read their
-approval/check/rejection reasons as preflight results alongside the separate
-kernel and containment records. The [current validation](../docs/validation.md)
-includes live screenshots from the running guest Core.
+`check`, mechanism `local_preflight_only`, and `enforced=false`. Their approval,
+check, and rejection reasons describe preflight results. Kernel observations
+and containment outcomes appear in separate records. The
+[current validation](../docs/validation.md) includes live screenshots from the
+running guest Core.
 
 ## Synthetic browser fixture
 

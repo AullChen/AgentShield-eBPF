@@ -8,7 +8,7 @@ Authorization: Bearer <ingest token>
 Content-Type: application/json
 ```
 
-`CheckpointHandler.Routes()` is deliberately separate from the management
+`CheckpointHandler.Routes()` is separate from the management
 router. The listener exposed to an Agent must use only this handler; the
 registration and finish routes remain on an owner-only management transport.
 An ingest token is accepted only for the exact Run named in the route.
@@ -85,7 +85,7 @@ to SQLite asynchronously, so 201 is not an fsync guarantee. See
 
 ## Verification
 
-Run the source-level gate with:
+Run the checkpoint tests:
 
 ```sh
 make test-checkpoint

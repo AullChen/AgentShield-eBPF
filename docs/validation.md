@@ -1,6 +1,6 @@
 # Validation
 
-The current controlled-workflow experiment targets commit `9d7e28f3f84034e1598694fb713a3260d2240298`, recorded on 2026-10-04. It passed **137/137 integration checks**, covering offline containers, local inspection, trusted finish, and the existing managed runtime. The [machine-readable summary](validation/2026-10-04-offline-inspection.json) records counts, observations, binary hashes, and source-record hashes.
+The controlled-workflow experiment used commit `9d7e28f3f84034e1598694fb713a3260d2240298`, recorded on 2026-10-04. It passed **137/137 integration checks**, covering offline containers, local inspection, trusted finish, and the existing managed runtime. The [machine-readable summary](validation/2026-10-04-offline-inspection.json) records counts, observations, binary hashes, and source-record hashes.
 
 ## Environment and checks
 
@@ -15,7 +15,7 @@ Experiments used x86_64 Linux `6.8.0-146-generic`, cgroup v2, and rootful Docker
 | Existing managed mainline | 26 | Checkpoints, correlation, four hooks, real cgroup.kill, authentication, realtime evidence, and restart queries |
 | **Total** | **137** | **111 new-workflow checks plus 26 mainline checks** |
 
-These are distinct integration assertions; repeated runs are retained as observations rather than added again to the total.
+The total counts distinct integration assertions. Repeated runs are recorded separately and do not increase it.
 
 | Software check | Recorded result |
 | --- | --- |
@@ -27,21 +27,21 @@ These are distinct integration assertions; repeated runs are retained as observa
 
 ## Direct observations
 
-**Network isolation.** Controlled receivers first passed positive controls for IPv4/IPv6 TCP and UDP. The tested agent, ordinary stdio subprocess, and container after Core shutdown delivered **0 application bytes** in both receiver observation rounds. The primary isolation mechanism was Docker `network=none`, independent of Core availability. The observation concerns these traffic paths and receivers.
+For the network isolation tests, controlled receivers first passed positive controls for IPv4/IPv6 TCP and UDP. The tested agent, ordinary stdio subprocess, and container after Core shutdown delivered **0 application bytes** in both receiver observation rounds. The primary isolation mechanism was Docker `network=none`, independent of Core availability. The observation concerns these traffic paths and receivers.
 
-**Resources.** The test selected 128 MiB memory, zero swap, 64 tasks, and CPU quota `50000 100000`. Deliberate over-limit child workloads produced one OOM kill, one task-limit event, and 234 throttled CPU periods; the main workload exited with status 0. These are functional enforcement observations. The launcher's default memory budget is 512 MiB.
+The resource-limit test used 128 MiB memory, zero swap, 64 tasks, and CPU quota `50000 100000`. Deliberate over-limit child workloads produced one OOM kill, one task-limit event, and 234 throttled CPU periods; the main workload exited with status 0. These are functional enforcement observations. The launcher's default memory budget is 512 MiB.
 
-**Request inspection.** Exact-byte approval binding, concurrent single consumption, expiry, sensitive-content rejection, pinned MCP definitions, argument scope, strict JSON, and attempt budgets passed. A relay request of 256 KiB + 1 returned **413** and added **zero** Core inspection records. Allowed receipts retained `mode=local_only`, `forwarded=false`, and `executed=false`.
+Request inspection tests covered exact-byte approval binding, concurrent single consumption, expiry, sensitive-content rejection, pinned MCP definitions, argument scope, strict JSON, and attempt budgets; all passed. A relay request of 256 KiB + 1 returned **413** and added **zero** Core inspection records. Allowed receipts retained `mode=local_only`, `forwarded=false`, and `executed=false`.
 
-**Trusted finish.** The main workload and three repeated `/bin/true` samples were held for three 1.1-second observation intervals after root exit. The held leaf reported `populated 0`; Runs stayed active until supervisor finish, then became finished. Separate injections of remaining members, live-root migration, and child cgroups produced the expected failures and token revocation. The added waits belonged to the test driver.
+To check trusted finish, the test driver kept the main workload and three repeated `/bin/true` samples awaiting finish for three 1.1-second observation intervals after root exit. The held leaf reported `populated 0`; Runs stayed active until supervisor finish, then became finished. Separate injections of remaining members, live-root migration, and child cgroups produced the expected failures and token revocation.
 
-**Persistence and cleanup.** SQLite integrity checks passed. Closing and reopening Core preserved all 49 inspection records and IDs; container and held-leaf cleanup left the test resources empty. Closed-database operations were covered by the software regression suite.
+SQLite integrity checks passed. Closing and reopening Core preserved all 49 inspection records and IDs; container and held-leaf cleanup left the test resources empty. Closed-database operations were covered by the software regression suite.
 
 ## Visual evidence and provenance
 
 ![Running Core dashboard with completed controlled workloads](assets/offline-overview-live.png)
 
-The overview and [sensitive-content rejection screenshot](assets/local-inspection-live.png) are unchanged captures from the dashboard production build. A test-only read-only serial bridge fetched GET responses from the **running guest Core**, preserving the guest's offline network configuration. This was live API access. The bridge is part of the test apparatus.
+The overview and [sensitive-content rejection screenshot](assets/local-inspection-live.png) are unchanged captures from the dashboard production build. A read-only serial bridge in the test apparatus fetched live GET responses from the running guest Core while preserving the guest's offline network configuration.
 
 Capture timestamps and screenshot hashes are included in the public JSON summary. The archived evidence bundle's checksum list was verified against all **111 listed files**. The complete raw logs, databases, captures, and independent drivers remain operator-held; the public summary identifies its source files by SHA-256.
 

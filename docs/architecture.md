@@ -1,6 +1,6 @@
 # Architecture
 
-AgentShield prepares workloads in offline, resource-bounded containers, assigns a trusted Run identity, and connects local request checks with kernel observations. The design separates workload-supplied context from authority over task identity, approval, and lifecycle.
+AgentShield runs each workload in an offline container with resource limits and a trusted Run identity. Local request checks and kernel observations use that identity to attribute evidence. Workloads supply context; trusted components control task identity, approval, and lifecycle.
 
 ## Trust boundaries
 
@@ -20,7 +20,7 @@ The management plane uses an owner-only Unix socket for registration, finish, an
 
 `sandbox/container_launcher.py` implements the supervisor's `PreparedTask` interface for rootful Linux Docker. It selects an already installed immutable image, a root-owned static init, and an approved read-only project copy. The container uses `network=none`, UID/GID 65532, dropped capabilities, a read-only root filesystem, and bounded temporary storage.
 
-The trusted init stops itself during preparation. The supervisor verifies its stopped threads, the held exact leaf, CPU/memory/swap/task-limit readback, and the read-only cgroupfs mount. A launch envelope containing Run credentials is delivered after registration. The application and ordinary stdio child processes then inherit the scope and container boundaries.
+The trusted init stops itself during preparation. The supervisor verifies its stopped threads, the held exact leaf, CPU/memory/swap/task-limit readback, and the read-only cgroupfs mount. After registration, the supervisor delivers a launch envelope containing Run credentials. The application and ordinary stdio child processes then inherit the scope and container boundaries.
 
 Docker's network namespace supplies IPv4/IPv6 TCP/UDP isolation, including during Core downtime. eBPF connect hooks independently supply TCP observation and configured tuple decisions. Timeout ends the container; trusted finish checks Docker exit state and held-leaf emptiness. See [controlled launch](controlled-launch.md).
 
@@ -34,15 +34,15 @@ Core protects its own cgroup and ancestor paths during registration and containm
 
 At finish, the supervisor first observes root-task exit and an empty held leaf. Core removes the scope-map entry, ends the Run, and revokes its ingest credential. Agent `run_finished` messages remain descriptive checkpoints in the evidence timeline.
 
-The monitor handles the interval between root exit and finish explicitly. A missing root PID plus `populated 0` read through the trusted held descriptor permits the Run to remain active. Child-cgroup checks continue; remaining members, live-root migration, and invalid state still fail inspection. Only trusted finish or the existing expiry path completes the Run lifecycle.
+Between root exit and trusted finish, a missing root PID plus `populated 0` read through the trusted held descriptor permits the Run to remain active. Child-cgroup checks continue; remaining members, live-root migration, and invalid state still fail inspection. Only trusted finish or the existing expiry path completes the Run lifecycle.
 
 ## Local request inspection
 
 The init relay buffers the complete request up to 256 KiB, strips caller credentials, and binds the request to its own Run token. Core validates one strict JSON object, checks decoded strings for configured exact sensitive values and selected credential patterns, and applies route-specific rules.
 
-MCP routes validate a `tools/call` body against a trusted definition-file digest, a tool allowlist, required string arguments, and path or exact-value rules. A trusted approval binds active Run, route, raw-body SHA-256, expiry, and one consumption. Content and tool rules run before the approval is consumed.
+MCP routes validate a `tools/call` body against a trusted definition-file digest, a tool allowlist, required string arguments, and path or exact-value rules. Each trusted approval is bound to an active Run, route, raw-body SHA-256, and expiry, and can be consumed once. Content and tool rules run before the approval is consumed.
 
-Per-Run attempt counts and checker-wide concurrent slots bound processing. Accepted approvals and check outcomes synchronously append minimal evidence to SQLite before success, then publish to the existing stream. These records use `local_inspection` under `policy_decision`, mechanism `local_preflight_only`, and `enforced=false`. Responses describe checks with `forwarded=false` and `executed=false`. See [local inspection](local-inspection.md).
+The checker limits attempts per Run and concurrent checks across Runs. It appends minimal evidence for approvals and check outcomes to SQLite before returning success, then publishes those records to the stream. These records use `local_inspection` under `policy_decision`, mechanism `local_preflight_only`, and `enforced=false`. Responses describe checks with `forwarded=false` and `executed=false`. See [local inspection](local-inspection.md).
 
 ## Kernel observation and enforcement
 
@@ -55,7 +55,7 @@ Per-Run attempt counts and checker-wide concurrent slots bound processing. Accep
 
 Scope-map lookup occurs before ring-buffer reservation. The capture ABI includes version and size validation; public JSON encodes 64-bit identities and clocks as decimal strings. Per-type, per-CPU reserve-failure counters support loss diagnostics.
 
-The TCP enforcement compiler produces exact address/port map entries for a default-deny profile. The hook decides whether to allow the connection synchronously, independently of successful audit-event delivery. File and exec tracepoints capture syscall entry; completion remains a separate event semantic.
+The TCP enforcement compiler produces exact address/port map entries for a default-deny profile. The hook decides whether to allow the connection synchronously, independently of successful audit-event delivery. File and exec tracepoints capture syscall entry. Those records describe attempts; establishing completion requires a separate observation.
 
 IPv6 destination reads use four explicit 32-bit field accesses. Keeping each access tied to the original context pointer gives the verifier a valid access shape while preserving CO-RE field relocations. See [BPF build](bpf-build.md).
 
@@ -76,7 +76,7 @@ The timeline keeps four sources:
 3. `policy_decision`: runtime matching/action information or an explicitly labeled local inspection receipt.
 4. `containment_result`: the identity and outcome of a separate task-isolation action.
 
-Correlation first establishes the Run from trusted identity, then scores recent same-Run checkpoints using tool semantics and server-monotonic proximity. Equal top candidates retain an explicit ambiguous result. Scores express heuristic association strength. [Correlation](correlation.md) describes the factors.
+Correlation first establishes the Run from trusted identity, then scores recent same-Run checkpoints using tool semantics and server-monotonic proximity. Equal top candidates are marked ambiguous. Scores measure heuristic association strength. [Correlation](correlation.md) describes the factors.
 
 Redaction happens before records enter storage or broadcast queues. Managed evidence queries read SQLite by Run ID, including after a clean restart. They return bounded snapshots, with dangling checkpoint links removed when the referenced claim falls outside the snapshot.
 
@@ -86,4 +86,4 @@ Follow `managed.go` → `internal/scope` and `internal/api/registration.go` → 
 
 For offline execution, follow `sandbox/container_launcher.py` → `sandbox/supervisor.py` → `cmd/sandbox-init`. For local checks, follow its relay → `internal/inspection` → `internal/api/inspection.go` → SQLite and the stream hub.
 
-[Validation](validation.md) connects these mechanisms to the recorded experiments. [Development plans](roadmap.md) describe extensions and open evaluation questions.
+See [validation](validation.md) for experiment results and [development plans](roadmap.md) for extensions and further evaluation.

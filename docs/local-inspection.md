@@ -2,7 +2,7 @@
 
 The checker validates a complete request body against local content rules, a configured route, and a trusted single-use approval. It returns an inspection receipt and stores a minimal decision record. The [offline container](controlled-launch.md) supplies the network boundary; an integration controls the separate execution step.
 
-Model routes check JSON structure and sensitive content. MCP routes additionally check a `tools/call` body against pinned tool definitions and argument rules. The receipt describes local preflight, with `forwarded=false` and `executed=false`.
+Model routes check JSON structure and sensitive content. MCP routes also check a `tools/call` body against pinned tool definitions and argument rules. The receipt describes local preflight, with `forwarded=false` and `executed=false`.
 
 ## Enable
 
@@ -38,7 +38,7 @@ Content-Type: application/json
 
 The trusted init's relay collects up to 256 KiB before handing the body to Core. It replaces caller credentials with its own Run token and sends requests through the individually mounted workload socket. Oversized or incomplete bodies receive HTTP 413 at the relay; the recorded oversized request added zero inspection records to Core.
 
-Core accepts one valid UTF-8 JSON object with unique keys, nesting at most 32, and a complete body. Compression, extra JSON values, query parameters, Origin/session headers, and unsupported routes are rejected. This bounded POST interface is the local request format.
+Core accepts one valid UTF-8 JSON object with unique keys, nesting at most 32, and a complete body. Compression, extra JSON values, query parameters, Origin/session headers, and unsupported routes are rejected.
 
 | Result | HTTP status | Meaning |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ POST /api/v1/inspection/approvals
 
 The approval binds active Run, route, complete raw-body digest, and expiry. Retrying uses the same saved bytes, including whitespace and JSON-RPC ID. Consumption is synchronized, so concurrent requests can use an approval once. The pending approval store is capped at 1,024 entries.
 
-Sensitive-content and MCP rules run before approval consumption. An approval grants eligibility for a local check while those rules continue to apply. A successful response has this form:
+Sensitive-content and MCP rules apply to every attempt and must pass before the checker consumes an approval. A successful response has this form:
 
 ```json
 {"mode":"local_only","checked":true,"reason":"checked","sha256":"...","forwarded":false,"executed":false}

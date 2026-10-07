@@ -50,8 +50,8 @@ A successful response uses decimal strings for all 64-bit identities:
 }
 ```
 
-Core generates the run and scope identities. The ingest token is HMAC-signed,
-expires after 15 minutes by default, and the Run store retains only its SHA-256
+The ingest token is HMAC-signed and expires after 15 minutes by default.
+The Run store retains only its SHA-256
 hash. The bounded in-memory registration replay entry retains the one-time
 response only until the Run or initial token ceases to be active.
 The credential lifetime is independent from the Run lifetime: token expiry

@@ -15,5 +15,5 @@ Local inspection uses a separate owner-only JSON configuration supplied through
 `serve --inspection-file PATH`. It defines model/MCP routes, sensitive-value
 files, trusted tool-definition digests, per-Run attempts, and checker-wide
 concurrency. See [local inspection](../docs/local-inspection.md) for the schema
-examples and single-use approval flow. Runtime policy bundles and inspection
-configuration serve these separate evaluation paths.
+examples and single-use approval flow. Runtime policies evaluate events;
+inspection configuration governs request checks.

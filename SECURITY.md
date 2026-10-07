@@ -18,10 +18,10 @@ control of Docker and cgroup changes throughout the Run.
 [Local inspection](docs/local-inspection.md) returns request-check receipts.
 Its trusted approvals bind Run, route, exact raw-body digest, expiry, and single
 use, with content/tool rules checked on every attempt. Sensitive values and tool
-snapshots stay on the host. Treat digests as request identifiers and retain the
-documented authentication around their evidence; raw request bodies and tokens
-are excluded from stored inspection records. External execution and backend
-filesystem isolation are separate integration responsibilities.
+snapshots stay on the host. Digests identify requests; access to the evidence
+still requires authentication. Stored inspection records exclude raw request
+bodies and tokens. External execution and backend filesystem isolation are
+separate integration responsibilities.
 
 ## Reporting
 

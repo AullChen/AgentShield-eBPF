@@ -58,7 +58,7 @@ sudo python3 sandbox/container_launcher.py \
   --timeout 300 -- /usr/bin/python3 /workspace/harness.py
 ```
 
-Use the same management socket path configured on Core. The workload receives a newly constructed environment containing its Run/checkpoint/check capabilities and a small set of approved process variables. Image pulls and dependency installation happen during trusted preparation.
+Use the same management socket path configured on Core. The workload receives a fresh environment with Run credentials, checkpoint and check endpoints, and a small set of approved process variables. Image pulls and dependency installation happen during trusted preparation.
 
 | Resource | Launcher default | Recorded enforcement experiment |
 | --- | --- | --- |
@@ -68,7 +68,7 @@ Use the same management socket path configured on Core. The workload receives a 
 | CPU | 50,000 µs per 100,000 µs period | 0.5 CPU; throttled-period counter incremented |
 | Runtime | 300 seconds | Timeout ended the entire container |
 
-The Python `ContainerTask` constructor accepts bounded memory, task, and CPU budgets. The CLI exposes timeout from 1–900 seconds, within the default 15-minute ingest-token lifetime. The experiment's 128 MiB setting is a test-specific override of the 512 MiB default.
+The Python `ContainerTask` constructor accepts bounded memory, task, and CPU budgets. The CLI exposes timeout from 1 to 900 seconds, within the default 15-minute ingest-token lifetime. The experiment's 128 MiB setting is a test-specific override of the 512 MiB default.
 
 ## Registration and finish
 
@@ -78,7 +78,7 @@ The Python `ContainerTask` constructor accepts bounded memory, task, and CPU bud
 4. The supervisor sends the Run credential envelope and resumes init; only then does init start the application and local relay.
 5. Docker exit state and `cgroup.events populated 0` establish complete workload exit. The supervisor finishes the Run, then cleans up the container and its empty leaf.
 
-The held leaf is separate from Docker's runtime leaf. When the root PID disappears and the held leaf is empty, Core keeps the Run active awaiting trusted finish or expiry. The monitor continues checking child cgroups; remaining members, a migrated live root, or unreadable state cause inspection failure. This preserves monitoring through the gap between task exit and supervisor finish.
+The held leaf is separate from Docker's runtime leaf. When the root PID disappears and the held leaf is empty, Core keeps the Run active awaiting trusted finish or expiry. The monitor continues checking child cgroups; remaining members, a migrated live root, or unreadable state cause inspection failure.
 
 ## Core shutdown and evidence
 

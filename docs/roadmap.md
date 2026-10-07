@@ -1,12 +1,12 @@
 # Development plans
 
-The demonstrated baseline is the controlled x86_64 Linux 6.8 workflow: offline Docker execution, local model/MCP inspection, trusted registration and finish, kernel observation, TCP enforcement, containment, and persistent evidence. The next work extends its operating range and measures its behavior under load.
+The controlled x86_64 Linux 6.8 workflow has been validated for offline Docker execution, local model/MCP inspection, trusted registration and finish, kernel observation, TCP enforcement, containment, and persistent evidence. Planned work covers reliability under load and support for more environments.
 
 ## Reliability and security maintenance
 
-- **Linux 7.0 event delivery and containment:** retain and reproduce the initial Ubuntu-built-object failure alongside its successful unchanged rerun. Instrument exec-event delivery and dispatch to explain the missed containment before extending the operating baseline.
-- **Dependency maintenance:** resolve the recorded npm audit findings (nine affected package entries: one critical, seven high, one moderate), then repeat build, browser, and vulnerability checks. Re-run Go vulnerability scanning with the selected release toolchain. Findings are tied to the recorded audit snapshot; affected-package counts can include propagation through transitive dependencies.
-- **Load and soak evaluation:** measure event throughput, ring reserve failures, queue loss, CPU/memory overhead, storage growth, and tail latency under controlled workload rates. Exercise shutdown and storage recovery during sustained load.
+- Reproduce the initial Linux 7.0 event-delivery and containment failure with the Ubuntu-built object, retaining evidence from both the failure and its successful unchanged rerun. Instrument exec-event delivery and dispatch to explain the missed containment before extending the operating baseline.
+- Resolve the recorded npm audit findings (nine affected package entries: one critical, seven high, one moderate), then repeat build, browser, and vulnerability checks. Re-run Go vulnerability scanning with the selected release toolchain. These findings come from the recorded audit snapshot; affected-package counts can include propagation through transitive dependencies.
+- Measure event throughput, ring reserve failures, queue loss, CPU/memory overhead, storage growth, and tail latency under controlled workload rates. Exercise shutdown and storage recovery during sustained load.
 
 ## Durable lifecycle and history
 
@@ -38,4 +38,4 @@ The demonstrated baseline is the controlled x86_64 Linux 6.8 workflow: offline D
 
 ## Research evaluation
 
-Build a labeled workload corpus to evaluate checkpoint association precision, recall, and ambiguity as concurrency and checkpoint delay vary. Compare attribution by PID, cgroup ID, and instance/cookie identity under reuse and delayed delivery. Measure synchronous TCP rejection, local inspection latency, and event-to-containment latency separately. Evaluate offline isolation with positive-control receivers across launch, timeout, and Core-stop transitions. These experiments would quantify the design choices already represented in the implementation.
+Build a labeled workload corpus to evaluate checkpoint association precision, recall, and ambiguity as concurrency and checkpoint delay vary. Compare attribution by PID, cgroup ID, and instance/cookie identity under reuse and delayed delivery. Measure synchronous TCP rejection, local inspection latency, and event-to-containment latency separately. Evaluate offline isolation with positive-control receivers across launch, timeout, and Core-stop transitions.

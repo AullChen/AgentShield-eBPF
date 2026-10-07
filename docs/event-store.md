@@ -4,22 +4,21 @@
 
 ## SQLite boundary
 
-The store creates a real SQLite database, enables WAL, uses `synchronous=NORMAL`
+The store creates a SQLite database, enables WAL, uses `synchronous=NORMAL`
 and a bounded busy timeout, and caps page growth. Its owner-only directory and
 regular-file identity are verified before opening, symbolic links are rejected,
 and the database is restricted to `0600` before schema writes. Capacity accounting includes
-live database pages plus the WAL and shared-memory files; reusable free pages
-are not mistaken for retained evidence. Above the soft limit it truncates the
+live database pages plus the WAL and shared-memory files, excluding
+reusable free pages. Above the soft limit it truncates the
 WAL and removes a proportional number of the oldest low-severity records;
 high and critical records are preferred but remain bounded by the hard limit.
 The hard page count is derived from the database's actual page size, including
 when an existing database does not use SQLite's usual 4 KiB pages.
 
-No downloaded Go driver is required. Windows uses the system
-`winsqlite3.dll`; supported Unix cgo builds link the system `libsqlite3`.
-Non-Windows builds without cgo return `ErrSQLiteUnavailable` instead of
-silently writing another format. Production images therefore need the SQLite
-runtime/development library when building with cgo.
+The store uses system SQLite libraries without downloading a Go driver.
+Windows uses `winsqlite3.dll`; supported Unix cgo builds link `libsqlite3`.
+Non-Windows builds without cgo return `ErrSQLiteUnavailable`. Production images
+therefore need the SQLite runtime/development library when building with cgo.
 
 The initial schema contains the design tables plus a normalized
 `evidence_records` ingestion table. Every record stores decimal-string
@@ -35,8 +34,8 @@ copies do not overwrite it or roll back unrelated records in the same batch.
 Text fields containing NUL bytes are rejected before queueing because the
 SQLite execution boundary accepts text rather than binary strings.
 Capacity maintenance is retried before a later transaction and during close.
-Failure after a successful commit never reports that committed batch as failed,
-which prevents duplicate retries from poisoning the writer circuit.
+A maintenance failure after commit leaves the batch marked successful,
+preventing duplicate retries from opening the writer circuit.
 
 ## Reader isolation and degradation
 

@@ -9,8 +9,8 @@ The caller supplies the authoritative scope resolver used by the Run lifecycle
 manager. A kernel event is first resolved from its captured
 `{instance_id, scope_cookie}` tuple to an `exact`, `stale`, or `unknown`
 attribution. Only an exact attribution with a Run ID advances to checkpoint
-matching. The score does not add points for both cgroup and Run ID: those are
-the same attribution fact, not independent confidence evidence.
+matching. Cgroup and Run ID express the same attribution fact; the score does
+not count them as independent evidence.
 
 ## Stage 2: candidates inside one Run
 
@@ -19,25 +19,25 @@ server-monotonic window (default: event from 1.5 seconds before a checkpoint
 through 5 seconds after it). Client wall-clock claims are retained as data but
 never used for ordering or scoring.
 
-The initial bounded score uses distinct evidence:
+The score uses these factors:
 
 - same TGID, or same PID when TGID is unavailable;
 - normalized tool-name match;
 - checkpoint/event semantic compatibility; and
 - server-monotonic proximity.
 
-Scores are clamped to 0–100 and every contribution is returned as a named
+Scores are clamped to the range 0 to 100 and every contribution is returned as a named
 factor. Candidates are sorted by score, absolute time delta, then checkpoint
 ID. If the best candidates remain equal on score and delta, the result is
-`ambiguous`: all candidates remain visible and none is silently selected based
-on map/slice traversal order.
+`ambiguous`: all candidates remain visible, with no winner chosen by
+map/slice traversal order.
 
 This is correlation evidence, not proof of causality and not a replacement for
 the exact Run attribution status.
 
 The managed `serve` worker supplies registered identity and the newest 64
-same-Run candidates from a 1,024-claim global cache. Checkpoint fields do not
-claim trusted PID/TGID, so process-match points are not invented for them.
+same-Run candidates from a 1,024-claim global cache. Ingested checkpoints supply
+no trusted PID/TGID, so they earn no process-match points.
 SQLite evidence retains the result; links outside the retained snapshot are
 explicitly removed. See [managed-runtime.md](managed-runtime.md).
 
